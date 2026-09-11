@@ -1,0 +1,1445 @@
+//! User settings, stored as TOML next to nothing else the app needs.
+
+use std::path::PathBuf;
+
+use serde::{Deserialize, Serialize};
+
+pub fn config_path() -> PathBuf {
+    dirs::config_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("ccd-usage-monitor")
+        .join("config.toml")
+}
+
+/// One of the four places the figures can come from. Each is switched on or
+/// off on its own and carries its own staleness threshold, because they age at
+/// very different rates: the endpoint answers in seconds, the desktop app
+/// writes its history about every quarter of an hour.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SourceKind {
+    /// The file written by `ccd-usage-monitor --bridge`.
+    Bridge,
+    /// The usage endpoint.
+    Api,
+    /// The usage history the Claude desktop app keeps.
+    Desktop,
+    /// The conversation transcripts Claude Code writes for itself. The only
+    /// source of a context figure that works outside a terminal session.
+    Session,
+}
+
+impl SourceKind {
+    pub const ALL: [SourceKind; 4] = [
+        SourceKind::Bridge,
+        SourceKind::Api,
+        SourceKind::Desktop,
+        SourceKind::Session,
+    ];
+
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (SourceKind::Bridge, _) => "statusLine",
+            (SourceKind::Api, _) => "usage API",
+            (SourceKind::Desktop, true) => "Приложение",
+            (SourceKind::Desktop, false) => "Desktop app",
+            (SourceKind::Session, true) => "Транскрипт сессии",
+            (SourceKind::Session, false) => "Session transcript",
+        }
+    }
+
+    /// The tag used where a whole label will not fit.
+    pub fn short(self) -> &'static str {
+        match self {
+            SourceKind::Bridge => "sl",
+            SourceKind::Api => "API",
+            SourceKind::Desktop => "app",
+            SourceKind::Session => "tr",
+        }
+    }
+}
+
+/// The old single-choice setting, kept only long enough to read a config
+/// written before the sources became independent switches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SourceMode {
+    Auto,
+    Bridge,
+    Api,
+    Desktop,
+    Demo,
+}
+
+/// When the detail panel under the pill is shown. Hover is cheap to trigger by
+/// accident, so it is not the default: most of the time the pill is meant to be
+/// glanced at, not interrogated.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetailMode {
+    /// While the pointer is over the pill.
+    Hover,
+    /// While the settings window is open.
+    WithSettings,
+    Never,
+}
+
+impl DetailMode {
+    pub const ALL: [DetailMode; 3] = [
+        DetailMode::WithSettings,
+        DetailMode::Hover,
+        DetailMode::Never,
+    ];
+
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (DetailMode::Hover, true) => "при наведении",
+            (DetailMode::Hover, false) => "on hover",
+            (DetailMode::WithSettings, true) => "с настройками",
+            (DetailMode::WithSettings, false) => "with settings",
+            (DetailMode::Never, true) => "никогда",
+            (DetailMode::Never, false) => "never",
+        }
+    }
+
+    pub fn next(self) -> DetailMode {
+        let i = DetailMode::ALL.iter().position(|m| *m == self).unwrap_or(0);
+        DetailMode::ALL[(i + 1) % DetailMode::ALL.len()]
+    }
+}
+
+/// What the big percentages and the bars say: how much of a window is gone, or
+/// how much of it is left. One reading either way — only the direction it is
+/// read in changes, so the colour and the pace verdict stay on spending.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PctMode {
+    /// `48%` — nearly half the window is gone.
+    Spent,
+    /// `52%` — nearly half the window is still there.
+    Left,
+}
+
+impl PctMode {
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (PctMode::Spent, true) => "потрачено",
+            (PctMode::Spent, false) => "spent",
+            (PctMode::Left, true) => "осталось",
+            (PctMode::Left, false) => "left",
+        }
+    }
+
+    /// The other of the two. Clicking the row toggles to it, and the detail
+    /// panel, which says both numbers, needs the one that is not on the pill.
+    pub fn other(self) -> PctMode {
+        match self {
+            PctMode::Spent => PctMode::Left,
+            PctMode::Left => PctMode::Spent,
+        }
+    }
+
+    /// The number shown for a reading. Spending can pass 100% on a spend limit,
+    /// so what is left is floored at zero instead of going negative.
+    pub fn shown(self, used_pct: f64) -> f64 {
+        match self {
+            PctMode::Spent => used_pct,
+            PctMode::Left => (100.0 - used_pct).max(0.0),
+        }
+    }
+}
+
+/// The old two-way choice of unit, kept only long enough to read a config
+/// written before every form of the figure went into one list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaceUnit {
+    Ratio,
+    Points,
+}
+
+/// What the pace figure looks like on the pill.
+///
+/// Both numbers say the same comparison — usage against the share of the window
+/// already elapsed — and answer different questions with it: the points say how
+/// far spending has run ahead, the ratio says how much to slow down. Which of
+/// them, in which order, is a matter of taste, so all the forms are one list.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaceView {
+    /// No cell on the pill at all.
+    Off,
+    Ratio,
+    Points,
+    RatioPoints,
+    PointsRatio,
+    /// Both, with a drawn rule between them like the one between the groups.
+    Split,
+    /// Both run together with a written separator and no spaces around it:
+    /// `9%|2.0x`. The separator keeps the grey of the clock cells while the
+    /// numbers carry the pace colour, so the pair reads as one word.
+    Piped,
+}
+
+impl PaceView {
+    pub const ALL: [PaceView; 7] = [
+        PaceView::Ratio,
+        PaceView::Points,
+        PaceView::RatioPoints,
+        PaceView::PointsRatio,
+        PaceView::Split,
+        PaceView::Piped,
+        PaceView::Off,
+    ];
+
+    /// The sample itself, not a description of it: a list of forms should show
+    /// the result rather than promise it.
+    pub fn label(self, ru: bool) -> &'static str {
+        match self {
+            PaceView::Off if ru => "выкл",
+            PaceView::Off => "off",
+            PaceView::Ratio => "▲2.0×",
+            PaceView::Points => "▲9%",
+            PaceView::RatioPoints => "▲2.0× 9%",
+            PaceView::PointsRatio => "▲9% 2.0×",
+            // A plain pipe, not a box-drawing rule: the pill paints a real
+            // one, and Segoe UI has no glyph for the pretty character.
+            PaceView::Split => "▲9% | 2.0×",
+            PaceView::Piped => "▲9%|2.0×",
+        }
+    }
+
+    pub fn has_ratio(self) -> bool {
+        !matches!(self, PaceView::Off | PaceView::Points)
+    }
+
+    pub fn has_points(self) -> bool {
+        !matches!(self, PaceView::Off | PaceView::Ratio)
+    }
+
+    pub fn points_first(self) -> bool {
+        matches!(
+            self,
+            PaceView::Points | PaceView::PointsRatio | PaceView::Split | PaceView::Piped
+        )
+    }
+
+    /// What is written between the two numbers when the figure has to be one
+    /// string. Only the piped form has a character of its own; the split form
+    /// is drawn, not written, so in text it falls back to a space.
+    pub fn joiner(self) -> &'static str {
+        match self {
+            PaceView::Piped => "|",
+            _ => " ",
+        }
+    }
+
+    /// The form that says both numbers, keeping this one's order. The detail
+    /// panel uses it: the pill is where the choice is honoured, the panel is
+    /// where everything is spelled out.
+    pub fn both(self) -> PaceView {
+        if self.points_first() {
+            PaceView::PointsRatio
+        } else {
+            PaceView::RatioPoints
+        }
+    }
+}
+
+/// What the colour of a usage bar means.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BarColour {
+    /// Red when the window is nearly spent — the same rule as the figures.
+    Fill,
+    /// Red when spending has run ahead of the clock, whatever the fill. A full
+    /// bar and a bar about to overflow are not the same thing.
+    Pace,
+}
+
+impl BarColour {
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (BarColour::Fill, true) => "по расходу",
+            (BarColour::Fill, false) => "by fill",
+            (BarColour::Pace, true) => "по темпу",
+            (BarColour::Pace, false) => "by pace",
+        }
+    }
+
+    pub fn other(self) -> BarColour {
+        match self {
+            BarColour::Fill => BarColour::Pace,
+            BarColour::Pace => BarColour::Fill,
+        }
+    }
+}
+
+/// Which session's context the widget reports.
+///
+/// Not a guess the widget can make well on its own: eighty-odd transcripts sit
+/// under `~/.claude/projects` on a working machine, most of them finished
+/// conversations that would each report a perfectly true figure about a session
+/// nobody is in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionPick {
+    /// The transcript written to most recently, wherever it is.
+    Freshest,
+    /// The freshest among those Claude Code lists as running. Deliberately no
+    /// fallback: with nothing running the field goes quiet rather than
+    /// reporting on a conversation nobody is in.
+    Live,
+    /// One chosen by hand; `session_id` names it.
+    Pinned,
+}
+
+impl SessionPick {
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (SessionPick::Freshest, true) => "свежайшая",
+            (SessionPick::Freshest, false) => "freshest",
+            (SessionPick::Live, true) => "запущенная",
+            (SessionPick::Live, false) => "running",
+            (SessionPick::Pinned, true) => "выбранная",
+            (SessionPick::Pinned, false) => "pinned",
+        }
+    }
+
+    pub fn next(self) -> SessionPick {
+        match self {
+            SessionPick::Live => SessionPick::Freshest,
+            SessionPick::Freshest => SessionPick::Pinned,
+            SessionPick::Pinned => SessionPick::Live,
+        }
+    }
+}
+
+/// How the denominator of the context figure is decided.
+///
+/// The numerator is exact; the denominator is the only guess in the whole
+/// feature, and getting it wrong is not a rounding error but five times the
+/// answer. So it is a setting rather than a constant.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CtxLimit {
+    /// By the model's name, from the built-in table.
+    Table,
+    /// The size the status line stated for this model, when one has ever been
+    /// stated; the table underneath.
+    Learned,
+    /// One number, set by hand. The only answer to a model held to a smaller
+    /// window by an environment variable, which leaves no trace on disk.
+    Fixed,
+}
+
+impl CtxLimit {
+    pub fn label(self, ru: bool) -> &'static str {
+        match (self, ru) {
+            (CtxLimit::Table, true) => "по таблице",
+            (CtxLimit::Table, false) => "from the table",
+            (CtxLimit::Learned, true) => "из statusLine",
+            (CtxLimit::Learned, false) => "as stated",
+            (CtxLimit::Fixed, true) => "вручную",
+            (CtxLimit::Fixed, false) => "by hand",
+        }
+    }
+
+    pub fn next(self) -> CtxLimit {
+        match self {
+            CtxLimit::Learned => CtxLimit::Table,
+            CtxLimit::Table => CtxLimit::Fixed,
+            CtxLimit::Fixed => CtxLimit::Learned,
+        }
+    }
+}
+
+/// What the `ctx` group shows.
+///
+/// The percentage depends on a denominator that may be a guess; the token count
+/// does not. So the count is offered on its own, and beside the percentage, as
+/// well as not at all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CtxView {
+    Off,
+    Pct,
+    Tokens,
+    TokensPct,
+    PctTokens,
+}
+
+impl CtxView {
+    pub const ALL: [CtxView; 5] = [
+        CtxView::Pct,
+        CtxView::Tokens,
+        CtxView::PctTokens,
+        CtxView::TokensPct,
+        CtxView::Off,
+    ];
+
+    /// The sample itself, not a description of it — the same rule `PaceView`
+    /// follows: a list of forms should show the result rather than promise it.
+    pub fn label(self, ru: bool) -> &'static str {
+        match self {
+            CtxView::Off if ru => "выкл",
+            CtxView::Off => "off",
+            CtxView::Pct => "14%",
+            CtxView::Tokens => "142k",
+            CtxView::TokensPct => "142k 14%",
+            CtxView::PctTokens => "14% 142k",
+        }
+    }
+
+    pub fn has_pct(self) -> bool {
+        !matches!(self, CtxView::Off | CtxView::Tokens)
+    }
+
+    pub fn has_tokens(self) -> bool {
+        !matches!(self, CtxView::Off | CtxView::Pct)
+    }
+
+    /// Whether the count comes first, so the two cells are built in order.
+    pub fn tokens_first(self) -> bool {
+        matches!(self, CtxView::Tokens | CtxView::TokensPct)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Config {
+    /// Background opacity of the pill, 0.3..1.0.
+    pub opacity: f32,
+    /// Multiplies every size below, and the paddings with them. The one knob
+    /// worth reaching for when the widget moves to another monitor.
+    pub scale: f32,
+    /// Point size of the large percentages.
+    pub font_pct: f32,
+    /// Point size of the countdown, the day count and the daily allowance.
+    pub font_time: f32,
+    /// Height of the pill in logical pixels; the text and track positions
+    /// inside it follow.
+    pub pill_height: f32,
+    /// Thickness of the usage bars.
+    pub track_height: f32,
+    /// Clear space above the figures, between them and the bars, and below the
+    /// bars. The pill grows when they do not fit in `pill_height`.
+    pub pad_top: f32,
+    pub gap_text_bars: f32,
+    pub pad_bottom: f32,
+    /// One multiplier for every horizontal gap in the row of figures: between
+    /// two cells, either side of a group divider, and from the edge of the
+    /// pill. They are three different distances that have to stay in
+    /// proportion, so they are set together or not at all.
+    pub gaps_x: f32,
+    /// How round the corners are. Half the pill's height gives back the
+    /// original lozenge; zero gives square corners.
+    pub corner_radius: f32,
+    /// Which days the weekly counter and the daily allowance are spread over.
+    /// Today is usually half spent already; the reset day is worth only the
+    /// hours before the reset, which with a morning reset is next to nothing.
+    pub count_today: bool,
+    pub count_reset_day: bool,
+    /// Whether the percentages and the bars count what is spent or what
+    /// is left of a window.
+    pub pct_mode: PctMode,
+    /// The form of the pace figure on the pill, `Off` for none.
+    pub pace_view: PaceView,
+    /// Whether a bar is coloured by how full it is or by how fast it filled.
+    pub bar_colour: BarColour,
+    /// The observed rate and what it means for the reset, in the detail panel.
+    pub pace_rate: bool,
+    /// When the detail panel under the pill appears.
+    pub detail_mode: DetailMode,
+    /// Show one line per source in the detail panel, not just the merged one.
+    pub detail_all_sources: bool,
+    /// `en` or `ru` — affects weekday names and tooltip wording only.
+    pub lang: String,
+    /// Let clicks fall through to whatever is underneath.
+    pub click_through: bool,
+    /// Which sources may contribute. All three at once is the normal setting;
+    /// turning one off is how "where is this number from" gets answered.
+    pub bridge_enabled: bool,
+    pub api_enabled: bool,
+    pub desktop_enabled: bool,
+    pub session_enabled: bool,
+    /// Which session the context figure is about, and which one when it is
+    /// pinned by hand.
+    pub session_pick: SessionPick,
+    pub session_id: String,
+    /// How often the whole transcript tree is enumerated again. Between scans
+    /// the widget stats one file, so this is nearly free either way; it is a
+    /// setting because "the list is a minute out of date" is a real complaint
+    /// on a machine where sessions are started often.
+    pub session_scan_secs: i64,
+    /// What the `ctx` group shows, and what its percentage is divided by.
+    pub ctx_view: CtxView,
+    pub ctx_limit: CtxLimit,
+    pub ctx_limit_tokens: u64,
+    /// Whether the `ctx` percentage and token count follow one direction or
+    /// two. `pct_mode` is tuned for quotas that drain; a context window fills
+    /// instead, so `ctx` keeps its own direction rather than borrowing that
+    /// one, and can split it in two if the two figures want to disagree.
+    pub ctx_dir_linked: bool,
+    pub ctx_pct_dir: PctMode,
+    pub ctx_tokens_dir: PctMode,
+    /// Synthetic figures, for working on the layout.
+    pub demo: bool,
+    /// How long a reading from each source stays current. The desktop history
+    /// is allowed twice as long: it is written every quarter of an hour by
+    /// design, and calling that stale is blaming a source for how it works.
+    pub bridge_stale_secs: i64,
+    pub api_stale_secs: i64,
+    pub desktop_stale_secs: i64,
+    pub session_stale_secs: i64,
+    /// Seconds between usage-endpoint polls.
+    pub api_interval_secs: u64,
+    /// Requests per rolling minute the widget allows itself. Past this the
+    /// poller waits instead of asking; see `api::spawn_poller`.
+    pub api_budget_per_min: u32,
+    /// Read from a config written before the per-source switches; migrated on
+    /// load and never written back.
+    #[serde(rename = "source", skip_serializing_if = "Option::is_none")]
+    pub legacy_source: Option<SourceMode>,
+    /// The same, for the two keys that preceded `pace_view`.
+    #[serde(rename = "pace_cell", skip_serializing_if = "Option::is_none")]
+    pub legacy_pace_cell: Option<bool>,
+    #[serde(rename = "pace_unit", skip_serializing_if = "Option::is_none")]
+    pub legacy_pace_unit: Option<PaceUnit>,
+    /// The three window rectangles, read from a config written before they
+    /// moved to `window.json` (see [`crate::geometry`]). Migrated on load and
+    /// never written back — they are why the file could not be hand-edited,
+    /// since a drag rewrote it and took any comment with it.
+    #[serde(rename = "position", skip_serializing_if = "Option::is_none")]
+    pub legacy_position: Option<[f32; 2]>,
+    #[serde(rename = "settings_pos", skip_serializing_if = "Option::is_none")]
+    pub legacy_settings_pos: Option<[f32; 2]>,
+    #[serde(rename = "settings_size", skip_serializing_if = "Option::is_none")]
+    pub legacy_settings_size: Option<[f32; 2]>,
+    /// Percentages at which a figure turns amber, then red.
+    pub warn_pct: f64,
+    pub danger_pct: f64,
+    /// How far usage may drift from the even-rate target before it counts as
+    /// running ahead or behind, in percentage points.
+    pub pace_tolerance: f64,
+    /// After this long a figure is not shown at all. A five-hour window read an
+    /// hour ago says nothing useful about the present, and a confident wrong
+    /// number is worse than `--%`.
+    pub drop_after_secs: i64,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Config {
+            opacity: 0.82,
+            scale: 1.0,
+            font_pct: 14.0,
+            font_time: 14.0,
+            pill_height: 34.0,
+            track_height: 3.0,
+            pad_top: 4.5,
+            gap_text_bars: 3.0,
+            pad_bottom: 4.5,
+            gaps_x: 1.0,
+            corner_radius: 10.0,
+            count_today: false,
+            count_reset_day: true,
+            pct_mode: PctMode::Spent,
+            pace_view: PaceView::Ratio,
+            bar_colour: BarColour::Fill,
+            pace_rate: true,
+            detail_mode: DetailMode::WithSettings,
+            detail_all_sources: false,
+            lang: "ru".to_string(),
+            click_through: false,
+            bridge_enabled: true,
+            api_enabled: true,
+            desktop_enabled: true,
+            session_enabled: true,
+            session_pick: SessionPick::Live,
+            session_id: String::new(),
+            session_scan_secs: 30,
+            ctx_view: CtxView::Pct,
+            ctx_limit: CtxLimit::Learned,
+            ctx_limit_tokens: 200_000,
+            ctx_dir_linked: true,
+            ctx_pct_dir: PctMode::Spent,
+            ctx_tokens_dir: PctMode::Spent,
+            demo: false,
+            bridge_stale_secs: 900,
+            api_stale_secs: 900,
+            desktop_stale_secs: 1800,
+            session_stale_secs: 900,
+            api_interval_secs: 180,
+            api_budget_per_min: 4,
+            legacy_source: None,
+            legacy_pace_cell: None,
+            legacy_pace_unit: None,
+            legacy_position: None,
+            legacy_settings_pos: None,
+            legacy_settings_size: None,
+            warn_pct: 60.0,
+            danger_pct: 85.0,
+            pace_tolerance: 7.0,
+            drop_after_secs: 3600,
+        }
+    }
+}
+
+impl Config {
+    pub fn load() -> Config {
+        let text = std::fs::read_to_string(config_path()).unwrap_or_default();
+        let (mut cfg, sectioned) = Config::parse(&text);
+        // Both run, and neither short-circuits the other: `|` rather than
+        // `||`, because a config needing one migration usually needs both and
+        // skipping the second would leave the keys behind for another release.
+        let migrated = cfg.migrate() | cfg.migrate_geometry();
+        // A flat file is laid out into sections once, and only if there is a
+        // file: a first run should not write settings nobody has chosen yet.
+        let flat_on_disk = !sectioned && !text.trim().is_empty();
+        if migrated || flat_on_disk {
+            cfg.save();
+        }
+        cfg
+    }
+
+    /// Translate a config written before the sources became independent
+    /// switches. Returns whether anything changed, so the file is rewritten
+    /// once and the old key disappears rather than lingering as a lie.
+    /// Move the window rectangles out of the config and into `window.json`,
+    /// once. Returns whether the config needs rewriting without them.
+    ///
+    /// Separate from `migrate` because it has a side effect on another file
+    /// and `migrate` is a pure rearrangement of this struct — and because it
+    /// must not overwrite a `window.json` that already exists: a config still
+    /// carrying the old keys is not evidence that it is the newer of the two.
+    fn migrate_geometry(&mut self) -> bool {
+        let old = (
+            self.legacy_position.take(),
+            self.legacy_settings_pos.take(),
+            self.legacy_settings_size.take(),
+        );
+        if old.0.is_none() && old.1.is_none() && old.2.is_none() {
+            return false;
+        }
+        let existing = crate::geometry::load();
+        if existing == crate::geometry::Geometry::default() {
+            crate::geometry::save(&crate::geometry::Geometry {
+                position: old.0,
+                settings_pos: old.1,
+                settings_size: old.2,
+            });
+        }
+        // Either way the keys leave the config: they are the reason it could
+        // not be hand-edited, and a second copy of a window position is a
+        // second answer to a question with one.
+        true
+    }
+
+    fn migrate(&mut self) -> bool {
+        let mut changed = false;
+
+        // `pace_cell` + `pace_unit` became one list of forms. A config that
+        // chose points must come back showing points, not the default.
+        let cell = self.legacy_pace_cell.take();
+        let unit = self.legacy_pace_unit.take();
+        if cell.is_some() || unit.is_some() {
+            self.pace_view = match (cell.unwrap_or(true), unit.unwrap_or(PaceUnit::Ratio)) {
+                (false, _) => PaceView::Off,
+                (true, PaceUnit::Points) => PaceView::Points,
+                (true, PaceUnit::Ratio) => PaceView::Ratio,
+            };
+            changed = true;
+        }
+
+        let Some(mode) = self.legacy_source.take() else {
+            return changed;
+        };
+        let (bridge, api, desktop, demo) = match mode {
+            SourceMode::Auto => (true, true, true, false),
+            SourceMode::Bridge => (true, false, false, false),
+            SourceMode::Api => (false, true, false, false),
+            SourceMode::Desktop => (false, false, true, false),
+            // Demo was a mode of its own; leave the sources as they were.
+            SourceMode::Demo => (
+                self.bridge_enabled,
+                self.api_enabled,
+                self.desktop_enabled,
+                true,
+            ),
+        };
+        self.bridge_enabled = bridge;
+        self.api_enabled = api;
+        self.desktop_enabled = desktop;
+        self.demo = demo;
+        true
+    }
+
+    pub fn enabled(&self, kind: SourceKind) -> bool {
+        match kind {
+            SourceKind::Bridge => self.bridge_enabled,
+            SourceKind::Api => self.api_enabled,
+            SourceKind::Desktop => self.desktop_enabled,
+            SourceKind::Session => self.session_enabled,
+        }
+    }
+
+    pub fn set_enabled(&mut self, kind: SourceKind, on: bool) {
+        match kind {
+            SourceKind::Bridge => self.bridge_enabled = on,
+            SourceKind::Api => self.api_enabled = on,
+            SourceKind::Desktop => self.desktop_enabled = on,
+            SourceKind::Session => self.session_enabled = on,
+        }
+    }
+
+    pub fn stale_secs(&self, kind: SourceKind) -> i64 {
+        let raw = match kind {
+            SourceKind::Bridge => self.bridge_stale_secs,
+            SourceKind::Api => self.api_stale_secs,
+            SourceKind::Desktop => self.desktop_stale_secs,
+            SourceKind::Session => self.session_stale_secs,
+        };
+        raw.clamp(30, 24 * 3600)
+    }
+
+    pub fn set_stale_secs(&mut self, kind: SourceKind, secs: i64) {
+        let secs = secs.clamp(30, 24 * 3600);
+        match kind {
+            SourceKind::Bridge => self.bridge_stale_secs = secs,
+            SourceKind::Api => self.api_stale_secs = secs,
+            SourceKind::Desktop => self.desktop_stale_secs = secs,
+            SourceKind::Session => self.session_stale_secs = secs,
+        }
+    }
+
+    pub fn session_scan_secs(&self) -> u64 {
+        self.session_scan_secs.clamp(5, 600) as u64
+    }
+
+    /// Clamped to the range Claude Code clamps its own fetched size to, so a
+    /// hand-edited file cannot make the percentage meaningless.
+    pub fn ctx_limit_tokens(&self) -> u64 {
+        self.ctx_limit_tokens.clamp(8_192, 1_000_000)
+    }
+
+    /// The direction the `ctx` token count reads in. Mirrors `ctx_pct_dir`
+    /// while the two are linked; the field only takes over once they are
+    /// split.
+    pub fn ctx_tokens_dir(&self) -> PctMode {
+        if self.ctx_dir_linked {
+            self.ctx_pct_dir
+        } else {
+            self.ctx_tokens_dir
+        }
+    }
+
+    pub fn api_interval(&self) -> u64 {
+        self.api_interval_secs.clamp(30, 3600)
+    }
+
+    pub fn api_budget(&self) -> u32 {
+        self.api_budget_per_min.clamp(1, 30)
+    }
+
+    /// Write the config, keeping whatever the person who owns the file put in
+    /// it — comments, key order, blank lines.
+    ///
+    /// Written whole and swapped in, like every other file this program owns:
+    /// a `--bridge` process starting mid-write would otherwise read half a
+    /// document and fall back to defaults.
+    pub fn save(&self) {
+        let path = config_path();
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let existing = std::fs::read_to_string(&path).unwrap_or_default();
+        let text = self.render(&existing);
+
+        let Some(dir) = path.parent() else { return };
+        let tmp = dir.join(format!("config.{}.tmp", std::process::id()));
+        let written = std::fs::File::create(&tmp).and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(text.as_bytes())?;
+            f.sync_all()
+        });
+        if written.is_ok() {
+            let _ = std::fs::rename(&tmp, &path);
+        } else {
+            let _ = std::fs::remove_file(&tmp);
+        }
+    }
+
+    /// Lay this config over the text of the existing file.
+    ///
+    /// Not `toml::to_string`: that produces a correct file and throws away
+    /// everything a person wrote into the old one. The whole point of moving
+    /// the window rectangles to `window.json` was to make the config worth
+    /// hand-editing, and a hand-edited file that loses its comments on the
+    /// next click in the menu is not.
+    ///
+    /// Each key goes into the table the schema names for it, so the file reads
+    /// in groups rather than in the order the struct happens to declare its
+    /// fields. The key itself never changes — moving it into a table is a
+    /// change of position, not of name, so no value can be mistranslated.
+    fn render(&self, existing: &str) -> String {
+        use toml_edit::{DocumentMut, Item, Table, Value};
+
+        /// Replace a value but keep its decoration: the comment before it and
+        /// the one trailing it on the same line belong to whoever wrote them.
+        /// An `f32` widened to `f64` prints as `1.0999999046325684`. The
+        /// shortest form that still round-trips the `f32` is `1.0999999`, and
+        /// this file is meant to be read.
+        fn tidy(key: &str, value: &Value) -> Value {
+            let is_f32 = crate::schema::get(key)
+                .is_some_and(|s| matches!(s.kind, crate::schema::Kind::Float { .. }));
+            match (is_f32, value.as_float()) {
+                (true, Some(f)) => match (f as f32).to_string().parse::<f64>() {
+                    Ok(short) => Value::from(short),
+                    Err(_) => value.clone(),
+                },
+                _ => value.clone(),
+            }
+        }
+
+        fn put(item: &mut Item, new: Value, carried: Option<&toml_edit::Decor>) {
+            let decor = item
+                .as_value()
+                .map(|v| v.decor().clone())
+                // Nothing there yet: this key is arriving, and if it arrived
+                // from the top level of the same file it brings its comment.
+                .or_else(|| carried.cloned());
+            let mut new = new;
+            if let Some(d) = decor {
+                *new.decor_mut() = d;
+            }
+            *item = Item::Value(new);
+        }
+
+        let mut doc: DocumentMut = existing.parse().unwrap_or_default();
+        let Ok(flat) = toml_edit::ser::to_document(self) else {
+            return existing.to_string();
+        };
+
+        // What the keys about to move say for themselves. A comment belongs
+        // to the line a person wrote it on, and laying a flat file out into
+        // sections moves every one of those lines; without this the one-time
+        // migration is also the one moment most likely to throw a comment away.
+        // Two decorations per key, and they hold different halves of what a
+        // person wrote: the comment trailing a value belongs to the value, the
+        // comment standing above the line belongs to the key.
+        let carried: std::collections::BTreeMap<String, toml_edit::Decor> = doc
+            .iter()
+            .filter_map(|(key, item)| {
+                let value = item.as_value()?;
+                crate::schema::section_of(key)?;
+                Some((key.to_string(), value.decor().clone()))
+            })
+            .collect();
+        let carried_keys: std::collections::BTreeMap<String, toml_edit::Decor> = doc
+            .iter()
+            .filter(|(key, item)| {
+                item.is_value() && crate::schema::section_of(key).is_some()
+            })
+            .filter_map(|(key, _)| {
+                let decor = doc.key(key)?.leaf_decor().clone();
+                Some((key.to_string(), decor))
+            })
+            .collect();
+
+        // Top-level keys first and tables after, which is the order TOML
+        // requires. Nothing lands at the top level today — every live key has
+        // a section — but a field added without a schema entry would, and it
+        // should produce a readable file rather than an unparseable one.
+        for (key, item) in flat.iter() {
+            let Some(value) = item.as_value() else { continue };
+            if crate::schema::section_of(key).is_none() {
+                put(&mut doc[key], tidy(key, value), None);
+            }
+        }
+        for section in crate::schema::Section::ALL {
+            let name = section.key();
+            let mut any = false;
+            for (key, item) in flat.iter() {
+                let Some(value) = item.as_value() else { continue };
+                if crate::schema::section_of(key) != Some(section) {
+                    continue;
+                }
+                if !any {
+                    // `doc[name]` panics when the key is absent, so the table is
+                    // asked for rather than indexed into.
+                    if !doc.get(name).is_some_and(|i| i.is_table()) {
+                        doc.insert(name, Item::Table(Table::new()));
+                    }
+                    any = true;
+                }
+                let arriving = doc[name].get(key).is_none();
+                put(&mut doc[name][key], tidy(key, value), carried.get(key));
+                if arriving
+                    && let Some(decor) = carried_keys.get(key)
+                    && let Some(table) = doc.get_mut(name).and_then(|i| i.as_table_mut())
+                    && let Some(mut k) = table.key_mut(key)
+                {
+                    *k.leaf_decor_mut() = decor.clone();
+                }
+            }
+        }
+
+        // Anything we no longer write leaves the file: a key kept only to be
+        // read once, like the window rectangles or the pre-switch `source`,
+        // would otherwise sit there forever contradicting the file it is in.
+        let live: std::collections::BTreeSet<&str> =
+            flat.iter().map(|(k, _)| k).collect();
+        let sections: std::collections::BTreeSet<&str> =
+            crate::schema::Section::ALL.iter().map(|s| s.key()).collect();
+        doc.retain(|key, item| {
+            // Our own tables, and anything else that is not a bare value —
+            // an unknown table belongs to whoever put it there.
+            if sections.contains(key) || !item.is_value() {
+                return true;
+            }
+            // A value at the top level survives only if it is one we still
+            // write *and* the schema does not give it a section. Without the
+            // second half, migrating a flat file leaves every key in it twice:
+            // once where it used to be and once where it now belongs, with the
+            // stale copy the one a person reads first.
+            live.contains(key) && crate::schema::section_of(key).is_none()
+        });
+        for section in crate::schema::Section::ALL {
+            if let Some(table) = doc.get_mut(section.key()).and_then(|i| i.as_table_mut()) {
+                table.retain(|key, _| live.contains(key));
+            }
+        }
+        doc.to_string()
+    }
+
+    /// Read a config in either shape.
+    ///
+    /// Returns whether the file was already in sections, which is how `load`
+    /// knows to rewrite a flat one. A section is hoisted rather than mapped:
+    /// the keys inside it are spelled exactly as `Config` spells them, so
+    /// flattening the document and handing it to serde needs no table of
+    /// names that could fall out of date.
+    fn parse(text: &str) -> (Config, bool) {
+        let Ok(value) = toml::from_str::<toml::Value>(text) else {
+            return (Config::default(), false);
+        };
+        let Some(table) = value.as_table() else {
+            return (Config::default(), false);
+        };
+        let mut flat = toml::map::Map::new();
+        let mut sectioned = false;
+        for (key, item) in table {
+            let is_section = crate::schema::Section::ALL
+                .iter()
+                .any(|s| s.key() == key)
+                && item.is_table();
+            match (is_section, item.as_table()) {
+                (true, Some(inner)) => {
+                    sectioned = true;
+                    for (k, v) in inner {
+                        flat.insert(k.clone(), v.clone());
+                    }
+                }
+                _ => {
+                    flat.insert(key.clone(), item.clone());
+                }
+            }
+        }
+        let cfg = toml::Value::Table(flat)
+            .try_into::<Config>()
+            .unwrap_or_default();
+        (cfg, sectioned)
+    }
+
+    pub fn day_count(&self) -> crate::pace::DayCount {
+        crate::pace::DayCount {
+            today: self.count_today,
+            reset_day: self.count_reset_day,
+        }
+    }
+
+    pub fn is_ru(&self) -> bool {
+        self.lang.eq_ignore_ascii_case("ru")
+    }
+
+    /// Sizes are clamped where they are read rather than where they are
+    /// written, so a hand-edited config.toml cannot produce a pill that is
+    /// invisible or larger than the screen.
+    pub fn scale(&self) -> f32 {
+        clamp(self.scale, 0.6, 3.0, 1.0)
+    }
+
+    pub fn font_pct(&self) -> f32 {
+        clamp(self.font_pct, 6.0, 48.0, 14.0)
+    }
+
+    pub fn font_time(&self) -> f32 {
+        clamp(self.font_time, 6.0, 48.0, 14.0)
+    }
+
+    pub fn pill_height(&self) -> f32 {
+        clamp(self.pill_height, 18.0, 120.0, 34.0)
+    }
+
+    pub fn track_height(&self) -> f32 {
+        clamp(self.track_height, 0.0, 16.0, 3.0)
+    }
+
+    pub fn pad_top(&self) -> f32 {
+        clamp(self.pad_top, 0.0, 40.0, 4.5)
+    }
+
+    pub fn gap_text_bars(&self) -> f32 {
+        clamp(self.gap_text_bars, 0.0, 40.0, 3.0)
+    }
+
+    pub fn pad_bottom(&self) -> f32 {
+        clamp(self.pad_bottom, 0.0, 40.0, 4.5)
+    }
+
+    pub fn gaps_x(&self) -> f32 {
+        clamp(self.gaps_x, 0.2, 3.0, 1.0)
+    }
+
+    pub fn corner_radius(&self) -> f32 {
+        clamp(self.corner_radius, 0.0, 60.0, 10.0)
+    }
+
+    /// Back to the shipped look, for when a size hunt has gone astray.
+    pub fn reset_sizes(&mut self) {
+        let d = Config::default();
+        self.scale = d.scale;
+        self.font_pct = d.font_pct;
+        self.font_time = d.font_time;
+        self.pill_height = d.pill_height;
+        self.track_height = d.track_height;
+        self.pad_top = d.pad_top;
+        self.gap_text_bars = d.gap_text_bars;
+        self.pad_bottom = d.pad_bottom;
+        self.gaps_x = d.gaps_x;
+        self.corner_radius = d.corner_radius;
+    }
+}
+
+/// A non-finite value in the file means the number is not usable at all, so it
+/// falls back to the default instead of the nearest bound.
+fn clamp(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
+    if v.is_finite() { v.clamp(lo, hi) } else { fallback }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A config with every described setting moved off its default, built from
+    /// the schema so that a field added later is covered without anyone
+    /// remembering to come back here.
+    fn wound_up() -> Config {
+        use crate::schema::{self, Kind};
+        let value = toml::Value::try_from(Config::default()).unwrap();
+        let mut table = value.as_table().unwrap().clone();
+        for s in schema::ALL {
+            let new = match s.kind {
+                Kind::Bool => {
+                    toml::Value::Boolean(!table[s.key].as_bool().expect("a bool"))
+                }
+                // The far end of the stated range: in bounds by construction,
+                // and never the default.
+                Kind::Int { max, .. } => toml::Value::Integer(max),
+                Kind::Float { max, .. } => toml::Value::Float(max as f64),
+                // The last option, for the same reason.
+                Kind::Choice(opts) => {
+                    toml::Value::String(opts[opts.len() - 1].to_string())
+                }
+                Kind::Text => toml::Value::String("a-pinned-conversation".into()),
+            };
+            table.insert(s.key.to_string(), new);
+        }
+        toml::Value::Table(table).try_into().expect("a config")
+    }
+
+    #[test]
+    fn nothing_is_lost_on_the_way_into_sections_and_back() {
+        // The hole this closes is the expensive one: a setting that quietly
+        // stops persisting. The file is the only place it would show, and it
+        // would show as "the widget forgot what I chose", weeks later.
+        let cfg = wound_up();
+        assert_ne!(cfg, Config::default(), "the fixture has to differ to prove anything");
+
+        let text = cfg.render("");
+        let (back, sectioned) = Config::parse(&text);
+        assert!(sectioned, "a file written now is in sections:\n{text}");
+        assert_eq!(cfg, back, "written as:\n{text}");
+    }
+
+    #[test]
+    fn every_key_is_written_under_the_table_the_schema_names() {
+        let text = wound_up().render("");
+        let doc: toml::Value = toml::from_str(&text).expect("valid TOML:\n{text}");
+        let table = doc.as_table().unwrap();
+
+        for s in crate::schema::ALL {
+            let section = table
+                .get(s.section.key())
+                .unwrap_or_else(|| panic!("no [{}] table in:\n{text}", s.section.key()))
+                .as_table()
+                .unwrap();
+            assert!(
+                section.contains_key(s.key),
+                "{} is not under [{}]:\n{text}",
+                s.key,
+                s.section.key()
+            );
+        }
+        // And nothing loose at the top, which is what makes the file readable.
+        assert!(
+            table.values().all(|v| v.is_table()),
+            "a key outside every section:\n{text}"
+        );
+    }
+
+    #[test]
+    fn migrating_a_flat_file_moves_its_keys_rather_than_copying_them() {
+        // The case the two tests above miss: they render over an empty
+        // document, where there is nothing to leave behind. Over a real flat
+        // file the first attempt wrote every key twice — once where it used to
+        // be and once where it now belongs — and the stale copy is the one a
+        // person reads first.
+        let cfg = wound_up();
+        let flat = toml::to_string_pretty(&cfg).unwrap();
+        let text = cfg.render(&flat);
+
+        let doc: toml::Value = toml::from_str(&text).expect("valid TOML");
+        let table = doc.as_table().unwrap();
+        let loose: Vec<&String> = table
+            .iter()
+            .filter(|(_, v)| !v.is_table())
+            .map(|(k, _)| k)
+            .collect();
+        assert!(loose.is_empty(), "left at the top level: {loose:?}\n{text}");
+        assert_eq!(Config::parse(&text).0, cfg);
+    }
+
+    #[test]
+    fn a_comment_travels_with_the_key_it_was_written_against() {
+        // Both halves, because they live in different places: the comment
+        // above a line belongs to the key, the one trailing the value belongs
+        // to the value. Carrying only the second is how the first attempt
+        // moved `# deliberate` into the section and left `# why` behind.
+        let existing = "\
+# why the endpoint is polled so rarely
+api_interval_secs = 600  # deliberate
+pct_mode = \"left\"
+";
+        let text = Config { api_interval_secs: 600, ..Config::default() }.render(existing);
+
+        let sources = text.split("[sources]").nth(1).unwrap_or("");
+        let upto_next = sources.split("\n[").next().unwrap_or("");
+        assert!(
+            upto_next.contains("# why the endpoint is polled so rarely"),
+            "the leading comment did not follow its key:\n{text}"
+        );
+        assert!(
+            upto_next.contains("# deliberate"),
+            "the trailing comment did not follow its key:\n{text}"
+        );
+    }
+
+    #[test]
+    fn a_size_keeps_the_shape_a_person_wrote_it_in() {
+        // `scale` is an f32; serialised through an f64 it comes out as
+        // 1.0999999046325684, which is the same number and an unreadable file.
+        let cfg = Config { scale: 1.1, ..Config::default() };
+        let text = cfg.render("");
+        assert!(text.contains("scale = 1.1"), "{text}");
+        assert_eq!(Config::parse(&text).0.scale, 1.1);
+    }
+
+    #[test]
+    fn a_flat_file_reads_the_same_as_a_sectioned_one() {
+        // Upgrading must not change a single setting: whatever the old file
+        // said, the widget behaves the same the moment after it is rewritten.
+        let cfg = wound_up();
+        let flat = toml::to_string_pretty(&cfg).unwrap();
+        let sectioned = cfg.render("");
+
+        let (from_flat, was_sectioned) = Config::parse(&flat);
+        assert!(!was_sectioned, "a flat file has to be recognised as flat");
+        let (from_sections, _) = Config::parse(&sectioned);
+        assert_eq!(from_flat, from_sections);
+        assert_eq!(from_flat, cfg);
+    }
+
+    #[test]
+    fn what_a_person_wrote_into_the_file_survives_being_saved_over() {
+        // The reason for `toml_edit`. A comment erased by the next click in
+        // the settings menu is a file nobody will write a comment in twice.
+        let existing = "\
+# why the endpoint is polled so rarely here
+[sources]
+api_interval_secs = 600  # deliberate
+";
+        let cfg = Config { api_interval_secs: 900, ..Config::default() };
+        let text = cfg.render(existing);
+
+        assert!(text.contains("# why the endpoint is polled so rarely here"), "{text}");
+        assert!(text.contains("# deliberate"), "{text}");
+        assert!(text.contains("api_interval_secs = 900"), "{text}");
+        // And the new value is what comes back, not the one in the comment.
+        assert_eq!(Config::parse(&text).0.api_interval_secs, 900);
+    }
+
+    #[test]
+    fn a_key_that_is_no_longer_written_leaves_the_file() {
+        // Otherwise a migrated key sits in the file forever, saying something
+        // the widget stopped believing — two answers to one question, and the
+        // stale one is the one a person reads.
+        let existing = "\
+position = [60.0, 60.0]
+source = \"api\"
+
+[behaviour]
+lang = \"ru\"
+";
+        let text = Config::default().render(existing);
+        assert!(!text.contains("position"), "{text}");
+        assert!(!text.contains("source ="), "{text}");
+        assert!(text.contains("lang"), "{text}");
+    }
+
+    #[test]
+    fn the_window_rectangles_are_read_from_an_old_config_and_not_written_back() {
+        // They moved to `window.json` because a drag rewrote the config and
+        // took any comment in it along. Reading them still has to work — the
+        // alternative is a widget that forgets where it was on upgrade — but
+        // once read they must leave the file for good, or there would be two
+        // answers to one question.
+        let old = r#"
+            position = [832.8, 820.8]
+            settings_pos = [1044.8, 82.4]
+            settings_size = [433.6, 640.8]
+            opacity = 0.9
+        "#;
+        let mut cfg: Config = toml::from_str(old).expect("an old config still parses");
+        assert_eq!(cfg.legacy_position, Some([832.8, 820.8]));
+        assert_eq!(cfg.legacy_settings_pos, Some([1044.8, 82.4]));
+        assert_eq!(cfg.legacy_settings_size, Some([433.6, 640.8]));
+        // Everything else is read as before.
+        assert_eq!(cfg.opacity, 0.9);
+
+        // What `migrate_geometry` does with them, minus the file it writes.
+        cfg.legacy_position.take();
+        cfg.legacy_settings_pos.take();
+        cfg.legacy_settings_size.take();
+
+        let text = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!text.contains("position"), "still in the file:\n{text}");
+        assert!(!text.contains("settings_"), "still in the file:\n{text}");
+    }
+
+    #[test]
+    fn an_old_single_mode_becomes_switches() {
+        let mut cfg: Config = toml::from_str(r#"source = "api""#).unwrap();
+        assert!(cfg.migrate());
+        assert!(cfg.api_enabled && !cfg.bridge_enabled && !cfg.desktop_enabled);
+        assert!(cfg.legacy_source.is_none());
+        // And the key is gone from what gets written back.
+        assert!(!toml::to_string_pretty(&cfg).unwrap().contains("source ="));
+    }
+
+    #[test]
+    fn auto_becomes_all_three_and_migration_happens_once() {
+        let mut cfg: Config = toml::from_str(r#"source = "auto""#).unwrap();
+        assert!(cfg.migrate());
+        assert!(cfg.bridge_enabled && cfg.api_enabled && cfg.desktop_enabled);
+        assert!(!cfg.migrate(), "nothing left to migrate the second time");
+    }
+
+    #[test]
+    fn a_config_without_the_old_key_is_left_alone() {
+        let mut cfg: Config = toml::from_str("api_enabled = false").unwrap();
+        assert!(!cfg.migrate());
+        assert!(!cfg.api_enabled);
+        assert!(cfg.bridge_enabled, "untouched keys keep their defaults");
+    }
+
+    #[test]
+    fn staleness_is_per_source() {
+        let cfg = Config::default();
+        assert_eq!(cfg.stale_secs(SourceKind::Api), 900);
+        assert!(
+            cfg.stale_secs(SourceKind::Desktop) > cfg.stale_secs(SourceKind::Api),
+            "the desktop history is written every ~15 min and must not be \
+             called stale for it"
+        );
+    }
+
+    #[test]
+    fn spending_is_the_reading_itself() {
+        assert_eq!(PctMode::Spent.shown(48.0), 48.0);
+        assert_eq!(PctMode::Spent.shown(140.0), 140.0);
+    }
+
+    #[test]
+    fn what_is_left_never_goes_below_zero() {
+        assert_eq!(PctMode::Left.shown(40.0), 60.0);
+        assert_eq!(PctMode::Left.shown(100.0), 0.0);
+        // A spend limit can read past 100%; there is still nothing left.
+        assert_eq!(PctMode::Left.shown(140.0), 0.0);
+    }
+
+    #[test]
+    fn the_mode_toggles_back_to_where_it_started() {
+        assert_eq!(PctMode::Spent.other(), PctMode::Left);
+        assert_eq!(PctMode::Spent.other().other(), PctMode::Spent);
+    }
+
+    #[test]
+    fn the_old_pace_keys_become_a_form() {
+        let mut cfg: Config =
+            toml::from_str("pace_cell = true\npace_unit = \"points\"").unwrap();
+        assert!(cfg.migrate());
+        assert_eq!(cfg.pace_view, PaceView::Points);
+        let written = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!written.contains("pace_cell"), "{written}");
+        assert!(!written.contains("pace_unit"), "{written}");
+        assert!(written.contains("pace_view = \"points\""), "{written}");
+    }
+
+    #[test]
+    fn a_pace_cell_that_was_off_stays_off() {
+        let mut cfg: Config = toml::from_str("pace_cell = false").unwrap();
+        assert!(cfg.migrate());
+        assert_eq!(cfg.pace_view, PaceView::Off);
+        assert!(!cfg.migrate(), "nothing left to migrate the second time");
+    }
+
+    #[test]
+    fn a_form_knows_which_parts_it_shows() {
+        assert!(PaceView::Split.has_points() && PaceView::Split.has_ratio());
+        assert!(PaceView::Split.points_first());
+        assert!(PaceView::Piped.has_points() && PaceView::Piped.has_ratio());
+        assert!(PaceView::Piped.points_first());
+        // The piped form is the only one that writes its own separator.
+        assert_eq!(PaceView::Piped.joiner(), "|");
+        assert_eq!(PaceView::Split.joiner(), " ");
+        assert_eq!(PaceView::Ratio.joiner(), " ");
+        assert!(!PaceView::Off.has_points() && !PaceView::Off.has_ratio());
+        assert!(PaceView::Ratio.has_ratio() && !PaceView::Ratio.has_points());
+        // The panel says both, in whatever order the pill was asked for.
+        assert_eq!(PaceView::Points.both(), PaceView::PointsRatio);
+        assert_eq!(PaceView::Off.both(), PaceView::RatioPoints);
+    }
+
+    #[test]
+    fn the_pace_settings_have_two_states_each() {
+        assert_eq!(BarColour::Fill.other(), BarColour::Pace);
+        assert_eq!(BarColour::Fill.other().other(), BarColour::Fill);
+    }
+
+    #[test]
+    fn a_config_written_before_the_setting_shows_spending() {
+        let cfg: Config = toml::from_str("").unwrap();
+        assert_eq!(cfg.pct_mode, PctMode::Spent);
+        // And keeps colouring its bars the way it always did.
+        assert_eq!(cfg.bar_colour, BarColour::Fill);
+    }
+
+    #[test]
+    fn the_new_sizes_are_clamped_like_the_rest() {
+        let mut cfg = Config::default();
+        assert_eq!(cfg.gaps_x(), 1.0);
+        assert_eq!(cfg.corner_radius(), 10.0);
+
+        // A hand-edited file cannot collapse the row of figures into one blur
+        // or round the pill into something else.
+        cfg.gaps_x = 0.0;
+        assert_eq!(cfg.gaps_x(), 0.2);
+        cfg.gaps_x = 99.0;
+        assert_eq!(cfg.gaps_x(), 3.0);
+        cfg.corner_radius = -5.0;
+        assert_eq!(cfg.corner_radius(), 0.0);
+
+        // Nonsense falls back to the shipped value rather than to a bound.
+        cfg.gaps_x = f32::NAN;
+        assert_eq!(cfg.gaps_x(), 1.0);
+        cfg.corner_radius = f32::INFINITY;
+        assert_eq!(cfg.corner_radius(), 10.0);
+    }
+
+    #[test]
+    fn reset_sizes_puts_the_new_ones_back_too() {
+        let mut cfg = Config::default();
+        cfg.gaps_x = 2.5;
+        cfg.corner_radius = 0.0;
+        cfg.reset_sizes();
+        assert_eq!(cfg.gaps_x, 1.0);
+        assert_eq!(cfg.corner_radius, 10.0);
+    }
+
+    #[test]
+    fn a_config_written_before_the_transcript_source_gets_it_switched_on() {
+        // No migration is written for these keys and none is needed: the struct
+        // carries `#[serde(default)]`, so an old file reads back with every new
+        // key at its default. Said out loud here because the migration
+        // machinery next door invites the opposite assumption.
+        let cfg: Config = toml::from_str(r#"api_enabled = true"#).unwrap();
+        assert!(cfg.session_enabled);
+        assert_eq!(cfg.session_pick, SessionPick::Live);
+        assert_eq!(cfg.ctx_view, CtxView::Pct);
+        assert_eq!(cfg.ctx_limit, CtxLimit::Learned);
+        assert!(cfg.ctx_dir_linked);
+        assert_eq!(cfg.ctx_pct_dir, PctMode::Spent);
+    }
+
+    #[test]
+    fn ctx_direction_defaults_to_spent_regardless_of_pct_mode() {
+        // `pct_mode` is tuned for quotas that drain; a window fills instead,
+        // so an existing config with `pct_mode = left` must not silently flip
+        // ctx to "remaining" the way it once did.
+        let mut cfg = Config::default();
+        cfg.pct_mode = PctMode::Left;
+        assert_eq!(cfg.ctx_pct_dir, PctMode::Spent);
+        assert_eq!(cfg.ctx_tokens_dir(), PctMode::Spent);
+    }
+
+    #[test]
+    fn linked_ctx_directions_follow_the_percentage_until_split() {
+        let mut cfg = Config::default();
+        cfg.ctx_pct_dir = PctMode::Left;
+        // Still linked: the token direction mirrors the percentage even though
+        // the `ctx_tokens_dir` field itself was never touched.
+        assert_eq!(cfg.ctx_tokens_dir(), PctMode::Left);
+
+        cfg.ctx_dir_linked = false;
+        cfg.ctx_tokens_dir = PctMode::Spent;
+        // Split: each figure answers for itself now.
+        assert_eq!(cfg.ctx_tokens_dir(), PctMode::Spent);
+        assert_eq!(cfg.ctx_pct_dir, PctMode::Left);
+    }
+
+    #[test]
+    fn the_context_settings_are_clamped_like_the_rest() {
+        let mut cfg = Config::default();
+        cfg.ctx_limit_tokens = 10;
+        assert_eq!(cfg.ctx_limit_tokens(), 8_192);
+        cfg.ctx_limit_tokens = 9_000_000;
+        assert_eq!(cfg.ctx_limit_tokens(), 1_000_000);
+        cfg.session_scan_secs = 0;
+        assert_eq!(cfg.session_scan_secs(), 5);
+        cfg.session_scan_secs = 99_999;
+        assert_eq!(cfg.session_scan_secs(), 600);
+        // The fourth source ages on its own clock like the other three.
+        cfg.set_stale_secs(SourceKind::Session, 1);
+        assert_eq!(cfg.stale_secs(SourceKind::Session), 30);
+    }
+
+    #[test]
+    fn a_context_form_knows_which_parts_it_shows() {
+        assert!(CtxView::PctTokens.has_pct() && CtxView::PctTokens.has_tokens());
+        assert!(!CtxView::PctTokens.tokens_first());
+        assert!(CtxView::TokensPct.tokens_first());
+        assert!(!CtxView::Off.has_pct() && !CtxView::Off.has_tokens());
+        assert!(CtxView::Tokens.tokens_first(), "with nothing else, the count is first");
+    }
+}

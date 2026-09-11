@@ -1,0 +1,304 @@
+# Gotchas
+
+Non-obvious traps in this project. Each entry is a structured G##.
+
+**Recording trigger:** after debugging for more than 30 minutes with a
+non-obvious cause.
+
+---
+
+## G01: A backslash path in `statusLine` fails silently
+**Symptom:** the bridge never runs. No error anywhere, no state file, no line
+in the terminal status bar.
+**Root cause:** on Windows, Claude Code runs the status-line command through
+Git Bash when Git Bash is installed. Git Bash treats unquoted backslashes as
+escapes, so `C:\path\to\ccd-usage-monitor.exe` reaches the runner with its separators
+stripped and the command simply does not resolve.
+**Fix:** write the path with forward slashes:
+`C:/Home/0_My_Programming/ccd-usage-monitor/target/release/ccd-usage-monitor.exe --bridge`.
+**How to spot it:** run the same `command` string by hand in Git Bash; if it
+prints nothing at all rather than an error, this is it.
+
+---
+
+## G02: `rate_limits` is legitimately absent, and absence is not zero
+**Symptom:** the pill shows `--%` right after a `/clear`, or a window vanishes
+from the payload mid-session.
+**Root cause:** Claude Code sends `rate_limits` only to Pro/Max subscribers, only
+after the session's first API response, and drops a window from the payload once
+its `resets_at` has passed. Each of `five_hour`, `seven_day` and `spend_limit`
+can be missing independently.
+**Fix:** treat missing as unknown everywhere. `StatusLinePayload::apply_to` never
+clears a stored window, `StateFile::prune` deletes a window only when its reset
+time has actually passed, and the UI renders `--%` in grey rather than `0%`.
+**How to spot it:** `%LOCALAPPDATA%\ccd-usage-monitor\state.json` has `sessions` but no
+`rate_limits`.
+
+---
+
+## G03: `~/.claude/.credentials.json` can be months out of date
+**Symptom:** `ccd-usage-monitor --probe-api` prints `token expired`, while Claude Code
+itself works perfectly.
+**Root cause:** the credentials file is maintained by the CLI. The desktop app
+keeps its authentication elsewhere, so on a machine used only through the
+desktop app that file stays frozen at whenever the CLI last logged in — a month
+or more.
+**Fix:** nothing to fix in the app; the endpoint source is optional by design
+and the widget runs on bridge data. Signing in with the CLI (`claude` in a
+terminal, then `/login`) refreshes the file and revives the source.
+**How to spot it:** `--probe-api` prints the token's expiry date next to the
+current time before it gives up.
+
+---
+
+## G04: eframe 0.36 has no `App::update`
+**Symptom:** after a version bump, `error[E0407]: method 'update' is not a
+member of trait 'eframe::App'`.
+**Root cause:** the trait is now `fn ui(&mut self, ui: &mut egui::Ui, ...)`,
+which hands you a `Ui` for the whole window, plus `fn logic(&mut self, ctx,
+frame)` which runs before it — and, crucially, **also runs while the window is
+hidden**, when eframe skips the egui pass entirely.
+**Fix:** all state pumping (data sources, tray events, viewport commands) lives
+in `logic`; `ui` only paints. Putting tray handling in `ui` would make
+"Show" unreachable after "Hide", because nothing would poll the menu channel.
+**How to spot it:** hiding the window from the tray works, showing it again does
+nothing.
+
+---
+
+## G05: the glow backend breaks the transparent window
+**Symptom:** after switching `eframe` to `default-features = false, features =
+["glow", ...]`, the pill renders inside an opaque dark rectangle and is clipped
+part-way down; the window no longer matches the shape that is painted.
+**Root cause:** eframe 0.36 defaults to the **wgpu** renderer, not glow. With
+glow the framebuffer config picked on this machine has no usable alpha, so
+`clear_color` of `[0, 0, 0, 0]` paints black instead of nothing and the window
+size no longer agrees with the painted content.
+**Fix:** stay on the default features. The saving was real — 6.8 MB instead of
+11.4 MB on disk, 48 MB instead of 121 MB resident, 12 threads instead of 31 —
+but not at the price of the entire visual design.
+**How to spot it:** a rectangular dark box around the pill. Nothing in the log;
+the app runs fine, it just looks wrong.
+
+---
+
+## G06: the desktop app does not run the status line
+**Symptom:** `statusLine` is configured and correct, the bridge works when fed a
+payload by hand, yet `state.json` never changes while working in the Claude Code
+desktop app.
+**Root cause:** the status line is a feature of the terminal client. The desktop
+app renders its own footer and, as far as the evidence goes, never spawns the
+command: over 82 minutes of a continuously active desktop session with the
+setting in place, the state file was not touched once.
+**Fix:** none available from this side, and none needed any more — this gotcha
+is why two of the four sources exist. The quota figures come from the desktop
+app's own history (A08), which needs no token, no session and no status line;
+the context figure comes from the conversation transcripts (A18), which are
+written whatever the client is. The usage endpoint remains an option where the
+CLI credentials are current (G03), and the bridge still serves terminal
+sessions. What is lost without a status line is only the *stated* context-window
+size, which is why running the CLI once is still worth it (A18).
+**How to spot it:** `sessions` in `state.json` contains no id matching the
+session you are actually working in.
+
+---
+
+## G07: a glyph missing from a custom font family renders as `?` or a box
+**Symptom:** `▾` in a menu label came out as `?`, and after adding fallback
+fonts, as an empty box.
+**Root cause:** `FontFamily::Name(..)` maps to the *list* of fonts you give it.
+A list of one font has nowhere to fall back to. Appending egui's bundled
+families fixes ordinary text, but neither Segoe UI nor egui's fonts carry
+U+25BE, so the box remained.
+**Fix:** both halves matter. Custom families are registered as
+`[my font, ...egui defaults]` so Cyrillic and punctuation always resolve, and
+the chevron is *painted* as a triangle instead of typed — a shape the font
+cannot fail to provide.
+**How to spot it:** a single character renders wrong while everything around it
+is fine.
+
+
+---
+
+## G08: a group's bar started one gap left of the group
+**Symptom:** the hairline tracks under the weekly group and the `ctx` group sat
+visibly left of the figures they belong to; the first group looked right.
+**Root cause:** after a divider the drawing cursor advances twice — `x +=
+GROUP_GAP`, draw the divider, `x += GROUP_GAP` — while the bookkeeping for the
+next track advanced once: `group_start = end + GROUP_GAP`. The first group has
+no divider before it, which is why only the later ones were wrong.
+**Fix:** `group_start = end + group_gap * 2.0`.
+**How to spot it:** a bar and its text disagree by exactly one gap, and only
+after the first divider.
+
+---
+
+## G09: four hand-placed egui widgets in one row collide on ids
+**Symptom:** each stepper row showed a ghost pair of buttons a row below itself,
+at the x of a differently-indented row. Clicks on the real buttons did nothing.
+**Root cause:** widgets placed with `Ui::put` at hand-computed rectangles take
+their id from the surrounding `Ui`, so several of them in one row end up sharing
+one id. egui resolves the clash by drawing the later widget offset from its
+rectangle, which is the ghost — and interaction goes to whichever of them won
+the id.
+**Fix:** wrap each in `ui.push_id((row_label, slot), |ui| ui.put(...))`. Note
+that painting the button yourself and calling `ui.interact(rect, id, ...)` looks
+equivalent and did **not** work here: the click never registered, while the same
+`put` inside `push_id` does.
+**How to spot it:** a duplicated widget slightly offset from where you placed
+it. It is not a paint bug, it is egui telling you about an id clash.
+
+---
+
+## G10: the countdown was a minute behind the app it mirrors
+**Symptom:** at 21:50 with the window resetting at 00:10, ccd-usage-monitor showed `2:19`
+while Claude Code showed `2:20`; the reset time read `00:09` where the app said
+`00:10`.
+**Root cause:** integer division. `2 h 19 min 40 s` truncates to 2:19, and
+`%H:%M` on a reset at `00:09:40` prints 00:09. Neither is wrong by much, and
+both are wrong in the same direction, which makes the widget look stale.
+**Fix:** the countdown rounds **up** to the whole minute — there really is more
+than 2:19 left — and the reset clock rounds to the **nearest** minute, so the
+two agree with each other and with the app.
+**How to spot it:** a one-minute disagreement that never exceeds a minute.
+
+---
+
+## G11: `ureq` turns an HTTP status into an error, and its text reaches the user
+**Symptom:** the widget's detail panel showed `API: http status: 429`.
+**Root cause:** ureq's `http_status_as_error` defaults to true, so a 429
+response comes back as `Error::StatusCode(429)`, the body and the headers are
+gone, and the error's `Display` text goes straight into whatever shows the
+failure. `Retry-After` is unreachable.
+**Fix:** build the request with `.config().http_status_as_error(false).build()`
+and read `res.status()` and `res.headers()` directly. 429 becomes a schedule
+(A13); other statuses become a short `HTTP <code>` rather than a pasted page.
+**How to spot it:** an error message that reads like a protocol detail rather
+than something a person can act on.
+
+---
+
+## G12: answering `WM_NCACTIVATE` yourself stops the window being dragged
+**Symptom:** the pill could no longer be dragged. No error, no log line; the
+right-click menu, the tray and every other interaction still worked.
+**Root cause:** the subclass added for the white-frame flash (A10) answered
+`WM_NCACTIVATE` with 1 instead of forwarding it. Dragging a frameless window is
+`ViewportCommand::StartDrag`, which winit implements by posting
+`WM_NCLBUTTONDOWN` with `HTCAPTION`; the modal move loop that message starts
+depends on the default activation handling that never ran.
+**Fix:** forward the message with `lParam = -1`, which suppresses the caption
+repaint and leaves everything else alone.
+**How to spot it:** an interaction that goes through the *system* rather than
+through egui stops working right after a window-procedure change. egui's own
+hit-testing is unaffected, which is why everything else still responds.
+
+---
+
+## G13: two clocks for one age, drifting by the length of a request
+**Symptom:** in the detail panel the `5h` and `7d` lines said `usage API 0:05`
+while the `src` line under them said `API 0:03` — the same reading, two ages,
+always one to two seconds apart.
+**Root cause:** two timestamps for one event. `Window::observed_at` was stamped
+in the poller *before* the HTTP request went out; `api_last_ok` was stamped in
+the UI when the resulting event was picked up, which is after the request
+returned. The gap was exactly the request's duration, which is why it looked
+like a constant, mysterious drift rather than a race.
+**Fix:** stamp once, pass it on. The snapshot is parsed with a time taken after
+the answer arrives, and `api_last_ok` is read out of that snapshot rather than
+sampled again.
+**How to spot it:** two numbers that should be equal differ by a small, stable
+amount. A race would jitter; a constant offset means two different measurements
+of the same thing.
+**Note:** the panel now prints an age once, on the `src` line, so the two
+numbers can no longer be held side by side there. The invariant lives in the
+code, not on the screen.
+
+---
+
+## G14: a thread that starts by acting turns "change a setting" into an action
+**Symptom:** editing "requests per minute" in the settings refreshed the
+figures over the network on every click — including the clicks meant to *lower*
+the request budget.
+**Root cause:** the poller took its interval and budget by value, so the only
+way to apply a change was to drop the thread and spawn a new one. The loop's
+first lap makes a request, so every click cost a request; five clicks could
+provoke the very 429 the budget exists to prevent. The same applied to any
+source switch, which called `request_api_refresh(true)` unconditionally.
+**Fix:** share the settings (`Arc<PollerSettings>`, read each lap) so the
+thread never restarts, and split the wake channel into `Wake::Now` and
+`Wake::Recheck`. A recheck recomputes the schedule and goes back to sleep.
+**How to spot it:** a setting whose *adjustment* has the side effect the
+setting is about. Worth asking of any long-lived thread: does its first lap do
+something, and what recreates it?
+
+---
+
+## G15: a thin arrow in front of a digit is read as a digit
+**Symptom:** the new pace cell showed `2.5×` over pace with an up arrow in
+front of it, and on the pill it read as `12.5×` — five times the real figure,
+in the direction that matters most.
+**Root cause:** Segoe UI's `↑` is a bare vertical stroke with a small head. At
+pill size, tight against a digit, it is a `1`. The down arrow has no such twin,
+so the problem showed on one side only and was easy to miss in review.
+**Fix:** `▲` / `▼`. Solid triangles share no shape with any digit, and they
+are the conventional up/down mark besides.
+**How to spot it:** read a new glyph off a screenshot at real size, never off
+the source. Anything that sits directly against a number — arrows, ticks,
+primes, multiplication signs — gets checked for a digit it could pass for.
+
+---
+
+## G16: a window that resizes on hover, read through a pointer that does not move
+**Symptom:** pointing at a figure made the widget flicker — the hint opened and
+closed several times a second — and after a few seconds of it the window stopped
+responding.
+**Root cause:** the hint opens above the pill when the pill sits near the bottom
+of the screen, which grows the window upwards, which means moving it. egui's
+pointer position is window-relative and is only refreshed by a real mouse event,
+so a still pointer kept the position it had before the move: 50 px too high,
+which is the empty band the hint had just been drawn in. Nothing under the
+pointer meant no hint, which shrank the window back, which restored the old
+reading, which opened the hint again. Two viewport commands per frame — resize
+and move — is also enough to wedge winit's event loop.
+**Fix:** hold the last name while the pointer is anywhere over the widget, and
+only drop it when the pointer leaves the window altogether. The detail panel had
+avoided the same loop by accident, with `ctx.input(|i| i.pointer.has_pointer())`
+beside its own `hovered()`.
+**How to spot it:** anything whose *size or position* depends on what the
+pointer is over is a feedback loop, and window-relative coordinates are the
+input that goes stale in it. Watch the window rectangle over a couple of
+seconds with the mouse held still (`GetWindowRect` in a loop) — a stable
+rectangle is the proof, a screenshot is not: it catches one side of the
+oscillation and looks merely wrong rather than unstable.
+
+---
+
+## G17: three lines in a transcript that each report a believable, wrong context
+**Symptom:** the context figure reads 0 % in the middle of a busy session, or
+five times too high, or matches a subagent rather than the conversation.
+**Root cause:** three different lines in `~/.claude/projects/**/<uuid>.jsonl`
+answer to "the last assistant line with a usage object", and only one of them is
+the conversation's own reading.
+
+* **Synthetic lines.** An interrupted request, a 529, an auth failure is written
+  as `"model":"<synthetic>"` with every counter zero. Taking the last assistant
+  line lands on one of these whenever the last thing that happened was an error,
+  and reports a confident nought per cent.
+* **Sidechain lines.** A subagent's transcript lives in
+  `<uuid>/subagents/agent-*.jsonl` and carries the **parent's** `sessionId`, so
+  the id cannot tell them apart. Enumerating the tree recursively lists them as
+  sessions; matching on `sessionId` alone lets a subagent's context stand in for
+  the conversation's. `isSidechain` is the field that separates them.
+* **Repeated lines.** One API message is written as several lines sharing one
+  `message.id`, each repeating the same usage verbatim — one per content block.
+  Summing them multiplies the reading by however many blocks the answer had.
+
+**Fix:** require `type == "assistant"`, `isSidechain != true`, `model !=
+"<synthetic>"` and a sum above zero, take the last such line by *position* in
+the file, and never add two together. Enumerate transcripts one level deep, so
+`subagents/` and `memory/` are never walked into.
+**How to spot it:** a figure that is exactly zero while the session is busy, or
+one that jumps by a large round factor between two reads. `ccd-usage-monitor --sessions`
+prints the token count beside the percentage for every transcript, which is
+where a wrong numerator shows up as an implausible number rather than as a
+plausible percentage.
