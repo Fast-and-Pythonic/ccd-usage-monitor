@@ -1,0 +1,11 @@
+# One line ending in the repository and in the working tree alike: LF.
+#
+# Without this the answer depends on each machine's core.autocrlf, so the same
+# file is checked out differently by two people and a diff fills up with
+# changes nobody made. `text=auto` lets Git decide what is text; `eol=lf` says
+# what to do once it has decided.
+* text=auto eol=lf
+
+# Written by Cargo and read by nobody; keeping it out of diffs by hand is not
+# worth it, but marking it generated stops it dominating a review.
+Cargo.lock linguist-generated=true
