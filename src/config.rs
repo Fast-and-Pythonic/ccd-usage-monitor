@@ -764,6 +764,11 @@ impl Config {
         });
         if written.is_ok() {
             let _ = std::fs::rename(&tmp, &path);
+            // Remembered so the watcher can tell this write from a person's
+            // (see `LAST_WRITTEN`).
+            if let Ok(mut last) = LAST_WRITTEN.lock() {
+                *last = Some(text);
+            }
         } else {
             let _ = std::fs::remove_file(&tmp);
         }
@@ -1019,6 +1024,87 @@ impl Config {
         self.gaps_x = d.gaps_x;
         self.corner_radius = d.corner_radius;
     }
+}
+
+/// The exact text this process last wrote to `config.toml`.
+///
+/// The widget writes the file from some forty places — every switch in the
+/// settings window, every tray toggle — and `Watch` must not report those back
+/// as somebody's edit. Comparing the text rather than remembering an mtime is
+/// what makes that reliable: a rename is not guaranteed to leave a timestamp
+/// this process can predict, and two writes inside one filesystem tick would
+/// share one anyway.
+static LAST_WRITTEN: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Notices when `config.toml` was edited by somebody who is not this program.
+///
+/// The file is meant to be hand-edited — that was the point of moving the
+/// window rectangles out of it — and an editor whose result only appears after
+/// a restart is an editor people stop using. So the widget watches the file on
+/// the same quarter-second tick that already watches the state file, and
+/// re-reads it when it moves.
+pub struct Watch {
+    path: PathBuf,
+    last_check: std::time::Instant,
+    mtime: Option<std::time::SystemTime>,
+}
+
+impl Watch {
+    /// Starts from the file as it is now, so the first poll reports nothing.
+    pub fn new() -> Watch {
+        Watch::at(config_path())
+    }
+
+    fn at(path: PathBuf) -> Watch {
+        Watch {
+            mtime: mtime_of(&path),
+            path,
+            last_check: std::time::Instant::now(),
+        }
+    }
+
+    /// The config as it now stands on disk, if somebody else changed it.
+    ///
+    /// `None` covers three cases that are all "nothing to do": the tick is not
+    /// due, the file has not moved, and the file has moved but holds exactly
+    /// what this program put there.
+    pub fn poll(&mut self) -> Option<Config> {
+        if self.last_check.elapsed() < std::time::Duration::from_millis(250) {
+            return None;
+        }
+        self.last_check = std::time::Instant::now();
+        if !self.changed() {
+            return None;
+        }
+        // Through `load` rather than `parse`, so a file edited into an older
+        // shape is migrated exactly as it would be at startup. That may write
+        // the file again; the next poll sees its own text and stops there.
+        Some(Config::load())
+    }
+
+    /// The file moved, and what is in it is not what we put there.
+    ///
+    /// Kept apart from `poll` so the question can be asked about a file of a
+    /// test's own choosing, without a real config on the real path.
+    fn changed(&mut self) -> bool {
+        let mtime = mtime_of(&self.path);
+        if mtime == self.mtime {
+            return false;
+        }
+        self.mtime = mtime;
+        let text = std::fs::read_to_string(&self.path).unwrap_or_default();
+        !LAST_WRITTEN.lock().is_ok_and(|w| w.as_deref() == Some(text.as_str()))
+    }
+}
+
+impl Default for Watch {
+    fn default() -> Watch {
+        Watch::new()
+    }
+}
+
+fn mtime_of(path: &std::path::Path) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
 /// A non-finite value in the file means the number is not usable at all, so it
@@ -1432,6 +1518,70 @@ lang = \"ru\"
         // The fourth source ages on its own clock like the other three.
         cfg.set_stale_secs(SourceKind::Session, 1);
         assert_eq!(cfg.stale_secs(SourceKind::Session), 30);
+    }
+
+    /// A directory of this test's own, under the system temp. Nothing here
+    /// goes near `config_path()`: the real config belongs to whoever is
+    /// running the tests.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join(format!("ccd-watch-{}-{name}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        dir.join("config.toml")
+    }
+
+    #[test]
+    fn a_file_that_has_not_moved_is_not_a_change() {
+        let path = scratch("still");
+        std::fs::write(&path, "lang = \"ru\"
+").unwrap();
+        let mut watch = Watch::at(path.clone());
+        assert!(!watch.changed(), "nobody touched it");
+        assert!(!watch.changed(), "and asking twice does not make it so");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_config_written_for_the_first_time_is_a_change() {
+        // Someone who has never opened the settings window has no config file
+        // at all; creating one by hand has to count.
+        let path = scratch("appears");
+        let _ = std::fs::remove_file(&path);
+        let mut watch = Watch::at(path.clone());
+        std::fs::write(&path, "lang = \"en\"
+").unwrap();
+        assert!(watch.changed());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn the_widgets_own_write_is_not_an_edit_but_a_comment_added_to_it_is() {
+        // The trap this watcher exists to avoid: the widget writes the config
+        // from some forty places, and a watcher that reads its own writing
+        // back either loops or overwrites the click that caused it. Both halves
+        // are one test because they share `LAST_WRITTEN`, which is global.
+        let path = scratch("own-write");
+        let ours = "lang = \"ru\"
+scale = 1.1
+";
+        std::fs::write(&path, ours).unwrap();
+        *LAST_WRITTEN.lock().unwrap() = Some(ours.to_string());
+
+        let mut watch = Watch::at(path.clone());
+        // The timestamp moved — that is what a write does. Forced rather than
+        // slept for: two writes inside one clock tick share an mtime on
+        // Windows, and a test that waits out the tick is a test that sometimes
+        // does not.
+        watch.mtime = Some(std::time::SystemTime::UNIX_EPOCH);
+        assert!(!watch.changed(), "this is our own text coming back");
+
+        std::fs::write(&path, format!("# a note from a person
+{ours}")).unwrap();
+        watch.mtime = Some(std::time::SystemTime::UNIX_EPOCH);
+        assert!(watch.changed(), "one comment more than we wrote is an edit");
+
+        *LAST_WRITTEN.lock().unwrap() = None;
+        let _ = std::fs::remove_file(&path);
     }
 
     #[test]

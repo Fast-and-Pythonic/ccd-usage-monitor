@@ -249,6 +249,12 @@ fn font_ui(size: f32) -> FontId {
 
 struct App {
     cfg: Config,
+    /// Notices when `config.toml` was edited outside the program (A23).
+    watch: crate::config::Watch,
+    /// `--demo` was passed on the command line. Kept because a re-read config
+    /// would otherwise switch the synthetic figures off under a session that
+    /// asked for them.
+    demo_arg: bool,
     /// Where the windows were left. Written to `window.json` rather than to
     /// the config, because a drag writes it and a file rewritten on every
     /// drag cannot hold a comment (see `geometry`).
@@ -309,6 +315,8 @@ impl App {
         let tray = Tray::build(cfg.is_ru());
         App {
             cfg,
+            watch: crate::config::Watch::new(),
+            demo_arg: demo,
             geom,
             rt: Runtime::new(),
             session_list_open: false,
@@ -375,6 +383,25 @@ impl App {
         }
     }
 
+    /// Take up an edit made to `config.toml` by hand (A23).
+    ///
+    /// Everything the drawing code reads is read afresh each frame, so
+    /// appearance and wording need no help here; what needs saying out loud is
+    /// the state the sources keep. Their remembered mtimes describe answers to
+    /// the question the old config asked — which files to read, which session
+    /// to follow, how big a context window is — so they are dropped whole
+    /// rather than reasoned about field by field. The poller is not restarted:
+    /// `pump` hands it the new interval and budget on its next lap, and a
+    /// setting must never cost a request (G14).
+    fn reload_config(&mut self) {
+        let Some(mut cfg) = self.watch.poll() else { return };
+        if self.demo_arg {
+            cfg.demo = true;
+        }
+        self.cfg = cfg;
+        self.rt.invalidate_files();
+    }
+
     /// Push window-level state that only changes on user action.
     ///
     /// Both commands here make winit recompute the window style from its own
@@ -417,6 +444,7 @@ impl eframe::App for App {
     /// Runs even while the window is hidden, which is what keeps the tray menu
     /// alive in that state.
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.reload_config();
         self.rt.pump(&self.cfg, state::now());
         self.pump_tray(ctx);
         self.apply_window_state(ctx);

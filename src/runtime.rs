@@ -199,6 +199,14 @@ impl Runtime {
                     self.desktop_mtime = mtime;
                     let previous = self.desktop.five_hour.map(|w| w.used_pct);
                     if let Some(snap) = desktop::read() {
+                        // A file whose timestamp moved without its figures
+                        // moving has nothing to tell the endpoint. This is not
+                        // a rare case: `invalidate_files` forgets every mtime
+                        // deliberately — a re-read config does it (A23), and
+                        // so does the refresh button — and a reading that came
+                        // back identical must not cost a request (G14).
+                        let same = snap.five_hour == self.desktop.five_hour
+                            && snap.seven_day == self.desktop.seven_day;
                         // A new sample means the figures moved. A percentage
                         // that fell means a window rolled over, so the reset
                         // times the API gave us are now wrong as well.
@@ -207,10 +215,8 @@ impl Runtime {
                             _ => false,
                         };
                         self.desktop = snap;
-                        if rolled || previous.is_none() {
-                            self.request_api_refresh(cfg, true);
-                        } else {
-                            self.request_api_refresh(cfg, false);
+                        if !same {
+                            self.request_api_refresh(cfg, rolled || previous.is_none());
                         }
                     }
                 }

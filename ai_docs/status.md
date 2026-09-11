@@ -66,7 +66,7 @@ Snapshot of 2026-09-11.
 - The window has no frame and no drop shadow: the DWM one is stripped through
   Win32 and re-stripped after the commands that bring it back (A10).
 - Tray icon: hide/show, click-through, quit.
-- `cargo test`: 155 tests over payload parsing, merge/prune rules and every
+- `cargo test`: 158 tests over payload parsing, merge/prune rules and every
   derived figure.
 - **The config is hand-editable and says so** (A22). `config.toml` is in
   sections — `[sources]`, `[behaviour]`, `[display]`, `[thresholds]`,
@@ -76,6 +76,14 @@ Snapshot of 2026-09-11.
   possible: they were rewritten on every drag and took any comment with them.
   An old flat config is laid out into sections once, comments carried across
   with their keys, and nothing else about it changes.
+- **An edit to `config.toml` is picked up while the program runs** (A23),
+  by the widget and by `--serve` alike, on the same quarter-second tick that
+  watches the state file. The program's own writing is told apart from a
+  person's by the exact text last written, not by a timestamp, so a click in
+  the settings window cannot be read back as somebody's edit. A re-read config
+  drops the sources' remembered modification times but never wakes the poller
+  (G14), and a desktop history that comes back with identical figures no
+  longer costs a request either.
 - **`schema.rs` describes every setting once** — kind, bounds, section, label
   and tooltip in both languages. It already lays out the file; the settings
   form is generated from it when the GUI moves.

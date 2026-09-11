@@ -559,9 +559,13 @@ gap is about 10 %. Slint was chosen for being better, not for the web being
 three times worse (`ai_docs_env` EG45).
 
 **What Slint costs.**
-- *A language nobody knows.* `.slint` reads like QML; the "everyone knows CSS"
-  argument does not transfer. A theme ecosystem of the Waybar kind will not
-  grow around it.
+- *A smaller pool of people who can write a theme.* `.slint` reads like QML and
+  is not hard to pick up — it is declarative, it borrows CSS vocabulary, and a
+  language model writes it competently — but the "everyone already knows CSS"
+  argument still does not transfer. The people who can edit a theme are those
+  willing to learn a language for it, which is fewer than the people who would
+  edit a stylesheet, so a theme ecosystem of the Waybar kind is unlikely rather
+  than impossible.
 - *A narrow path.* `slint-interpreter` sees 12 k downloads a quarter against
   Slint's own 467 k — roughly one user in forty — so fewer bugs are trodden.
 - *A licence that is no longer unconditional.* **Decided 2026-09-11: the
@@ -577,6 +581,20 @@ file means rebuilding the application through `build.rs`, which needs a Rust
 toolchain — so a compiled theme is not a theme a user can change. Measured, the
 interpreter costs 0.5 MB of memory, no startup time, and one doubled binary
 (24 MB against 12 MB). The whole price is on disk.
+
+**Compiling it instead was reconsidered on 2026-09-11 and rejected.** The case
+for compiling is real: the generated accessors are typed, so a renamed property
+is a build error instead of a `SetPropertyError::NoSuchProperty` nobody sees,
+and most of the theme machinery below — the tolerant contract, the fallback
+theme, the compiler diagnostics in the tray — exists only because the theme is
+read at runtime. What settles it is what compiling takes away. Numeric knobs
+survive either way, as typed properties fed from the config; what dies is
+rearranging the pill — moving an element, dropping one, changing a shape — and
+that is the part no configuration flag can stand in for. The type risk is
+answered by routing every write to the UI through one function rather than
+scattering `set_property` calls, which is also what would make a later move to
+compilation cheap: the markup is identical, only the Rust glue changes.
+Compiling the pill, and a web front end beside it, stay open as later work.
 
 **The low entry barrier comes back through another door.** `--serve` (A21)
 publishes the snapshot as JSON over localhost, which lets anyone write a widget
@@ -596,8 +614,8 @@ with everything the pill would draw: both quota windows, the context figure,
 the detail panel already worded, and the display conventions in force.
 `--port N` moves it; `--no-api` leaves the endpoint alone.
 
-**Why it exists.** Slint's language is known by nobody (A20), so a theme
-ecosystem will not grow around it. This is the other door: Zebar, Rainmeter and
+**Why it exists.** Writing a `.slint` theme means learning a language first
+(A20), so most people who want a different look will not write one. This is the other door: Zebar, Rainmeter and
 eww widgets are HTML/JS in a webview that is already running, so a CSS widget
 against this endpoint costs its author no new language and its user no new
 memory. What Slint takes away, this gives back through a different opening.
@@ -703,3 +721,43 @@ unchanged.
 mapped: the keys inside it are spelled exactly as `Config` spells them, so
 flattening the document and handing it to serde needs no table of names that
 could fall out of date. A flat file is recognised as flat and rewritten once.
+
+## A23: the config is re-read while the program runs
+`config.toml` is watched by modification time on the quarter-second tick that
+already watches the state file, and re-read when it moves. Both long-running
+modes do it: the widget in `logic`, `--serve` in its pump loop.
+
+**Why.** A22 made the file worth hand-editing — the rectangles that used to be
+rewritten on every drag are gone, comments survive a click in the settings
+window. A file worth editing whose edits only appear after a restart is a file
+people edit once and then stop, and the restart also throws away the poller's
+budget and the history the burn rate is computed from.
+
+**The trap is the program's own writing.** The widget saves the config from
+some forty places — every switch in the settings window, every tray toggle — so
+a watcher that cannot tell those from a person's edit either loops or
+overwrites the click that caused it. The answer is to remember the exact text
+written (`config::LAST_WRITTEN`) and treat a file holding it as unchanged.
+Remembering a modification time instead would not do: a rename is not
+guaranteed to leave a timestamp this process can predict, and two writes inside
+one clock tick share one on Windows. Comparing text also gets a second case
+right for free — a person who saves the file without having changed anything.
+
+**What a re-read config costs.** The sources' remembered modification times
+describe answers to the question the *old* config asked: which files to read,
+which conversation to follow, how large a context window is. So they are
+dropped whole (`invalidate_files`) rather than reasoned about field by field,
+which cannot miss a setting the way a hand-written list of dependencies would.
+The poller is not restarted: it re-reads its interval and budget from the
+shared `PollerSettings` on its next lap, because a fresh thread would begin
+with a request and editing a setting must never cost one (G14).
+
+**That last rule needed a second guard.** Forgetting the modification times
+makes the desktop history look new, and the old code asked the endpoint to
+refresh whenever that file appeared to move. It now compares the readings
+rather than the timestamp, so a file re-read into identical figures says
+nothing to the network. The rule is the same one G14 states: a change of
+setting is not an event about the quota.
+
+**`window.json` is not watched.** Only the widget writes it, and only about
+itself.

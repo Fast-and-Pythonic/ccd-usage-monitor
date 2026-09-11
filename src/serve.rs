@@ -1,7 +1,8 @@
 //! `--serve`: the same snapshot the pill draws, as JSON over loopback.
 //!
-//! The pill is moving to Slint (A20), whose language nobody knows. This is the
-//! other door: a panel that already runs a webview — Zebar, Rainmeter, eww —
+//! The pill is moving to Slint (A20), whose language has to be learnt before a
+//! theme can be written. This is the other door: a panel that already runs a
+//! webview — Zebar, Rainmeter, eww —
 //! can `fetch` this and draw the figures in real CSS, at no cost in memory,
 //! because that webview is running either way.
 //!
@@ -298,8 +299,19 @@ pub fn run(port: u16, no_api: bool) -> i32 {
     // The pump owns the runtime outright and hands the listener a finished
     // string, so nothing is locked for longer than a clone.
     let mut rt = Runtime::new();
+    // Edits to the config reach the server the same way they reach the widget
+    // (A23). Without this, the one process a person is most likely to leave
+    // running for days would be the one that never noticed.
+    let mut watch = crate::config::Watch::new();
     loop {
         let now = state::now();
+        if let Some(fresh) = watch.poll() {
+            cfg = fresh;
+            if no_api {
+                cfg.api_enabled = false;
+            }
+            rt.invalidate_files();
+        }
         rt.pump(&cfg, now);
         let snap = rt.snapshot(&cfg, now);
         let (snap, stale, ctx_stale) = rt.age_filter(&cfg, snap, now);

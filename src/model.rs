@@ -45,7 +45,7 @@ impl Source {
 }
 
 /// One rate-limit window (5-hour or 7-day).
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Window {
     /// Percentage consumed, 0..100 (can exceed 100 for spend limits).
     pub used_pct: f64,
