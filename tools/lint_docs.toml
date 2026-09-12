@@ -1,0 +1,28 @@
+# Configuration for the ai_docs linter. The linter itself lives in the standard:
+#   https://github.com/Fast-and-Pythonic/ai-docs-method
+#
+#   python <standard>/tools/lint_docs.py  --config tools/lint_docs.toml
+#   python <standard>/tools/make_index.py --config tools/lint_docs.toml
+#
+# Both work from any directory: a relative root is resolved against this file.
+
+[profile]
+name = "engineering"
+
+[project]
+# Four areas a session has to hold at once — the sources and their merge, the view
+# layer, the drawing layer, and the JSON/bridge surface. No subsystems/ pages yet; the
+# layer split in A19 does that work for now. Registers are far under the split
+# threshold, so M rather than L. See RULES.md, "Tiers and scaling".
+tier = "M"
+
+[paths]
+root = ".."
+docs = "ai_docs"
+
+[registers]
+G = "gotchas.md"
+A = "architecture.md"
+
+[limits]
+"start.md" = 100
