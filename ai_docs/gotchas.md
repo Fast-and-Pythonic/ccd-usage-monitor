@@ -344,3 +344,54 @@ stable, which is what `GetWindowRect` in a loop is for (G16).
 by exactly a frame's worth of pixels is this, and it is invisible in a
 screenshot: the picture is merely bigger than expected, which reads as a
 layout mistake.
+
+---
+
+## G20: hiding the last window ends a Slint program
+**Symptom:** the widget quit when the tray's "Hide" was used. No panic, no
+error — `run` returned `Ok(())` and `main` fell off the end, which reads in a
+log exactly like a clean shutdown somebody asked for.
+**Root cause:** `ComponentInstance::run()` is show-plus-run, and the run half
+is `slint::run_event_loop()`, which is documented to return once the last
+window is gone. The widget spends whole afternoons hidden in the tray with no
+window at all (G04), which is the one state that function treats as "there is
+nothing left to do".
+**Fix:** `show()` the component, then `slint::run_event_loop_until_quit()`,
+which ends only on `quit_event_loop`. The tray's Quit then becomes the one way
+out, which is what it was supposed to be anyway.
+**How to spot it:** any toolkit whose event loop is tied to window lifetime
+does this. The tell is that the program ends *at the moment* the last window
+is hidden rather than at the moment anything failed.
+
+---
+
+## G21: a hidden Slint window comes back with its frame, and loses the bits set on it
+**Symptom:** the pill came back from the tray with a title bar and a drop
+shadow, and a panel marked "never take the focus" started taking the focus
+again after its first hide.
+**Root cause:** `hide()` followed by `show()` re-applies the window styles
+winit computed from its own flags, over both `GWL_STYLE` and `GWL_EXSTYLE`.
+Everything `win.rs` did to the window is undone by it. This is not new — A10
+records the same thing under egui, where a visibility change is one of the two
+commands that put the shadow back — but under Slint it reaches the extended
+styles as well, and `WS_EX_NOACTIVATE` cannot simply be re-applied afterwards:
+the `show` that would undo it is the same call that steals the focus.
+Measured on the same window, before and after one hide/show:
+
+```
+before hiding      caption=false thickframe=false  toolwindow=true
+straight after show caption=true  thickframe=true   toolwindow=false
+```
+
+**Fix:** two different answers for two different windows. The pill is hidden
+and shown, so everything is re-applied after every `show` — the frame strip,
+`WS_EX_TOOLWINDOW` (which is what keeps it out of the taskbar and Alt+Tab, and
+which `ViewportBuilder::with_taskbar(false)` used to do), and the size, since
+stripping the frame moves the client area again (G19). The panel is **never**
+hidden — it is parked off-screen (`SetWindowPos` to −10000, −10000, with
+`SWP_NOACTIVATE`) and moved back when it is wanted. A window that is never
+hidden has nothing to restore.
+**How to spot it:** read the style bits back after the operation rather than
+trusting the call — `GetWindowLongPtrW` on `GWL_STYLE` and `GWL_EXSTYLE`. The
+frame coming back is visible; a lost `WS_EX_NOACTIVATE` is not, until somebody
+loses what they were typing.

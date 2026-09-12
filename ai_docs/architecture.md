@@ -590,8 +590,18 @@ three times worse (`ai_docs_env` EG45).
 **Why the interpreter in production, not the compiler.** Compiling a `.slint`
 file means rebuilding the application through `build.rs`, which needs a Rust
 toolchain — so a compiled theme is not a theme a user can change. Measured, the
-interpreter costs 0.5 MB of memory, no startup time, and one doubled binary
-(24 MB against 12 MB). The whole price is on disk.
+interpreter costs 0.5 MB of memory and no startup time; the whole price is on
+disk, in the compiler it carries.
+
+*How large that price is was overstated here until 2026-09-12.* The line used
+to read "one doubled binary, 24 MB against 12 MB", which compared a Slint
+binary built with cargo's default release profile against this project's, which
+is `lto = true`, `codegen-units = 1`, `panic = "abort"` and `strip = true`.
+Built the same way, the Slint spike is **14.9 MB against the widget's 12.1 MB**
+— the profile alone accounted for seven of the twelve megabytes the toolkit was
+being charged for. The two are still different programs, so the remaining
+difference is an indication rather than a measurement, but "doubled" was
+wrong.
 
 **Compiling it instead was reconsidered on 2026-09-11 and rejected.** The case
 for compiling is real: the generated accessors are typed, so a renamed property

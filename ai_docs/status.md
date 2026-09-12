@@ -87,6 +87,16 @@ Snapshot of 2026-09-11.
 - **`schema.rs` describes every setting once** — kind, bounds, section, label
   and tooltip in both languages. It already lays out the file; the settings
   form is generated from it when the GUI moves.
+- **The Slint spikes answered every question the move opens with** (in the
+  session scratchpad, `pill-spike`). The crates link together — `slint`,
+  `slint-interpreter`, `slint-build`, `raw-window-handle 0.6`, `windows-sys` —
+  and `win.rs` works on the HWND Slint hands out, unchanged. The theme reports
+  its own natural size through an `out property <length>`, which is what makes
+  a content-sized window possible at all now that nothing in this process can
+  measure a string. Click-through goes on and off a live window; the tray icon
+  builds and is serviced by a `slint::Timer`; the panel works as a second
+  window that does not take the focus. Four things had to be got right rather
+  than assumed, and each is a gotcha: G18, G19, G20, G21.
 - **`--serve` publishes the snapshot as JSON on `127.0.0.1:47317`** (A21) —
   both windows, the context figure, the detail panel already worded, and the
   display conventions in force. `--port N` moves it, `--no-api` leaves the
@@ -148,9 +158,11 @@ Snapshot of 2026-09-11.
 
   | | egui/eframe (today) | Slint + interpreter |
   |---|---|---|
-  | resident | 121 MB | **45 MB** |
+  | private working set | 61 MB | **13 MB** one window, **22 MB** with a second window and a tray |
+  | working set | 110 MB | **47–51 MB** |
+  | CPU at rest, 70 s | 0.156 s | 0.156–0.172 s |
   | startup (7 warm runs) | **64 ms** | 143 ms |
-  | binary | **12 MB** | 24 MB |
+  | binary, same release profile | **12.1 MB** | 14.9 MB |
   | transparency | yes | yes |
   | DPI | per-monitor | per-monitor |
   | 1-device-pixel hairline | by hand, via `Metrics` | snapped, plus a `phx` unit |
@@ -158,9 +170,29 @@ Snapshot of 2026-09-11.
   | licence | Apache-2.0 / MIT | GPLv3, or royalty-free **with attribution** |
   | downloads, 90 days | 5.2 M | 467 k (interpreter: **12 k**) |
 
-  Slint costs about a third of the memory, starts twice as slowly, and doubles
-  the binary. For a widget launched once a day, 143 ms is not a cost worth
-  naming; 76 MB of resident memory, held all day, is.
+  Slint costs a third to a fifth of the memory, starts twice as slowly, and
+  adds about 3 MB to the binary. For a widget launched once a day, 143 ms is
+  not a cost worth naming; 40-odd MB of private memory, held all day, is.
+
+  **Read the memory row with its configuration.** 13 MB is one window and
+  nothing else; 22 MB is the spike once it grew a second window and a tray
+  icon, which is closer to what the widget actually is. The Slint figure will
+  keep rising as the rest of the widget's work is added to it, so it is a floor
+  rather than a forecast — the egui column is a finished program.
+
+  **The binary row was wrong until 2026-09-12** and said 24 MB against 12 MB.
+  That compared a default-profile Slint build with this project's
+  `lto`/`strip`/`panic=abort` one; built the same way, the same spike is
+  14.9 MB. The profile was worth 7 MB of the 12 that had been charged to the
+  toolkit (`ai_docs_env` EG48).
+
+  **CPU at rest is the same, and saying anything sharper than that would be
+  making it up.** Two runs of the same Slint binary came out 0.156 s and
+  0.172 s per 70 seconds — a spread as wide as the gap between the toolkits.
+  The old line in `overview.md`, "0.0 s over ten seconds", was not a
+  measurement at all but the method running out of resolution; the figures
+  above are `TotalProcessorTime` deltas over 70 s with the window visible and
+  the pointer elsewhere (`ai_docs_env` EG47, `tools/measure-cpu.ps1`).
 
   Two non-technical prices come with it. The interpreter is a narrow path —
   12 k downloads against Slint's own 467 k, so roughly one user in forty takes

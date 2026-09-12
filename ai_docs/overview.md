@@ -55,9 +55,13 @@ each of the four says right now, side by side; it is the first thing to run when
 a figure looks wrong. `--sessions` does the same for the transcripts.
 
 ## Cost at rest
-Idle, with the pill visible: ~121 MB working set, 0.0 s of CPU over a ten-second
-sample, one repaint per second. The memory is dominated by the GPU stack, not by
-the app.
+Idle, with the pill visible: 110 MB working set of which 61 MB is private, and
+0.156 s of CPU over 70 seconds — about a fifth of a percent of one core — at one
+repaint per second. The memory is dominated by the GPU stack, not by the app.
+
+The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
+sample of a second or two rounds this to "0.0 %", which reads as a measurement
+and is not one (`ai_docs_env` EG47).
 
 The transcript source adds a tree walk on its own clock, not on the 250 ms tick:
 enumerating 86 files across 16 directories measured ~98 ms, and tail-reading all
