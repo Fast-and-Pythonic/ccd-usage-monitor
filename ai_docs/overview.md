@@ -59,9 +59,13 @@ each of the four says right now, side by side; it is the first thing to run when
 a figure looks wrong. `--sessions` does the same for the transcripts.
 
 ## Cost at rest
-Idle, with the pill visible: 110 MB working set of which 61 MB is private, and
-0.156 s of CPU over 70 seconds — about a fifth of a percent of one core — at one
-repaint per second. The memory is dominated by the GPU stack, not by the app.
+Idle, with the pill visible, on the egui front end: 110 MB working set of which
+61 MB is private, and 0.156 s of CPU over 70 seconds — about a fifth of a
+percent of one core — at one repaint per second. The memory is dominated by the
+GPU stack, not by the app.
+
+The Slint front end (`--slint`), measured the same way: 48 MB working set,
+22 MB private, 0.078 s of CPU. A third of the memory and half the processor.
 
 The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
 sample of a second or two rounds this to "0.0 %", which reads as a measurement

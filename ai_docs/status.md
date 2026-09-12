@@ -166,11 +166,11 @@ Snapshot of 2026-09-11.
 
   | | egui/eframe (today) | Slint + interpreter |
   |---|---|---|
-  | private working set | 61 MB | **13 MB** one window, **22 MB** with a second window and a tray |
-  | working set | 110 MB | **47–51 MB** |
-  | CPU at rest, 70 s | 0.156 s | 0.156–0.188 s (see G23) |
+  | private working set | 61 MB | **22 MB** |
+  | working set | 110 MB | **48 MB** |
+  | CPU at rest, 70 s | 0.156 s | **0.078 s** (see G23) |
   | startup (7 warm runs) | **64 ms** | 143 ms |
-  | binary, same release profile | **12.1 MB** | 14.9 MB |
+  | binary, same release profile | **12.1 MB** | 14.9 MB (spike) |
   | transparency | yes | yes |
   | DPI | per-monitor | per-monitor |
   | 1-device-pixel hairline | by hand, via `Metrics` | snapped, plus a `phx` unit |
@@ -182,11 +182,21 @@ Snapshot of 2026-09-11.
   adds about 3 MB to the binary. For a widget launched once a day, 143 ms is
   not a cost worth naming; 40-odd MB of private memory, held all day, is.
 
-  **Read the memory row with its configuration.** 13 MB is one window and
-  nothing else; 22 MB is the spike once it grew a second window and a tray
-  icon, which is closer to what the widget actually is. The Slint figure will
-  keep rising as the rest of the widget's work is added to it, so it is a floor
-  rather than a forecast — the egui column is a finished program.
+  **These are both the real widget now**, release builds, `--demo`, window
+  visible, pointer elsewhere — not the spike. The Slint column is the front end
+  behind `--slint` with its pill, its panel window and its tray; the egui
+  column is the same program drawing the same figures the old way. A third of
+  the memory and half the CPU.
+
+  **The CPU figure only became true after G23.** The first release build
+  measured 1.9 s per seventy — twelve times egui — because the model was
+  pushed to the theme on every tick and each push is a repaint. Worth
+  remembering before quoting any of this: the number measured what the code
+  did, not what the toolkit costs.
+
+  The binary row is still the spike's, because the real one now carries both
+  front ends and weighs 25.5 MB; what it will be with `eframe` gone is not
+  measurable until it is gone.
 
   **The binary row was wrong until 2026-09-12** and said 24 MB against 12 MB.
   That compared a default-profile Slint build with this project's
