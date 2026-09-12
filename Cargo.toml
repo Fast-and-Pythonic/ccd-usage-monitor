@@ -8,6 +8,23 @@ chrono = "0.4.45"
 dirs = "6.0.0"
 eframe = "0.36.1"
 raw-window-handle = "0.6"
+# Pinned to an exact version, and the backend and renderer named rather than
+# left to `default`: G05 was a renderer changing under us and taking
+# transparency with it, and every figure in the docs was measured on femtovg.
+slint = { version = "=1.17.1", default-features = false, features = [
+  "backend-winit",
+  "renderer-femtovg",
+  "compat-1-2",
+  "raw-window-handle-06",
+  "std",
+] }
+slint-interpreter = { version = "=1.17.1", default-features = false, features = [
+  "backend-winit",
+  "renderer-femtovg",
+  "compat-1-2",
+  "display-diagnostics",
+  "raw-window-handle-06",
+] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 toml = "1.1.5"
@@ -19,8 +36,10 @@ ureq = "3.4.0"
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
   "Win32_System_LibraryLoader",
   "Win32_UI_WindowsAndMessaging",
+  "Win32_UI_Input_KeyboardAndMouse",
 ] }
 
 [profile.release]

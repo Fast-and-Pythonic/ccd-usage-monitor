@@ -3,6 +3,7 @@
 //! Modes:
 //!   ccd-usage-monitor             the widget
 //!   ccd-usage-monitor --demo      the widget on synthetic data
+//!   ccd-usage-monitor --slint     the widget drawn by Slint (the move, A20)
 //!   ccd-usage-monitor --bridge    Claude Code status-line command: stdin JSON -> state file
 //!   ccd-usage-monitor --print     print the current line and exit
 //!   ccd-usage-monitor --probe-api one usage-endpoint request, printed raw
@@ -26,6 +27,8 @@ mod session;
 mod runtime;
 mod schema;
 mod serve;
+#[cfg(windows)]
+mod slint_ui;
 mod state;
 mod tray;
 mod view;
@@ -83,6 +86,18 @@ fn main() {
             .unwrap_or_default();
         let snap = model::Snapshot::merge(file.to_snapshot(), session);
         println!("{}", bridge::render(&snap, &cfg, now));
+        return;
+    }
+
+    // The Slint front end lives beside the egui one while the move is under
+    // way (A20), so the two can be compared on the same data on the same
+    // screen. `ui.rs` goes when the new one is finished, not before.
+    #[cfg(windows)]
+    if has("--slint") {
+        if let Err(e) = slint_ui::run(has("--demo")) {
+            eprintln!("ccd-usage-monitor: {e}");
+            std::process::exit(1);
+        }
         return;
     }
 

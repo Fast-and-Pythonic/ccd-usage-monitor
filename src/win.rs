@@ -30,10 +30,17 @@ use windows_sys::Win32::Graphics::Dwm::{
     DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallWindowProcW, GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, GWL_WNDPROC,
-    SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, WM_ERASEBKGND,
-    WM_NCACTIVATE, WM_NCCALCSIZE, WM_NCPAINT, WNDPROC, WS_CAPTION, WS_THICKFRAME,
+    CallWindowProcW, GetWindowLongPtrW, GetWindowRect, SendMessageW, SetWindowLongPtrW,
+    SetWindowPos, GWL_EXSTYLE, GWL_STYLE, GWL_WNDPROC, HTCAPTION, HWND_TOPMOST, SWP_FRAMECHANGED,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SWP_NOZORDER, WM_ERASEBKGND,
+    WM_NCACTIVATE, WM_NCCALCSIZE, WM_NCLBUTTONDOWN, WM_NCPAINT, WNDPROC, WS_CAPTION,
+    WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+    WS_THICKFRAME,
 };
 
 /// The window procedure winit installed, kept so everything we do not handle
@@ -192,5 +199,136 @@ impl Frame {
                 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER,
             );
         }
+    }
+}
+
+/// What egui asked winit for, done here by hand.
+///
+/// Slint's stable API has no equivalent for any of these, so the window policy
+/// stays where it already was — in Rust, over the HWND — rather than moving
+/// into the theme. That is deliberate beyond convenience: a theme that could
+/// take away "always on top" or the ability to close the window would be a
+/// theme that can strand the widget on the desktop.
+///
+/// **Every one of these is undone by a `hide` followed by a `show`** (G21),
+/// including the frame strip above, so whatever is applied here is applied
+/// again after each time the window comes back.
+impl Frame {
+    /// Above ordinary windows. `ViewportBuilder::with_always_on_top`.
+    pub fn topmost(self) {
+        unsafe {
+            SetWindowPos(
+                self.hwnd as HWND,
+                HWND_TOPMOST,
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    /// Out of the taskbar and out of Alt+Tab. `with_taskbar(false)`.
+    pub fn tool_window(self) {
+        unsafe {
+            let ex = GetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE);
+            let wanted = (ex | WS_EX_TOOLWINDOW as isize) & !(WS_EX_APPWINDOW as isize);
+            if wanted != ex {
+                SetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE, wanted);
+            }
+        }
+    }
+
+    /// Let the pointer through to whatever is behind.
+    /// `ViewportCommand::MousePassthrough`.
+    ///
+    /// `WS_EX_LAYERED` goes on with it: without that a transparent window still
+    /// takes the click. The way back out of this mode is the tray, which is
+    /// why the widget refuses to offer it when there is no tray icon (A05).
+    pub fn click_through(self, on: bool) {
+        unsafe {
+            let ex = GetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE);
+            let bits = (WS_EX_TRANSPARENT | WS_EX_LAYERED) as isize;
+            let wanted = if on { ex | bits } else { ex & !bits };
+            if wanted != ex {
+                SetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE, wanted);
+            }
+        }
+    }
+
+    /// Never take the focus when shown.
+    ///
+    /// For the detail panel: it appears because the pointer crossed the pill,
+    /// and taking the caret out of whatever the person is typing in would make
+    /// the widget hostile. The bit has to be on the window before anyone sees
+    /// it, and it does not survive a hide — which is why the panel is parked
+    /// off-screen rather than hidden (G21).
+    pub fn no_activate(self) {
+        unsafe {
+            let ex = GetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE);
+            SetWindowLongPtrW(self.hwnd as HWND, GWL_EXSTYLE, ex | WS_EX_NOACTIVATE as isize);
+        }
+    }
+
+    /// Hand the window to the system's own move loop.
+    /// `ViewportCommand::StartDrag`.
+    ///
+    /// It matters that this is the system loop rather than something that
+    /// follows the mouse by hand: that is what makes the drag behave like every
+    /// other window on the desktop, and it is also why hit-boxes have nothing
+    /// to do with it (G12).
+    pub fn start_drag(self) {
+        unsafe {
+            ReleaseCapture();
+            SendMessageW(self.hwnd as HWND, WM_NCLBUTTONDOWN, HTCAPTION as usize, 0);
+        }
+    }
+
+    /// Move the window without activating it or resizing it.
+    pub fn place(self, x: i32, y: i32) {
+        unsafe {
+            SetWindowPos(
+                self.hwnd as HWND,
+                HWND_TOPMOST,
+                x,
+                y,
+                0,
+                0,
+                SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_NOACTIVATE,
+            );
+        }
+    }
+
+    /// The usable area of the monitor this window is on: `(x, y, w, h)` in
+    /// device pixels, with the taskbar already taken out of it.
+    ///
+    /// The monitor the *window* is on, not the primary one — a pill dragged to
+    /// a second screen has to flip its panel against that screen's edge.
+    pub fn work_area(self) -> (i32, i32, i32, i32) {
+        unsafe {
+            let monitor = MonitorFromWindow(self.hwnd as HWND, MONITOR_DEFAULTTONEAREST);
+            let mut info: MONITORINFO = std::mem::zeroed();
+            info.cbSize = std::mem::size_of::<MONITORINFO>() as u32;
+            if GetMonitorInfoW(monitor, &mut info) == 0 {
+                return (0, 0, 1920, 1080);
+            }
+            let r = info.rcWork;
+            (r.left, r.top, r.right - r.left, r.bottom - r.top)
+        }
+    }
+
+    /// The window rectangle as the system sees it: `(x, y, width, height)` in
+    /// device pixels. The measurement that catches G16 — a rectangle that
+    /// breathes while the pointer is still.
+    pub fn rect(self) -> (i32, i32, i32, i32) {
+        let mut r = windows_sys::Win32::Foundation::RECT {
+            left: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+        };
+        unsafe { GetWindowRect(self.hwnd as HWND, &mut r) };
+        (r.left, r.top, r.right - r.left, r.bottom - r.top)
     }
 }
