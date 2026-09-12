@@ -1,5 +1,31 @@
 # Architecture
 
+- **A01** · One executable, two modes
+- **A02** · A state file, not IPC
+- **A03** · Four sources, merged field by field
+- **A04** · The pill is painted, not composed from widgets
+- **A05** · Click-through requires the tray
+- **A06** · the panel flips at the screen edge, and the pill holds its place
+- **A07** · figures expire
+- **A08** · The desktop app's own history as a source
+- **A09** · Responsiveness comes from wake-ups, not from polling harder
+- **A10** · a frameless window on Windows does not come out frameless
+- **A11** · the settings are a second native window
+- **A12** · the detail panel is sized to its text
+- **A13** · a request budget, and a rate limit as a schedule
+- **A14** · sources are switches, each with its own idea of "stale"
+- **A15** · the display convention is a view, not a change to the model
+- **A16** · the pace is one comparison, said in two units and two places
+- **A17** · the widget keeps its own history, seeded from the app's
+- **A18** · the context figure is read from the transcript, not asked for
+- **A19** · three layers, and only one of them is about drawing
+- **A20** · the GUI moves to Slint, and the core stays put
+- **A21** · the snapshot is published as JSON, and that JSON is a contract
+- **A22** · the settings are three files, and one list describes them all
+- **A23** · the config is re-read while the program runs
+- **A24** · the theme contract — what the program sends, what the theme declares
+- **A25** · the pill and its panel are two windows
+
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
 
@@ -141,7 +167,6 @@ a different window. `--%` is worth more than a wrong number that looks right.
 
 **The context figure greys but is never dropped**, because it describes a
 conversation rather than a moving window. The reasoning is in A18.
-
 
 ## A10: a frameless window on Windows does not come out frameless
 The widget removes its own window frame through Win32 (`src/win.rs`) right after
@@ -567,7 +592,43 @@ named outright; transparency works.
 suggested.** Summing *working set* across a process tree counts shared pages
 once per process and produced "310 MB against 121" — by private working set the
 gap is about 10 %. Slint was chosen for being better, not for the web being
-three times worse (`ai_docs_env` EG45).
+three times worse. Compare private working set across a process tree; working
+set counts the same shared pages once per process and flatters anything
+single-process.
+
+**The figures above are both front ends of the real widget**, release builds,
+`--demo`, window visible, pointer elsewhere — not the spike. Memory is the
+decisive column: 22 MB private against 61, and 48 MB working set against 110.
+
+**CPU at rest is a wash, and anything sharper would be invention.** Two runs of
+the same Slint binary came out 0.156 s and 0.172 s per seventy seconds — a
+spread as wide as the gap to egui's 0.156 s. The earlier "0.0 s over ten
+seconds" was not a measurement but the method running out of resolution: these
+are `TotalProcessorTime` deltas over 70 seconds, window visible, pointer
+elsewhere, and a shorter window cannot resolve the difference. And the first
+release build
+measured 1.9 s per seventy, twelve times egui, because the model was pushed to
+the theme on every tick and every push is a repaint — see [[G23]]. Worth
+remembering before quoting any of this: the number measured what the code did,
+not what the toolkit costs.
+
+**The binary figure cannot be taken yet.** The real executable carries both
+front ends and weighs 25.5 MB; what it will be with `eframe` gone is not
+measurable until it is gone.
+
+**Transparency works under Tauri and did not under bare wry/tao.** Eight
+configurations of the latter — two version pairs, with and without the frame
+surgery, with and without an explicit `DefaultBackgroundColor`, and with DWM's
+blur-behind trick — all painted an opaque backdrop; the same page under Tauri
+let the desktop through. So what was missing was configuration rather than
+capability, and the transparency risk against a future web front end is closed.
+
+**What the drawing layer costs today**, for scale: `draw` 411 lines,
+`build_cells` 141, `pace_cells` 47, `ctx_cells` 39, `draw_details` 28,
+`draw_bar` 27, `draw_track` 22, `Metrics` 80 — 795 lines that exist because
+immediate mode computes every coordinate by hand. The pill used for these
+measurements took 25 lines of `.slint` for six fields, a background, a corner
+radius and a bar.
 
 **What Slint costs.**
 - *A smaller pool of people who can write a theme.* `.slint` reads like QML and
@@ -628,6 +689,14 @@ so the mode is a serialisation layer rather than a subsystem (A19).
 **Tauri stays on the table** as a possible later move. Nothing in this decision
 forecloses it: the layer split means a second front end costs the drawing layer
 only.
+
+**Authoring a theme** is done with `slint-viewer --auto-reload`, which watches
+the file and redraws on save. It shows the UI without the application's live
+data; `--load-data <file>` seeds public properties from JSON once, so a snapshot
+dumped by the widget makes the preview realistic. Swapping the theme of a
+*running* instance is not covered by the stable API — the interpreter loads one
+at startup and replacing it means recreating the window — so a "restart" button
+in the settings window is the intended answer.
 
 ## A21: the snapshot is published as JSON, and that JSON is a contract
 `--serve` binds `127.0.0.1:47317` and answers `GET /` (and `/snapshot.json`)

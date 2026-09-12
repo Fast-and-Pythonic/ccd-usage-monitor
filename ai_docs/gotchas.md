@@ -7,12 +7,36 @@ non-obvious cause.
 
 ---
 
+- **G01** · A backslash path in `statusLine` fails silently
+- **G02** · `rate_limits` is legitimately absent, and absence is not zero
+- **G03** · `~/.claude/.credentials.json` can be months out of date
+- **G04** · eframe 0.36 has no `App::update`
+- **G05** · the glow backend breaks the transparent window
+- **G06** · the desktop app does not run the status line
+- **G07** · a glyph missing from a custom font family renders as `?` or a box
+- **G08** · a group's bar started one gap left of the group
+- **G09** · four hand-placed egui widgets in one row collide on ids
+- **G10** · the countdown was a minute behind the app it mirrors
+- **G11** · `ureq` turns an HTTP status into an error, and its text reaches the user
+- **G12** · answering `WM_NCACTIVATE` yourself stops the window being dragged
+- **G13** · two clocks for one age, drifting by the length of a request
+- **G14** · a thread that starts by acting turns "change a setting" into an action
+- **G15** · a thin arrow in front of a digit is read as a digit
+- **G16** · a window that resizes on hover, read through a pointer that does not move
+- **G17** · three lines in a transcript that each report a believable, wrong context
+- **G18** · a Slint window handle taken before `show` never starts working
+- **G19** · stripping the frame gives the client area the margins it used to spend on it
+- **G20** · hiding the last window ends a Slint program
+- **G21** · a hidden Slint window comes back with its frame, and loses the bits set on it
+- **G22** · a theme one version behind draws nothing, and says nothing
+- **G23** · a property pushed on a timer is a repaint, whether or not it changed
+
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
 in the terminal status bar.
 **Root cause:** on Windows, Claude Code runs the status-line command through
 Git Bash when Git Bash is installed. Git Bash treats unquoted backslashes as
-escapes, so `C:\path\to\ccd-usage-monitor.exe` reaches the runner with its separators
+escapes, so `C:\<path>\ccd-usage-monitor.exe` reaches the runner with its separators
 stripped and the command simply does not resolve.
 **Fix:** write the path with forward slashes:
 `C:/Home/0_My_Programming/ccd-usage-monitor/target/release/ccd-usage-monitor.exe --bridge`.
@@ -116,7 +140,6 @@ the chevron is *painted* as a triangle instead of typed — a shape the font
 cannot fail to provide.
 **How to spot it:** a single character renders wrong while everything around it
 is fine.
-
 
 ---
 

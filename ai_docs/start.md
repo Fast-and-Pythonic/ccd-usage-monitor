@@ -12,6 +12,10 @@ app, which shows none of this itself and does not run the status line (G06).
 - `gotchas.md` — traps worth knowing before touching the data layer (G##)
 - `status.md` — what works today, what is open, what is deliberately not done
   and where the fragile points are. The one file that tracks current state
+- `journal.md` — why the work went the way it did, newest on top. Read the top
+  entries when picking up something that was left mid-move
+- `_meta.md` — which standard these docs follow, the tier, and the three things
+  this project most often gets wrong
 
 ## What to read when
 - **First time here** → overview → architecture
