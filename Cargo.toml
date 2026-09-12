@@ -32,6 +32,10 @@ toml_edit = { version = "0.25", features = ["serde"] }
 tray-icon = "0.24.2"
 ureq = "3.4.0"
 
+[build-dependencies]
+# The settings window is compiled; the pill's theme is not (A20, A24).
+slint-build = "=1.17.1"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [
   "Win32_Foundation",

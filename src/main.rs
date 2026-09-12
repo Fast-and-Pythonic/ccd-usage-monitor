@@ -28,6 +28,8 @@ mod runtime;
 mod schema;
 mod serve;
 #[cfg(windows)]
+mod settings_ui;
+#[cfg(windows)]
 mod slint_ui;
 mod state;
 mod tray;

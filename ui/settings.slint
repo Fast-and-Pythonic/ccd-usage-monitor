@@ -1,0 +1,223 @@
+// The settings window.
+//
+// Compiled into the binary through `build.rs`, unlike `themes/pill.slint`
+// which is read at runtime. The two are different kinds of thing: the pill is
+// what a person looks at all day and may want to restyle, while this is a form
+// — its appearance is not a setting, and it needs `std-widgets`, which the
+// interpreter would have to find on disk.
+//
+// **Every row here is generated.** The program walks `schema.rs`, which
+// describes all forty-five settings once — kind, bounds, step sizes, label and
+// tooltip in both languages — and hands over a list. Nothing in this file
+// knows what any particular setting is. The window it replaces was thirteen
+// hundred lines of hand-written egui in which each setting was spelled out
+// four times over.
+
+import {
+    AboutSlint, Button, CheckBox, ComboBox, LineEdit, ScrollView, VerticalBox,
+} from "std-widgets.slint";
+
+// 0 a switch, 1 a number with a stepper, 2 a choice, 3 free text.
+export struct SettingRow {
+    key: string,
+    label: string,
+    tip: string,
+    kind: int,
+    on: bool,
+    // The number already written the way it should read — `15:00`, `200k`,
+    // `85%`. The formatting belongs with the setting's description, not here.
+    text: string,
+    choices: [string],
+    choice: int,
+    // The title of a section, on the first row that belongs to it. Empty
+    // otherwise: a header is a property of a row, so that one list can carry
+    // the whole form without a second model to keep in step with it.
+    section: string,
+}
+
+component Row inherits Rectangle {
+    in property <SettingRow> entry;
+    in property <bool> ru;
+    callback toggled(bool);
+    // -2 a big step down, -1 a small one, 1 and 2 the same upwards.
+    callback stepped(int);
+    callback chose(int);
+    callback edited(string);
+
+    height: layout.preferred-height;
+    background: touch.has-hover ? #ffffff08 : transparent;
+    border-radius: 4px;
+
+    touch := TouchArea { }
+
+    layout := VerticalLayout {
+        padding: 4px;
+        spacing: 2px;
+
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: space-between;
+
+            Text {
+                text: entry.label;
+                vertical-alignment: center;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+                horizontal-stretch: 1;
+            }
+
+            if entry.kind == 0: CheckBox {
+                checked: entry.on;
+                toggled => { root.toggled(self.checked); }
+            }
+
+            if entry.kind == 1: HorizontalLayout {
+                spacing: 2px;
+                Button {
+                    text: "«";
+                    clicked => { root.stepped(-2); }
+                }
+                Button {
+                    text: "‹";
+                    clicked => { root.stepped(-1); }
+                }
+                Text {
+                    text: entry.text;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                    min-width: 58px;
+                }
+                Button {
+                    text: "›";
+                    clicked => { root.stepped(1); }
+                }
+                Button {
+                    text: "»";
+                    clicked => { root.stepped(2); }
+                }
+            }
+
+            if entry.kind == 2: ComboBox {
+                model: entry.choices;
+                current-index: entry.choice;
+                selected => { root.chose(self.current-index); }
+            }
+
+            if entry.kind == 3: LineEdit {
+                text: entry.text;
+                min-width: 150px;
+                edited => { root.edited(self.text); }
+            }
+        }
+
+        // The explanation appears under the row the pointer is on. Forty-five
+        // settings each carrying two permanent lines would be a wall; the
+        // question "what is this one" is only ever asked about one of them.
+        if touch.has-hover && entry.tip != "": Text {
+            text: entry.tip;
+            wrap: word-wrap;
+            font-size: 11px;
+            opacity: 0.65;
+        }
+    }
+}
+
+export component Settings inherits Window {
+    in property <[SettingRow]> rows: [];
+    in property <bool> ru: true;
+    /// Where the theme file is, so the button that opens it can say so.
+    in property <string> theme_path: "";
+    /// Set when the theme on disk was refused and the built-in one is drawing.
+    in property <string> theme_trouble: "";
+
+    callback toggled(string, bool);
+    callback stepped(string, int);
+    callback chose(string, int);
+    callback edited(string, string);
+    callback restart();
+    callback open_config();
+    callback open_theme();
+
+    title: ru ? "ccd-usage-monitor — настройки" : "ccd-usage-monitor settings";
+    preferred-width: 460px;
+    preferred-height: 680px;
+
+    VerticalBox {
+        padding: 8px;
+        spacing: 6px;
+
+        if theme_trouble != "": Rectangle {
+            background: #e8994c20;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #e8994c60;
+            VerticalLayout {
+                padding: 6px;
+                Text {
+                    text: theme_trouble;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                }
+            }
+        }
+
+        ScrollView {
+            vertical-stretch: 1;
+            VerticalLayout {
+                padding-right: 12px;
+                spacing: 1px;
+                for r in root.rows: VerticalLayout {
+                    spacing: 1px;
+                    if r.section != "": Text {
+                        text: r.section;
+                        font-size: 13px;
+                        font-weight: 700;
+                        opacity: 0.75;
+                    }
+                    Row {
+                        entry: r;
+                        ru: root.ru;
+                        toggled(on) => { root.toggled(r.key, on); }
+                        stepped(d) => { root.stepped(r.key, d); }
+                        chose(i) => { root.chose(r.key, i); }
+                        edited(t) => { root.edited(r.key, t); }
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 6px;
+            Button {
+                text: ru ? "Открыть config.toml" : "Open config.toml";
+                clicked => { root.open_config(); }
+            }
+            Button {
+                text: ru ? "Открыть тему" : "Open theme";
+                clicked => { root.open_theme(); }
+            }
+            Button {
+                text: ru ? "Перезапустить" : "Restart";
+                clicked => { root.restart(); }
+            }
+        }
+
+        // A button that opens a file should say which file. The path is long
+        // and dull, so it sits small and dim under the buttons rather than on
+        // one of them.
+        if theme_path != "": Text {
+            text: theme_path;
+            font-size: 10px;
+            opacity: 0.5;
+            wrap: word-wrap;
+            horizontal-alignment: center;
+        }
+
+        // The acknowledgement the royalty-free licence asks for. It is here
+        // rather than in the tray because this is the one surface with room
+        // for it: the pill is thirty-four pixels tall.
+        AboutSlint {
+            height: 72px;
+        }
+    }
+}

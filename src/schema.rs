@@ -122,9 +122,26 @@ pub enum Kind {
         big: f32,
         show: Show,
     },
-    /// The serde spellings, in the order a menu should offer them.
-    Choice(&'static [&'static str]),
+    /// The options, in the order a menu should offer them.
+    Choice(&'static [Choice]),
     Text,
+}
+
+/// One option of a `Choice`: the spelling the file uses, and what to call it
+/// in a menu.
+///
+/// The two live together because they are one fact. They used to be apart —
+/// the spellings here, the wording on `label(ru)` methods in `config.rs` that
+/// only the old settings window called — and a form generated from this list
+/// would have had to reach across for half of what it needed.
+#[derive(Clone, Copy, Debug)]
+pub struct Choice {
+    pub value: &'static str,
+    pub label: Words,
+}
+
+const fn ch(value: &'static str, ru: &'static str, en: &'static str) -> Choice {
+    Choice { value, label: Words { ru, en } }
 }
 
 /// Russian first, because that is the default language of the widget.
@@ -161,7 +178,10 @@ const fn w(ru: &'static str, en: &'static str) -> Words {
     Words { ru, en }
 }
 
-const SPENT_LEFT: &[&str] = &["spent", "left"];
+const SPENT_LEFT: &[Choice] = &[
+    ch("spent", "потрачено", "spent"),
+    ch("left", "осталось", "left"),
+];
 
 pub const ALL: &[Setting] = &[
     // ------------------------------------------------------------- sources ---
@@ -285,7 +305,11 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "session_pick",
         section: Section::Behaviour,
-        kind: Kind::Choice(&["live", "freshest", "pinned"]),
+        kind: Kind::Choice(&[
+            ch("live", "запущенная", "running"),
+            ch("freshest", "свежайшая", "freshest"),
+            ch("pinned", "выбранная", "pinned"),
+        ]),
         label: w("Какая сессия", "Which session"),
         tip: w(
             "Запущенная — из тех, что Claude Code сейчас считает живыми; если таких \
@@ -331,7 +355,11 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "ctx_limit",
         section: Section::Behaviour,
-        kind: Kind::Choice(&["learned", "table", "fixed"]),
+        kind: Kind::Choice(&[
+            ch("learned", "из statusLine", "as stated"),
+            ch("table", "по таблице", "from the table"),
+            ch("fixed", "вручную", "by hand"),
+        ]),
         label: w("Размер окна", "Window size"),
         tip: w(
             "На что делится число токенов. У моделей пятой серии окно — миллион, у \
@@ -408,7 +436,7 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "lang",
         section: Section::Behaviour,
-        kind: Kind::Choice(&["ru", "en"]),
+        kind: Kind::Choice(&[ch("ru", "Русский", "Russian"), ch("en", "Английский", "English")]),
         label: w("Язык", "Language"),
         tip: w(
             "Язык подписей и панели подробностей: русский или английский.",
@@ -449,14 +477,16 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "pace_view",
         section: Section::Display,
+        // Shown as themselves: the label *is* the thing, so a name for it
+        // would be a second, worse description of what the eye can read.
         kind: Kind::Choice(&[
-            "ratio",
-            "points",
-            "ratio_points",
-            "points_ratio",
-            "split",
-            "piped",
-            "off",
+            ch("ratio", "▲2.0×", "▲2.0×"),
+            ch("points", "▲9%", "▲9%"),
+            ch("ratio_points", "▲2.0× 9%", "▲2.0× 9%"),
+            ch("points_ratio", "▲9% 2.0×", "▲9% 2.0×"),
+            ch("split", "▲9% | 2.0×", "▲9% | 2.0×"),
+            ch("piped", "▲9%|2.0×", "▲9%|2.0×"),
+            ch("off", "выкл", "off"),
         ]),
         label: w("Темп", "Pace"),
         tip: w(
@@ -471,7 +501,10 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "bar_colour",
         section: Section::Display,
-        kind: Kind::Choice(&["fill", "pace"]),
+        kind: Kind::Choice(&[
+            ch("fill", "по расходу", "by fill"),
+            ch("pace", "по темпу", "by pace"),
+        ]),
         label: w("Цвет баров", "Bar colour"),
         tip: w(
             "По расходу — краснеет к концу квоты. По темпу — краснеет, когда \
@@ -500,7 +533,11 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "detail_mode",
         section: Section::Display,
-        kind: Kind::Choice(&["with_settings", "hover", "never"]),
+        kind: Kind::Choice(&[
+            ch("with_settings", "с настройками", "with settings"),
+            ch("hover", "при наведении", "on hover"),
+            ch("never", "никогда", "never"),
+        ]),
         label: w("Панель подробностей", "Detail panel"),
         tip: w(
             "Когда показывать панель под пилюлей: пока открыто окно настроек, при \
@@ -526,7 +563,13 @@ pub const ALL: &[Setting] = &[
     Setting {
         key: "ctx_view",
         section: Section::Display,
-        kind: Kind::Choice(&["pct", "tokens", "pct_tokens", "tokens_pct", "off"]),
+        kind: Kind::Choice(&[
+            ch("pct", "14%", "14%"),
+            ch("tokens", "142k", "142k"),
+            ch("pct_tokens", "14% 142k", "14% 142k"),
+            ch("tokens_pct", "142k 14%", "142k 14%"),
+            ch("off", "выкл", "off"),
+        ]),
         label: w("Контекст", "Context"),
         tip: w(
             "Что стоит в группе ctx: доля окна, число токенов или оба подряд. Токены \
@@ -787,6 +830,43 @@ pub fn get(key: &str) -> Option<&'static Setting> {
     ALL.iter().find(|s| s.key == key)
 }
 
+/// One setting's current value, addressed by key.
+///
+/// Through serde rather than through a forty-five-arm `match`: the round trip
+/// is the same one `config::save` already relies on, and a `match` is a list
+/// that has to be remembered, which is exactly the kind of list this module
+/// exists to abolish. The cost is serialising the whole config for one read,
+/// which is nothing on the scale of a click in a form.
+pub fn read(cfg: &Config, key: &str) -> Option<toml::Value> {
+    let toml::Value::Table(table) = toml::Value::try_from(cfg).ok()? else {
+        return None;
+    };
+    table.get(key).cloned()
+}
+
+/// Put one value back, by key. `false` when the key is unknown or the value is
+/// the wrong shape for it — in which case the config is left as it was.
+///
+/// Deliberately tolerant of nothing: a form that wrote a string into a number
+/// would corrupt the file on the next save, and the clamping in `config.rs`
+/// only defends against values of the *right* type being out of range.
+pub fn write(cfg: &mut Config, key: &str, value: toml::Value) -> bool {
+    let Ok(toml::Value::Table(mut table)) = toml::Value::try_from(&*cfg) else {
+        return false;
+    };
+    if !table.contains_key(key) {
+        return false;
+    }
+    table.insert(key.to_string(), value);
+    match toml::Value::Table(table).try_into::<Config>() {
+        Ok(next) => {
+            *cfg = next;
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 /// The keys of a `Config` as serde writes them, which is what the file and
 /// this list both have to agree with.
 pub fn config_keys() -> Vec<String> {
@@ -882,12 +962,19 @@ mod tests {
             };
             assert!(!options.is_empty(), "{} offers no choices", s.key);
             for opt in options {
-                let line = format!("{} = \"{opt}\"", s.key);
+                assert!(
+                    !opt.label.ru.is_empty() && !opt.label.en.is_empty(),
+                    "{}: `{}` has no name in a menu",
+                    s.key,
+                    opt.value
+                );
+                let line = format!("{} = \"{}\"", s.key, opt.value);
                 let parsed: Result<Config, _> = toml::from_str(&line);
                 assert!(
                     parsed.is_ok(),
-                    "{}: `{opt}` is not a spelling the config accepts",
-                    s.key
+                    "{}: `{}` is not a spelling the config accepts",
+                    s.key,
+                    opt.value
                 );
             }
         }

@@ -360,7 +360,17 @@ struct App {
     /// the pointer is anywhere over the pill and cleared when it leaves.
     hint: Option<String>,
     tray: Option<Tray>,
+    /// Built the first time it is asked for and kept after that.
+    settings: Option<crate::settings_ui::Form>,
+    /// What was wrong with the theme on disk, for the form to show.
+    trouble: String,
     visible: bool,
+    /// Set by the tray, acted on by the next tick.
+    ///
+    /// The tray is drained while the app is borrowed, and opening the settings
+    /// window needs that borrow back — building the form hands it a callback
+    /// that borrows the same cell.
+    wants_settings: bool,
     /// The size last pushed, so the window is not resized on every tick.
     sized: (f32, f32),
     /// What was last handed to the theme.
@@ -380,7 +390,12 @@ impl App {
     fn detail_wanted(&self) -> bool {
         match self.cfg.detail_mode {
             crate::config::DetailMode::Hover => self.hovering,
-            crate::config::DetailMode::WithSettings => false,
+            // Restored now that there is a settings window to be open: the
+            // panel is a companion to it, so that what a setting changes can
+            // be watched while it is changed.
+            crate::config::DetailMode::WithSettings => {
+                self.settings.as_ref().is_some_and(|f| f.is_open())
+            }
             crate::config::DetailMode::Never => false,
         }
     }
@@ -433,7 +448,11 @@ pub fn run(demo: bool) -> Result<(), String> {
         hovering: false,
         hint: None,
         tray,
+        settings: None,
+        trouble: theme.trouble.join("
+"),
         visible: true,
+        wants_settings: false,
         sized: (0.0, 0.0),
         shown: None,
     }));
@@ -460,8 +479,9 @@ pub fn run(demo: bool) -> Result<(), String> {
         });
     }
     if callbacks.iter().any(|c| c == "menu") {
+        let app = app.clone();
         let _ = pill.set_callback("menu", move |_| {
-            open_config();
+            open_settings(&app);
             Value::Void
         });
     }
@@ -490,6 +510,9 @@ pub fn run(demo: bool) -> Result<(), String> {
 }
 
 fn tick(app: &Rc<RefCell<App>>) {
+    if std::mem::take(&mut app.borrow_mut().wants_settings) {
+        open_settings(app);
+    }
     let mut a = app.borrow_mut();
 
     // G18: asked for here, every time, rather than kept from before `show`.
@@ -702,6 +725,99 @@ fn place_panel(a: &mut App) {
     pf.place(left, top);
 }
 
+/// Show the settings window, building it the first time.
+///
+/// Everything a click in it can ask for comes back through one closure, which
+/// is why the window is built here rather than up in `run`: the closure needs
+/// the same `Rc` the rest of the program is holding.
+fn open_settings(app: &Rc<RefCell<App>>) {
+    if app.borrow().settings.is_none() {
+        let (cfg, trouble) = {
+            let a = app.borrow();
+            (a.cfg.clone(), a.trouble.clone())
+        };
+        let handle = app.clone();
+        let form = crate::settings_ui::Form::new(
+            &cfg,
+            &theme_path(),
+            &trouble,
+            move |key, change| changed(&handle, key, change),
+        );
+        match form {
+            Ok(form) => app.borrow_mut().settings = Some(form),
+            Err(e) => {
+                eprintln!("ccd-usage-monitor: {e}");
+                return;
+            }
+        }
+        // Where it was left, if it has ever been moved.
+        let a = app.borrow();
+        if let Some(form) = &a.settings {
+            if let Some([w, h]) = a.geom.settings_size {
+                form.window().set_size(slint::LogicalSize::new(w, h));
+            }
+            if let Some([x, y]) = a.geom.settings_pos {
+                form.window()
+                    .set_position(slint::LogicalPosition::new(x, y));
+            }
+        }
+    }
+    if let Some(form) = app.borrow_mut().settings.as_mut() {
+        form.show();
+    }
+}
+
+/// One change made in the settings window.
+///
+/// The form has no opinion about when a file is written or what a setting
+/// means; it reports what was clicked and this decides the rest.
+fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change) {
+    use crate::settings_ui::Change;
+    match change {
+        Change::Restart => return restart(),
+        Change::OpenConfig => return open_config(),
+        Change::OpenTheme => return open_theme(),
+        Change::Closed { pos, size } => {
+            let mut a = app.borrow_mut();
+            a.geom.settings_pos = Some(pos);
+            a.geom.settings_size = Some(size);
+            crate::geometry::save(&a.geom);
+            if let Some(form) = a.settings.as_mut() {
+                form.mark_closed();
+            }
+            return;
+        }
+        _ => {}
+    }
+    let mut a = app.borrow_mut();
+    if !crate::settings_ui::apply(&mut a.cfg, key, &change) {
+        return;
+    }
+    a.cfg.save();
+    // The sources' remembered mtimes describe answers to the question the old
+    // config asked (A23), and the pill has to be told to redraw: it only
+    // pushes a model when the figures move, and a setting can change how the
+    // same figures are written.
+    a.rt.invalidate_files();
+    a.shown = None;
+    let cfg = a.cfg.clone();
+    if let Some(form) = &a.settings {
+        form.refresh(&cfg);
+    }
+    let (visible, click_through, ru) = (a.visible, cfg.click_through, cfg.is_ru());
+    if let Some(tray) = &mut a.tray {
+        tray.sync_labels(visible, click_through, ru);
+    }
+}
+
+/// Open the theme file in whatever edits `.slint` — a text editor, in
+/// practice. The button beside it says which file that is.
+fn open_theme() {
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", &theme_path().to_string_lossy()])
+        .spawn();
+}
+
 /// Start again with the same arguments, and let this process end.
 ///
 /// How a changed theme is picked up. Slint's stable API cannot replace the
@@ -790,7 +906,7 @@ fn pump_tray(a: &mut App) {
                     frame.place(60, 60);
                 }
             }
-            tray::Command::OpenSettings => open_config(),
+            tray::Command::OpenSettings => a.wants_settings = true,
             tray::Command::Restart => restart(),
             tray::Command::AboutSlint => {
                 let _ = std::process::Command::new("cmd")

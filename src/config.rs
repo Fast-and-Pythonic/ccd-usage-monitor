@@ -1135,7 +1135,7 @@ mod tests {
                 Kind::Float { max, .. } => toml::Value::Float(max as f64),
                 // The last option, for the same reason.
                 Kind::Choice(opts) => {
-                    toml::Value::String(opts[opts.len() - 1].to_string())
+                    toml::Value::String(opts[opts.len() - 1].value.to_string())
                 }
                 Kind::Text => toml::Value::String("a-pinned-conversation".into()),
             };
