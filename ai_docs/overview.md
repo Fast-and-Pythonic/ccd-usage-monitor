@@ -26,7 +26,7 @@ The file layout follows the three layers of A19: what the widget knows
 | `pace.rs` | countdowns, reset labels, days until reset, daily allowance, pace verdict |
 | `bridge.rs` | `--bridge`: stdin payload → state file → ANSI line for the terminal |
 | `runtime.rs` | the four sources pumped and merged, the poller's channel, age filtering, the history log. No egui (A19) |
-| `view.rs` | snapshot and runtime state → the words, figures and verdicts a person reads; colour as meaning, not as RGB. No egui (A19) |
+| `view.rs` | snapshot and runtime state → the words, figures and verdicts a person reads, and the composition of the pill itself (`cells`, `bars`); colour as meaning, not as RGB. No egui (A19) |
 | `tray.rs` | the tray icon and its menu, as a source of commands rather than a handler |
 | `serve.rs` | `--serve`: the snapshot as JSON on loopback, for a widget in somebody else's panel (A21). No egui |
 | `ui.rs` | window setup, painting, interaction, the settings window (A11) |

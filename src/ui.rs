@@ -11,9 +11,9 @@ use egui::{Align2, Color32, CornerRadius, FontFamily, FontId, Pos2, Rect, Stroke
 
 use crate::geometry::Geometry;
 use crate::config::{
-    BarColour, Config, CtxLimit, CtxView, DetailMode, PaceView, PctMode, SessionPick, SourceKind,
+    Config, CtxLimit, CtxView, DetailMode, PaceView, SessionPick, SourceKind,
 };
-use crate::model::{ContextInfo, Snapshot, Window};
+use crate::model::Snapshot;
 use crate::pace;
 use crate::runtime::Runtime;
 use crate::view::{self, Ink, Tone};
@@ -134,12 +134,12 @@ impl Metrics {
     /// The room a cell asks for after itself. A rule needs a gap on each side,
     /// a little tighter than a plain cell gap; a group divider needs two full
     /// ones, which is why the next group starts `group_gap * 2` along.
-    fn gap_width(&self, gap: Gap) -> f32 {
+    fn gap_width(&self, gap: view::Gap) -> f32 {
         match gap {
-            Gap::Cell => self.cell_gap,
-            Gap::Tight => 0.0,
-            Gap::Rule => self.cell_gap * 1.5,
-            Gap::Group => self.group_gap * 2.0,
+            view::Gap::Cell => self.cell_gap,
+            view::Gap::Tight => 0.0,
+            view::Gap::Rule => self.cell_gap * 1.5,
+            view::Gap::Group => self.group_gap * 2.0,
         }
     }
 }
@@ -471,36 +471,6 @@ impl eframe::App for App {
 
 // --------------------------------------------------------------- drawing ---
 
-/// One laid-out piece of text with a reserved width, so the pill does not
-/// twitch every time a digit changes.
-/// What comes after a cell. Every cell asks for its own trailing gap, so the
-/// width the pill reserves and the walk that paints it read the same list
-/// instead of agreeing by hand.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Gap {
-    /// The usual space between two figures of one limit.
-    Cell,
-    /// Nothing: the cells either side read as one word.
-    Tight,
-    /// A short faint rule, between two halves of one figure.
-    Rule,
-    /// The divider between two limits.
-    Group,
-}
-
-/// Where the text sits inside the width a cell reserves. Every cell is at
-/// least as wide as the widest figure it will ever hold, so that the pill does
-/// not twitch as the numbers change; centring that slack is right for a figure
-/// standing alone, and wrong for two halves that have to touch a separator.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Side {
-    Centre,
-    /// Text against the right edge of its width: the slack falls to its left.
-    Right,
-    /// Text against the left edge: the slack falls to its right.
-    Left,
-}
-
 /// What the pointer was over when the last frame ended, and where.
 ///
 /// The window is measured and resized before a single figure is painted, so
@@ -512,300 +482,51 @@ struct Hint {
     centre_x: f32,
 }
 
-struct Cell {
-    text: String,
+/// A `view::Cell` with the two things only the drawing layer can work out:
+/// which font it is set in, and how wide it therefore is.
+///
+/// The composition itself — which figures, in what order, in whose group — is
+/// decided in `view::cells`, where it can be tested without a window and read
+/// by a front end that is not egui (A19).
+struct Drawn {
+    cell: view::Cell,
     font: FontId,
     color: Color32,
     width: f32,
-    gap: Gap,
-    side: Side,
-    /// What the field is called, shown while the pointer is over it.
-    hint: Option<String>,
-}
-
-impl Cell {
-    fn with_gap(mut self, gap: Gap) -> Cell {
-        self.gap = gap;
-        self
-    }
-
-    fn aligned(mut self, side: Side) -> Cell {
-        self.side = side;
-        self
-    }
-
-    fn named(mut self, hint: String) -> Cell {
-        self.hint = Some(hint);
-        self
-    }
 }
 
 fn measure(ctx: &egui::Context, text: &str, font: &FontId) -> f32 {
     ctx.fonts_mut(|f| f.layout_no_wrap(text.to_owned(), font.clone(), Color32::WHITE).size().x)
 }
 
-fn cell(ctx: &egui::Context, text: impl Into<String>, template: &str, font: FontId, color: Color32) -> Cell {
-    let text = text.into();
-    let width = measure(ctx, &text, &font).max(measure(ctx, template, &font));
-    Cell {
-        text,
-        font,
-        color,
-        width,
-        gap: Gap::Cell,
-        side: Side::Centre,
-        hint: None,
-    }
+/// Resolve a role into a font and a paint into a colour, and measure the
+/// result. A cell is at least as wide as its template, which is the widest
+/// string it will ever hold.
+fn lay_out(ctx: &egui::Context, cells: Vec<view::Cell>, m: &Metrics) -> Vec<Drawn> {
+    cells
+        .into_iter()
+        .map(|cell| {
+            let font = match cell.role {
+                view::Role::Pct => m.f_pct.clone(),
+                view::Role::Time => m.f_time.clone(),
+                view::Role::Small => m.f_small.clone(),
+            };
+            let width = measure(ctx, &cell.text, &font).max(measure(ctx, &cell.template, &font));
+            let color = paint(cell.paint);
+            Drawn { cell, font, color, width }
+        })
+        .collect()
 }
 
-/// The divider between two limits belongs to the cell before it.
-fn end_group(cells: &mut [Cell]) {
-    if let Some(c) = cells.last_mut() {
-        c.gap = Gap::Group;
+fn paint(p: view::Paint) -> Color32 {
+    match p {
+        view::Paint::Plain => INK,
+        view::Paint::Dim => DIM,
+        view::Paint::Tone(t) => tone_colour(t),
     }
 }
 
 impl App {
-    fn build_cells(
-        &self,
-        ctx: &egui::Context,
-        snap: &Snapshot,
-        now: i64,
-        m: &Metrics,
-    ) -> Vec<Cell> {
-        let lang = self.cfg.lang.clone();
-        // Stale figures are shown in grey, the same as unknown ones: they are
-        // history, not the current state.
-        let pct = |v: f64| if self.stale { DIM } else { usage_colour(v, &self.cfg) };
-        let ink = if self.stale { DIM } else { INK };
-        let mut cells: Vec<Cell> = Vec::new();
-        let name = |f: view::Field| view::field_name(f, &self.cfg);
-
-        // The figure shown is either what is gone or what is left, but the
-        // colour is always keyed on spending: "10% left" has to read as danger,
-        // not as a low number.
-        let shown = |v: f64| self.cfg.pct_mode.shown(v);
-
-        match snap.five_hour {
-            Some(w) => {
-                cells.push(
-                    cell(ctx, format!("{:.0}%", shown(w.used_pct)), "100%", m.f_pct.clone(), pct(w.used_pct))
-                        .named(name(view::Field::FiveHourPct)),
-                );
-                // Second, against the figure it qualifies: how much is left and
-                // how fast it is going are one reading, and the two clocks
-                // after them are a different one.
-                cells.extend(self.pace_cells(
-                    ctx,
-                    w,
-                    pace::FIVE_HOUR_SECS,
-                    view::Field::FiveHourPace,
-                    now,
-                    m,
-                ));
-                let (left, clock) = match w.resets_at {
-                    Some(r) => (pace::fmt_remaining(r - now), pace::fmt_clock(r)),
-                    None => ("--:--".to_string(), "--:--".to_string()),
-                };
-                cells.push(
-                    cell(ctx, left, "00:00", m.f_time.clone(), ink)
-                        .named(name(view::Field::FiveHourLeft)),
-                );
-                cells.push(
-                    cell(ctx, clock, "00:00", m.f_time.clone(), DIM)
-                        .named(name(view::Field::FiveHourClock)),
-                );
-            }
-            None => {
-                cells.push(cell(ctx, "--%", "100%", m.f_pct.clone(), DIM).named(name(view::Field::FiveHourPct)));
-                if self.cfg.pace_view != PaceView::Off {
-                    let t = view::pace_template(self.cfg.pace_view);
-                    cells.push(cell(ctx, "--", t, m.f_time.clone(), DIM).named(name(view::Field::FiveHourPace)));
-                }
-                cells.push(cell(ctx, "--:--", "00:00", m.f_time.clone(), DIM).named(name(view::Field::FiveHourLeft)));
-                cells.push(cell(ctx, "--:--", "00:00", m.f_time.clone(), DIM).named(name(view::Field::FiveHourClock)));
-            }
-        }
-        end_group(&mut cells);
-
-        match snap.seven_day {
-            Some(w) => {
-                cells.push(
-                    cell(ctx, format!("{:.0}%", shown(w.used_pct)), "100%", m.f_pct.clone(), pct(w.used_pct))
-                        .named(name(view::Field::SevenDayPct)),
-                );
-                cells.extend(self.pace_cells(
-                    ctx,
-                    w,
-                    pace::SEVEN_DAY_SECS,
-                    view::Field::SevenDayPace,
-                    now,
-                    m,
-                ));
-                // Days left, not the name of the reset day: the weekly figure is
-                // only actionable next to the number of days it has to cover,
-                // and counting from "Tue" to that number is work for the reader.
-                let (day, allowance) = match w.resets_at {
-                    Some(r) => (
-                        pace::fmt_days_until(r, now, &lang, self.cfg.day_count()),
-                        format!(
-                            "{:.0}%",
-                            pace::daily_allowance(
-                                w.used_pct,
-                                pace::days_until(r, now, self.cfg.day_count())
-                            )
-                        ),
-                    ),
-                    None => ("--".to_string(), "--%".to_string()),
-                };
-                cells.push(cell(ctx, day, "00д", m.f_time.clone(), DIM).named(name(view::Field::SevenDayDays)));
-                cells.push(
-                    cell(ctx, allowance, "100%", m.f_time.clone(), ink)
-                        .named(name(view::Field::SevenDayAllowance)),
-                );
-            }
-            None => {
-                cells.push(cell(ctx, "--%", "100%", m.f_pct.clone(), DIM).named(name(view::Field::SevenDayPct)));
-                if self.cfg.pace_view != PaceView::Off {
-                    let t = view::pace_template(self.cfg.pace_view);
-                    cells.push(cell(ctx, "--", t, m.f_time.clone(), DIM).named(name(view::Field::SevenDayPace)));
-                }
-                cells.push(cell(ctx, "--", "00д", m.f_time.clone(), DIM).named(name(view::Field::SevenDayDays)));
-                cells.push(cell(ctx, "--%", "100%", m.f_time.clone(), DIM).named(name(view::Field::SevenDayAllowance)));
-            }
-        }
-
-        if self.cfg.ctx_view != CtxView::Off {
-            match &snap.context {
-                Some(c) => {
-                    end_group(&mut cells);
-                    cells.push(cell(ctx, "ctx", "ctx", m.f_small.clone(), DIM).named(name(view::Field::Context)));
-                    cells.extend(self.ctx_cells(ctx, c, m));
-                }
-                // The source is switched on and has found nothing yet, which is
-                // worth saying: a group that simply is not there looks the same
-                // as a setting nobody turned on.
-                None if self.cfg.session_enabled => {
-                    end_group(&mut cells);
-                    cells.push(cell(ctx, "ctx", "ctx", m.f_small.clone(), DIM).named(name(view::Field::Context)));
-                    if self.cfg.ctx_view.has_pct() {
-                        cells.push(
-                            cell(ctx, "--%", "100%", m.f_time.clone(), DIM)
-                                .named(name(view::Field::ContextPct)),
-                        );
-                    }
-                    if self.cfg.ctx_view.has_tokens() {
-                        cells.push(
-                            cell(ctx, "--", "999k", m.f_time.clone(), DIM)
-                                .named(name(view::Field::ContextTokens)),
-                        );
-                    }
-                }
-                None => {}
-            }
-        }
-
-        cells
-    }
-
-    /// The context group, in whichever of the five forms `ctx_view` names.
-    ///
-    /// Two figures of one reading, so they share a group — but a context
-    /// window fills instead of draining like the 5-hour and weekly quotas do,
-    /// so it reads by its own pair of directions (`ctx_pct_dir` /
-    /// `ctx_tokens_dir`) rather than the quotas' `pct_mode`. A remaining token
-    /// count owes as much to the guessed window size as the remaining
-    /// percentage already does, so nothing here is more of a guess than the
-    /// other.
-    fn ctx_cells(&self, ctx: &egui::Context, c: &ContextInfo, m: &Metrics) -> Vec<Cell> {
-        let view = self.cfg.ctx_view;
-        let ink = if self.ctx_stale { DIM } else { INK };
-        let pct = || {
-            cell(
-                ctx,
-                format!("{:.0}%", self.cfg.ctx_pct_dir.shown(c.used_pct)),
-                "100%",
-                m.f_time.clone(),
-                ink,
-            )
-            .named(view::field_name(view::Field::ContextPct, &self.cfg))
-        };
-        let tokens = || {
-            let text = match (c.used_tokens, self.cfg.ctx_tokens_dir()) {
-                (Some(t), PctMode::Spent) => pace::fmt_tokens(t),
-                (Some(t), PctMode::Left) => match c.limit_tokens {
-                    Some(limit) => pace::fmt_tokens(limit.saturating_sub(t)),
-                    None => "--".to_string(),
-                },
-                (None, _) => "--".to_string(),
-            };
-            cell(ctx, text, "999k", m.f_time.clone(), ink)
-                .named(view::field_name(view::Field::ContextTokens, &self.cfg))
-        };
-        let mut out = Vec::new();
-        if view.tokens_first() {
-            out.push(tokens());
-            if view.has_pct() {
-                out.push(pct());
-            }
-        } else {
-            out.push(pct());
-            if view.has_tokens() {
-                out.push(tokens());
-            }
-        }
-        out
-    }
-
-    /// The pace figure as a cell, when it is wanted and knowable.
-    fn pace_cells(
-        &self,
-        ctx: &egui::Context,
-        w: Window,
-        span: i64,
-        field: view::Field,
-        now: i64,
-        m: &Metrics,
-    ) -> Vec<Cell> {
-        let view = self.cfg.pace_view;
-        if view == PaceView::Off {
-            return Vec::new();
-        }
-        let hint = view::field_name(field, &self.cfg);
-        let Some(delta) = view::pace_delta(w, span, now) else {
-            return vec![
-                cell(ctx, "--", view::pace_template(view), m.f_time.clone(), DIM).named(hint),
-            ];
-        };
-        let target = w.used_pct - delta;
-        let colour = if self.stale { DIM } else { pace_colour(delta, &self.cfg) };
-        let parts = pace::pace_parts(view, w.used_pct, target);
-        // Both halves and the separator between them answer to the same name.
-        let half = |text: &str, template: &str| {
-            cell(ctx, text, template, m.f_time.clone(), colour).named(hint.clone())
-        };
-        match view {
-            // Two cells with a rule painted between them.
-            PaceView::Split if parts.len() == 2 => vec![
-                half(&parts[0], "▲99%").with_gap(Gap::Rule),
-                half(&parts[1], "10.0×"),
-            ],
-            // Three cells run together with no gaps: the separator is a cell of
-            // its own only so that it can keep the grey of the clock beside it
-            // while the two numbers carry the pace colour.
-            PaceView::Piped if parts.len() == 2 => vec![
-                half(&parts[0], "▲99%")
-                    .with_gap(Gap::Tight)
-                    .aligned(Side::Right),
-                cell(ctx, view.joiner(), view.joiner(), m.f_time.clone(), DIM)
-                    .with_gap(Gap::Tight)
-                    .named(hint.clone()),
-                half(&parts[1], "10.0×").aligned(Side::Left),
-            ],
-            _ => vec![half(&parts.join(view.joiner()), view::pace_template(view))],
-        }
-    }
-
     /// Whether the detail panel under the pill is showing right now.
     fn detail_visible(&self) -> bool {
         match self.cfg.detail_mode {
@@ -818,7 +539,12 @@ impl App {
     fn draw(&mut self, ui: &mut egui::Ui, snap: &Snapshot, now: i64) {
         let ctx = ui.ctx().clone();
         let m = Metrics::new(&self.cfg);
-        let cells = self.build_cells(&ctx, snap, now, &m);
+        let cells = lay_out(
+            &ctx,
+            view::cells(&self.cfg, snap, self.stale, self.ctx_stale, now),
+            &m,
+        );
+        let tracks = view::bars(&self.cfg, snap, self.ctx_stale, now);
 
         // The same sum the painting loop walks: every gap but the one after
         // the last cell, each as wide as the cell before it asked for.
@@ -827,7 +553,7 @@ impl App {
                 .iter()
                 .rev()
                 .skip(1)
-                .map(|c| m.gap_width(c.gap))
+                .map(|c| m.gap_width(c.cell.gap))
                 .sum::<f32>();
         let pill_w = (content_w + m.pad_x * 2.0).max(180.0 * m.scale);
 
@@ -993,12 +719,7 @@ impl App {
         // between two figures does not blink the hint off and on again. A
         // cell owns half the space either side of it; the bars own the strip
         // under the figures.
-        let bar_names = [
-            view::field_name(view::Field::FiveHourBar, &self.cfg),
-            view::field_name(view::Field::SevenDayBar, &self.cfg),
-            view::field_name(view::Field::ContextBar, &self.cfg),
-        ];
-        let mut regions: Vec<(Rect, &str)> = Vec::new();
+        let mut regions: Vec<(Rect, String)> = Vec::new();
         let split_y = track_y.map_or(pill.bottom(), |y| y - m.text_gap * 0.5);
         let mut gap_before = m.pad_x;
 
@@ -1007,91 +728,53 @@ impl App {
             let gap_after = if i + 1 == cells.len() {
                 m.pad_x
             } else {
-                m.gap_width(c.gap)
+                m.gap_width(c.cell.gap)
             };
-            if let Some(h) = &c.hint {
+            if let Some(field) = c.cell.field {
                 regions.push((
                     Rect::from_min_max(
                         Pos2::new(start - gap_before * 0.5, pill.top()),
                         Pos2::new(start + c.width + gap_after * 0.5, split_y),
                     ),
-                    h.as_str(),
+                    view::field_name(field, &self.cfg),
                 ));
             }
             gap_before = gap_after;
-            let (text_x, anchor) = match c.side {
-                Side::Centre => (x + c.width / 2.0, Align2::CENTER_CENTER),
-                Side::Right => (x + c.width, Align2::RIGHT_CENTER),
-                Side::Left => (x, Align2::LEFT_CENTER),
+            let (text_x, anchor) = match c.cell.side {
+                view::Side::Centre => (x + c.width / 2.0, Align2::CENTER_CENTER),
+                view::Side::Right => (x + c.width, Align2::RIGHT_CENTER),
+                view::Side::Left => (x, Align2::LEFT_CENTER),
             };
             painter.text(
                 Pos2::new(text_x, text_y),
                 anchor,
-                &c.text,
+                &c.cell.text,
                 c.font.clone(),
                 c.color,
             );
             let end = x + c.width;
             x = end;
 
-            if c.gap == Gap::Group || i + 1 == cells.len() {
-                let drawn = match (group_index, track_y) {
-                    (0 | 1, Some(y)) => {
-                        let (window, span) = if group_index == 0 {
-                            (snap.five_hour, pace::FIVE_HOUR_SECS)
-                        } else {
-                            (snap.seven_day, pace::SEVEN_DAY_SECS)
-                        };
-                        match window {
-                            Some(w) => {
-                                self.draw_track(&painter, group_start, end, y, w, span, now, &m);
-                                true
-                            }
-                            None => false,
-                        }
-                    }
-                    // The context group gets the same bar. It has no window and
-                    // no reset, so there is no pace to colour it by — only how
-                    // full it is, which is the whole of what it says.
-                    (2, Some(y)) => match &snap.context {
-                        Some(c) => {
-                            let colour = if self.ctx_stale {
-                                DIM
-                            } else {
-                                usage_colour(c.used_pct, &self.cfg)
-                            };
-                            self.draw_bar(
-                                &painter,
-                                group_start,
-                                end,
-                                y,
-                                c.used_pct,
-                                self.cfg.ctx_pct_dir,
-                                colour,
-                                &m,
-                            );
-                            true
-                        }
-                        _ => false,
-                    },
-                    _ => false,
-                };
-                if drawn {
-                    if let Some(label) = bar_names.get(group_index) {
-                        regions.push((
-                            Rect::from_min_max(
-                                Pos2::new(group_start, split_y),
-                                Pos2::new(end, pill.bottom()),
-                            ),
-                            label.as_str(),
-                        ));
-                    }
+            if c.cell.gap == view::Gap::Group || i + 1 == cells.len() {
+                // The bar spans exactly the cells of its group, and what it
+                // says is decided in `view::bars` — this only knows where the
+                // group started and where it ended.
+                let bar = tracks.iter().find(|b| b.group == group_index);
+                if let (Some(y), Some(bar)) = (track_y, bar) {
+                    App::draw_bar(&painter, group_start, end, y, bar.frac, paint(bar.paint), &m);
+                    regions.push((
+                        Rect::from_min_max(
+                            Pos2::new(group_start, split_y),
+                            Pos2::new(end, pill.bottom()),
+                        ),
+                        view::field_name(bar.field, &self.cfg),
+                    ));
                 }
                 group_index += 1;
                 // Two gaps, not one: the divider sits between them, so the next
                 // group's first cell starts `group_gap * 2` past this one. With
                 // a single gap the track was drawn one gap left of its group.
-                group_start = end + m.gap_width(Gap::Group);
+                group_start = end + m.gap_width(view::Gap::Group);
             }
 
             if i + 1 == cells.len() {
@@ -1106,21 +789,21 @@ impl App {
                     Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 255, 255, alpha)),
                 );
             };
-            match c.gap {
-                Gap::Group => {
+            match c.cell.gap {
+                view::Gap::Group => {
                     x += m.group_gap;
                     rule(x, m.pill_h * 0.26, 26);
                     x += m.group_gap;
                 }
-                Gap::Rule => {
+                view::Gap::Rule => {
                     // Shorter and quieter than the one between groups: it joins
                     // two halves of one figure, it does not separate two things.
-                    let gap = m.gap_width(Gap::Rule) * 0.5;
+                    let gap = m.gap_width(view::Gap::Rule) * 0.5;
                     x += gap;
                     rule(x, m.pill_h * 0.34, 20);
                     x += gap;
                 }
-                Gap::Cell | Gap::Tight => x += m.gap_width(c.gap),
+                view::Gap::Cell | view::Gap::Tight => x += m.gap_width(c.cell.gap),
             }
         }
 
@@ -1227,51 +910,18 @@ impl App {
         }
     }
 
-    /// A hairline track under a group: the same figure as a bar, nothing else.
-    ///
-    /// It used to carry a tick at the even-burn-rate target. The tick is gone —
-    /// the pace verdict lives in the detail panel, where there is room to say
-    /// it in words instead of a mark the eye has to measure against.
-    #[allow(clippy::too_many_arguments)]
-    fn draw_track(
-        &self,
-        painter: &egui::Painter,
-        left: f32,
-        right: f32,
-        y: f32,
-        w: Window,
-        span: i64,
-        now: i64,
-        m: &Metrics,
-    ) {
-        // Length and colour answer different questions on purpose: a short red
-        // bar is a window with room left and no time to use it.
-        let colour = match self.cfg.bar_colour {
-            BarColour::Fill => usage_colour(w.used_pct, &self.cfg),
-            BarColour::Pace => match view::pace_delta(w, span, now) {
-                Some(delta) => pace_colour(delta, &self.cfg),
-                None => usage_colour(w.used_pct, &self.cfg),
-            },
-        };
-        self.draw_bar(painter, left, right, y, w.used_pct, self.cfg.pct_mode, colour, m);
-    }
-
     /// One hairline bar: the track, and the part of it that is filled.
     ///
-    /// Takes a percentage rather than a `Window` because the context group has
-    /// no window and no reset time, and only the two quota groups have a pace
-    /// to be coloured by. Takes its direction as a parameter rather than
-    /// reading `cfg.pct_mode` itself, because `ctx` reads in its own
-    /// direction, not the quotas'.
-    #[allow(clippy::too_many_arguments)]
+    /// Takes the fraction already worked out rather than a percentage and a
+    /// direction: which way a figure reads is a question about meaning, and
+    /// `view::bars` has answered it — including that the context window fills
+    /// where the quotas drain.
     fn draw_bar(
-        &self,
         painter: &egui::Painter,
         left: f32,
         right: f32,
         y: f32,
-        used_pct: f64,
-        dir: PctMode,
+        frac: f32,
         colour: Color32,
         m: &Metrics,
     ) {
@@ -1282,10 +932,6 @@ impl App {
         let r = CornerRadius::same((m.track_h / 2.0).ceil() as u8);
         painter.rect_filled(rect, r, Color32::from_rgba_unmultiplied(255, 255, 255, 24));
 
-        // The bar carries the same number as the figure above it, so in
-        // "left" mode it drains as the quota goes. Its colour does not: that
-        // stays on spending, which is what a short red bar is telling you.
-        let frac = (dir.shown(used_pct) / 100.0).clamp(0.0, 1.0) as f32;
         if frac > 0.0 {
             let fill = Rect::from_min_size(rect.min, Vec2::new(rect.width() * frac, m.track_h));
             painter.rect_filled(fill, r, colour);
@@ -2903,12 +2549,4 @@ fn tone_colour(tone: Tone) -> Color32 {
         (a.g() as f32 + (b.g() as f32 - a.g() as f32) * t) as u8,
         (a.b() as f32 + (b.b() as f32 - a.b() as f32) * t) as u8,
     )
-}
-
-fn usage_colour(pct: f64, cfg: &Config) -> Color32 {
-    tone_colour(view::usage_tone(pct, cfg))
-}
-
-fn pace_colour(delta: f64, cfg: &Config) -> Color32 {
-    tone_colour(view::pace_tone(delta, cfg))
 }

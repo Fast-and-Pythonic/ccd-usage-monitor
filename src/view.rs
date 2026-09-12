@@ -6,8 +6,8 @@
 //! That is deliberate — this module is the contract a different front end
 //! would consume, and a front end that speaks CSS cannot use `Color32`.
 
-use crate::config::{Config, PaceView, SourceKind};
-use crate::model::{Snapshot, Window};
+use crate::config::{BarColour, Config, CtxView, PaceView, PctMode, SourceKind};
+use crate::model::{ContextInfo, Snapshot, Window};
 use crate::history;
 use crate::pace;
 use crate::runtime::Runtime;
@@ -102,12 +102,435 @@ pub fn pace_template(view: PaceView) -> &'static str {
 }
 
 
+// ---------------------------------------------------------------------------
+// What the pill is made of
+// ---------------------------------------------------------------------------
+
+/// Which of the pill's three type sizes a cell is set in.
+///
+/// A role, not a font: which face and how many points is a question for
+/// whatever draws the pill, and for the theme after that. What is decided here
+/// is that a percentage is a figure and the clock beside it is not.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// The large percentages.
+    Pct,
+    /// Countdown, day count, daily allowance, the context figures.
+    Time,
+    /// The `ctx` tag.
+    Small,
+}
+
+/// How much room to leave after a cell, and what to put in it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Gap {
+    /// The usual space between two figures of one limit.
+    Cell,
+    /// Nothing: the cells either side read as one word.
+    Tight,
+    /// A short faint rule, between two halves of one figure.
+    Rule,
+    /// The divider between two limits.
+    Group,
+}
+
+/// Where the text sits inside the width a cell reserves.
+///
+/// Every cell is at least as wide as the widest figure it will ever hold, so
+/// that the pill does not twitch as the numbers change; centring that slack is
+/// right for a figure standing alone, and wrong for two halves that have to
+/// touch a separator.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Side {
+    Centre,
+    /// Text against the right edge of its width: the slack falls to its left.
+    Right,
+    /// Text against the left edge: the slack falls to its right.
+    Left,
+}
+
+/// What a cell's colour means.
+///
+/// Three cases rather than a colour, for the same reason `Ink` exists: the
+/// palette belongs to whoever draws. `Plain` is ordinary text, `Dim` is text
+/// that qualifies something else — a wall-clock time beside a countdown, a
+/// figure that is only history — and `Tone` is a figure whose colour is part
+/// of what it says.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[serde(rename_all = "lowercase", tag = "kind", content = "tone")]
+pub enum Paint {
+    Plain,
+    Dim,
+    Tone(Tone),
+}
+
+/// One figure in the pill's single line.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct Cell {
+    pub text: String,
+    /// The widest string this cell will ever hold. Its width is the cell's
+    /// width, so that the pill does not change size as the digits change —
+    /// which matters more than it sounds, since the window is sized to fit and
+    /// resizing it moves everything to its right.
+    pub template: String,
+    pub role: Role,
+    pub paint: Paint,
+    pub gap: Gap,
+    pub side: Side,
+    /// Which limit this cell belongs to: 0 the five-hour window, 1 the week,
+    /// 2 the conversation. The bar under a group spans exactly its cells.
+    pub group: usize,
+    /// What the field is called, for the hint under the pointer. `None` for
+    /// the separator inside a piped pace figure, which is punctuation rather
+    /// than a field.
+    pub field: Option<Field>,
+}
+
+/// The hairline under one group: the same figure as the cells above it.
+#[derive(Clone, Copy, Debug, serde::Serialize)]
+pub struct Bar {
+    pub group: usize,
+    /// The stored reading, always "spent" (A15).
+    pub used_pct: f64,
+    /// How much of the track is filled, 0..1, under the display convention in
+    /// force. Length and colour answer different questions on purpose: a short
+    /// red bar is a window with room left and no time to use it.
+    pub frac: f32,
+    pub paint: Paint,
+    pub field: Field,
+}
+
+impl Cell {
+    fn new(text: impl Into<String>, template: &str, role: Role, paint: Paint) -> Cell {
+        Cell {
+            text: text.into(),
+            template: template.to_string(),
+            role,
+            paint,
+            gap: Gap::Cell,
+            side: Side::Centre,
+            group: 0,
+            field: None,
+        }
+    }
+
+    fn named(mut self, field: Field) -> Cell {
+        self.field = Some(field);
+        self
+    }
+
+    fn with_gap(mut self, gap: Gap) -> Cell {
+        self.gap = gap;
+        self
+    }
+
+    fn aligned(mut self, side: Side) -> Cell {
+        self.side = side;
+        self
+    }
+}
+
+/// The divider between two limits belongs to the cell before it.
+fn end_group(cells: &mut [Cell]) {
+    if let Some(c) = cells.last_mut() {
+        c.gap = Gap::Group;
+    }
+}
+
+/// Everything the pill says, in order, as cells.
+///
+/// No widths and no colours: a width needs a font and a font belongs to the
+/// drawing layer, which since the move to Slint is not even in this process's
+/// hands — the theme measures its own text. What this function fixes is the
+/// composition: which figures appear, in what order, in whose group, worded in
+/// the language the pill is speaking.
+pub fn cells(
+    cfg: &Config,
+    snap: &Snapshot,
+    stale: bool,
+    ctx_stale: bool,
+    now: i64,
+) -> Vec<Cell> {
+    let lang = cfg.lang.clone();
+    // Stale figures are shown in grey, the same as unknown ones: they are
+    // history, not the current state.
+    let pct = |v: f64| {
+        if stale {
+            Paint::Dim
+        } else {
+            Paint::Tone(usage_tone(v, cfg))
+        }
+    };
+    let plain = if stale { Paint::Dim } else { Paint::Plain };
+    let mut cells: Vec<Cell> = Vec::new();
+
+    // The figure shown is either what is gone or what is left, but the colour
+    // is always keyed on spending: "10% left" has to read as danger, not as a
+    // low number.
+    let shown = |v: f64| cfg.pct_mode.shown(v);
+
+    match snap.five_hour {
+        Some(w) => {
+            cells.push(
+                Cell::new(format!("{:.0}%", shown(w.used_pct)), "100%", Role::Pct, pct(w.used_pct))
+                    .named(Field::FiveHourPct),
+            );
+            // Second, against the figure it qualifies: how much is left and
+            // how fast it is going are one reading, and the two clocks after
+            // them are a different one.
+            cells.extend(pace_cells(cfg, w, pace::FIVE_HOUR_SECS, Field::FiveHourPace, stale, now));
+            let (left, clock) = match w.resets_at {
+                Some(r) => (pace::fmt_remaining(r - now), pace::fmt_clock(r)),
+                None => ("--:--".to_string(), "--:--".to_string()),
+            };
+            cells.push(Cell::new(left, "00:00", Role::Time, plain).named(Field::FiveHourLeft));
+            cells.push(
+                Cell::new(clock, "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock),
+            );
+        }
+        None => {
+            cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::FiveHourPct));
+            if cfg.pace_view != PaceView::Off {
+                let t = pace_template(cfg.pace_view);
+                cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::FiveHourPace));
+            }
+            cells.push(
+                Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourLeft),
+            );
+            cells.push(
+                Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock),
+            );
+        }
+    }
+    end_group(&mut cells);
+
+    let weekly_from = cells.len();
+    match snap.seven_day {
+        Some(w) => {
+            cells.push(
+                Cell::new(format!("{:.0}%", shown(w.used_pct)), "100%", Role::Pct, pct(w.used_pct))
+                    .named(Field::SevenDayPct),
+            );
+            cells.extend(pace_cells(cfg, w, pace::SEVEN_DAY_SECS, Field::SevenDayPace, stale, now));
+            // Days left, not the name of the reset day: the weekly figure is
+            // only actionable next to the number of days it has to cover, and
+            // counting from "Tue" to that number is work for the reader.
+            let (day, allowance) = match w.resets_at {
+                Some(r) => (
+                    pace::fmt_days_until(r, now, &lang, cfg.day_count()),
+                    format!(
+                        "{:.0}%",
+                        pace::daily_allowance(w.used_pct, pace::days_until(r, now, cfg.day_count()))
+                    ),
+                ),
+                None => ("--".to_string(), "--%".to_string()),
+            };
+            cells.push(Cell::new(day, "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
+            cells.push(
+                Cell::new(allowance, "100%", Role::Time, plain).named(Field::SevenDayAllowance),
+            );
+        }
+        None => {
+            cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::SevenDayPct));
+            if cfg.pace_view != PaceView::Off {
+                let t = pace_template(cfg.pace_view);
+                cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::SevenDayPace));
+            }
+            cells.push(Cell::new("--", "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
+            cells.push(
+                Cell::new("--%", "100%", Role::Time, Paint::Dim).named(Field::SevenDayAllowance),
+            );
+        }
+    }
+    for c in &mut cells[weekly_from..] {
+        c.group = 1;
+    }
+
+    let ctx_from = cells.len();
+    if cfg.ctx_view != CtxView::Off {
+        match &snap.context {
+            Some(c) => {
+                end_group(&mut cells[..ctx_from]);
+                cells.push(Cell::new("ctx", "ctx", Role::Small, Paint::Dim).named(Field::Context));
+                cells.extend(ctx_cells(cfg, c, ctx_stale));
+            }
+            // The source is switched on and has found nothing yet, which is
+            // worth saying: a group that simply is not there looks the same as
+            // a setting nobody turned on.
+            None if cfg.session_enabled => {
+                end_group(&mut cells[..ctx_from]);
+                cells.push(Cell::new("ctx", "ctx", Role::Small, Paint::Dim).named(Field::Context));
+                if cfg.ctx_view.has_pct() {
+                    cells.push(
+                        Cell::new("--%", "100%", Role::Time, Paint::Dim).named(Field::ContextPct),
+                    );
+                }
+                if cfg.ctx_view.has_tokens() {
+                    cells.push(
+                        Cell::new("--", "999k", Role::Time, Paint::Dim).named(Field::ContextTokens),
+                    );
+                }
+            }
+            None => {}
+        }
+    }
+    for c in &mut cells[ctx_from..] {
+        c.group = 2;
+    }
+
+    cells
+}
+
+/// The context group, in whichever of the five forms `ctx_view` names.
+///
+/// Two figures of one reading, so they share a group — but a context window
+/// fills instead of draining like the 5-hour and weekly quotas do, so it reads
+/// by its own pair of directions (`ctx_pct_dir` / `ctx_tokens_dir`) rather than
+/// the quotas' `pct_mode`. A remaining token count owes as much to the guessed
+/// window size as the remaining percentage already does, so nothing here is
+/// more of a guess than the other.
+fn ctx_cells(cfg: &Config, c: &ContextInfo, ctx_stale: bool) -> Vec<Cell> {
+    let view = cfg.ctx_view;
+    let paint = if ctx_stale { Paint::Dim } else { Paint::Plain };
+    let pct = || {
+        Cell::new(format!("{:.0}%", cfg.ctx_pct_dir.shown(c.used_pct)), "100%", Role::Time, paint)
+            .named(Field::ContextPct)
+    };
+    let tokens = || {
+        let text = match (c.used_tokens, cfg.ctx_tokens_dir()) {
+            (Some(t), PctMode::Spent) => pace::fmt_tokens(t),
+            (Some(t), PctMode::Left) => match c.limit_tokens {
+                Some(limit) => pace::fmt_tokens(limit.saturating_sub(t)),
+                None => "--".to_string(),
+            },
+            (None, _) => "--".to_string(),
+        };
+        Cell::new(text, "999k", Role::Time, paint).named(Field::ContextTokens)
+    };
+    let mut out = Vec::new();
+    if view.tokens_first() {
+        out.push(tokens());
+        if view.has_pct() {
+            out.push(pct());
+        }
+    } else {
+        out.push(pct());
+        if view.has_tokens() {
+            out.push(tokens());
+        }
+    }
+    out
+}
+
+/// The pace figure as a cell, when it is wanted and knowable.
+fn pace_cells(
+    cfg: &Config,
+    w: Window,
+    span: i64,
+    field: Field,
+    stale: bool,
+    now: i64,
+) -> Vec<Cell> {
+    let view = cfg.pace_view;
+    if view == PaceView::Off {
+        return Vec::new();
+    }
+    let Some(delta) = pace_delta(w, span, now) else {
+        return vec![Cell::new("--", pace_template(view), Role::Time, Paint::Dim).named(field)];
+    };
+    let target = w.used_pct - delta;
+    let paint = if stale { Paint::Dim } else { Paint::Tone(pace_tone(delta, cfg)) };
+    let parts = pace::pace_parts(view, w.used_pct, target);
+    // Both halves and the separator between them answer to the same name.
+    let half = |text: &str, template: &str| {
+        Cell::new(text, template, Role::Time, paint).named(field)
+    };
+    match view {
+        // Two cells with a rule painted between them.
+        PaceView::Split if parts.len() == 2 => vec![
+            half(&parts[0], "▲99%").with_gap(Gap::Rule),
+            half(&parts[1], "10.0×"),
+        ],
+        // Three cells run together with no gaps: the separator is a cell of
+        // its own only so that it can keep the grey of the clock beside it
+        // while the two numbers carry the pace colour.
+        PaceView::Piped if parts.len() == 2 => vec![
+            half(&parts[0], "▲99%").with_gap(Gap::Tight).aligned(Side::Right),
+            Cell::new(view.joiner(), view.joiner(), Role::Time, Paint::Dim)
+                .with_gap(Gap::Tight)
+                .named(field),
+            half(&parts[1], "10.0×").aligned(Side::Left),
+        ],
+        _ => vec![half(&parts.join(view.joiner()), pace_template(view))],
+    }
+}
+
+/// The hairline under each group that has one.
+///
+/// Not every group does: a window nobody has reported has a row of dashes
+/// above it and nothing to draw underneath. The order matches `cells`, and
+/// `group` says which run of cells each bar spans.
+pub fn bars(cfg: &Config, snap: &Snapshot, ctx_stale: bool, now: i64) -> Vec<Bar> {
+    let mut out = Vec::new();
+    let quota = |w: Option<Window>, span: i64, group: usize, field: Field| -> Option<Bar> {
+        let w = w?;
+        // Length and colour answer different questions on purpose.
+        let tone = match cfg.bar_colour {
+            BarColour::Fill => usage_tone(w.used_pct, cfg),
+            BarColour::Pace => match pace_delta(w, span, now) {
+                Some(delta) => pace_tone(delta, cfg),
+                None => usage_tone(w.used_pct, cfg),
+            },
+        };
+        Some(Bar {
+            group,
+            used_pct: w.used_pct,
+            // The bar carries the same number as the figure above it, so in
+            // "left" mode it drains as the quota goes. Its colour does not:
+            // that stays on spending, which is what a short red bar is telling
+            // you.
+            frac: (cfg.pct_mode.shown(w.used_pct) / 100.0).clamp(0.0, 1.0) as f32,
+            paint: Paint::Tone(tone),
+            field,
+        })
+    };
+    out.extend(quota(snap.five_hour, pace::FIVE_HOUR_SECS, 0, Field::FiveHourBar));
+    out.extend(quota(snap.seven_day, pace::SEVEN_DAY_SECS, 1, Field::SevenDayBar));
+    // The context group gets the same bar. It has no window and no reset, so
+    // there is no pace to colour it by — only how full it is, which is the
+    // whole of what it says.
+    if cfg.ctx_view != CtxView::Off
+        && let Some(c) = &snap.context
+    {
+        out.push(Bar {
+            group: 2,
+            used_pct: c.used_pct,
+            frac: (cfg.ctx_pct_dir.shown(c.used_pct) / 100.0).clamp(0.0, 1.0) as f32,
+            paint: if ctx_stale {
+                Paint::Dim
+            } else {
+                Paint::Tone(usage_tone(c.used_pct, cfg))
+            },
+            field: Field::ContextBar,
+        });
+    }
+    out
+}
+
 /// A field of the pill, for the hint that names it under the pointer.
 ///
 /// The pill is eight or nine bare figures in a row; the panel below spells them
 /// out but only all at once. This answers the narrower question a newcomer
 /// actually has, which is "that number there — what is it?".
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// It serialises in `snake_case` — `five_hour_pct` — because a field is an
+/// identity rather than a label: `field_name` gives the wording, which is
+/// allowed to be reworded, and this is what a contract can be keyed on (A21).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Field {
     FiveHourPct,
     FiveHourPace,
@@ -616,6 +1039,132 @@ mod tests {
             .find(|(l, _)| l == label)
             .map(|(_, v)| v.as_str())
             .unwrap_or_else(|| panic!("no `{label}` line in {lines:?}"))
+    }
+
+    /// The cell list written out one line per cell, so a golden test reads as
+    /// a picture of the pill rather than as a wall of struct literals.
+    fn sketch(cells: &[Cell]) -> String {
+        let mut out = String::new();
+        for c in cells {
+            let paint = match c.paint {
+                Paint::Plain => "plain".to_string(),
+                Paint::Dim => "dim".to_string(),
+                Paint::Tone(t) if t.from == t.to => format!("{:?}", t.from).to_lowercase(),
+                Paint::Tone(t) => format!("{:?}->{:?}@{:.2}", t.from, t.to, t.t).to_lowercase(),
+            };
+            out.push_str(&format!(
+                "g{} {:?} {:?} {:?} {} {:?} {}\n",
+                c.group,
+                c.role,
+                c.gap,
+                c.side,
+                paint,
+                c.text,
+                c.field.map(|f| format!("{f:?}")).unwrap_or_else(|| "-".into()),
+            ));
+        }
+        out
+    }
+
+    #[test]
+    fn the_pill_is_made_of_exactly_this() {
+        // The golden test for the pill, beside the golden test for the panel.
+        // It is the insurance for the move to Slint: the drawing layer is
+        // replaced wholesale, and a difference here says the *figures* moved —
+        // the one kind of difference that must not happen quietly.
+        let now = now();
+        let (snap, _) = fixture(now);
+        assert_eq!(
+            sketch(&cells(&en(), &snap, false, false, now)),
+            "\
+g0 Pct Cell Centre green \"24%\" FiveHourPct
+g0 Time Cell Centre green \"▼1.1×\" FiveHourPace
+g0 Time Cell Centre plain \"3:37\" FiveHourLeft
+g0 Time Group Centre dim \"15:37\" FiveHourClock
+g1 Pct Cell Centre green \"54%\" SevenDayPct
+g1 Time Cell Centre green \"1.0×\" SevenDayPace
+g1 Time Cell Centre dim \"3d\" SevenDayDays
+g1 Time Group Centre plain \"15%\" SevenDayAllowance
+g2 Small Cell Centre dim \"ctx\" Context
+g2 Time Cell Centre plain \"38%\" ContextPct
+"
+        );
+    }
+
+    #[test]
+    fn a_window_nobody_has_reported_is_a_row_of_dashes() {
+        // Not an absent group: a group that simply is not there looks exactly
+        // like a source somebody switched off, and those are different facts.
+        let now = now();
+        let cells = cells(&en(), &Snapshot::default(), false, false, now);
+        assert!(
+            cells.iter().all(|c| matches!(c.paint, Paint::Dim)),
+            "nothing is known, so nothing is coloured"
+        );
+        let texts: Vec<&str> = cells.iter().map(|c| c.text.as_str()).collect();
+        assert_eq!(
+            texts,
+            ["--%", "--", "--:--", "--:--", "--%", "--", "--", "--%", "ctx", "--%"]
+        );
+        // The context group is still announced, because `session_enabled` is
+        // on and "found nothing yet" is worth saying.
+        assert_eq!(cells.last().map(|c| c.group), Some(2));
+    }
+
+    #[test]
+    fn stale_figures_go_grey_rather_than_staying_colourful() {
+        // A confident colour on a reading from an hour ago is a claim about
+        // the present that nothing supports.
+        let now = now();
+        let (snap, _) = fixture(now);
+        let cells = cells(&en(), &snap, true, true, now);
+        assert!(cells.iter().all(|c| matches!(c.paint, Paint::Dim)), "{}", sketch(&cells));
+    }
+
+    #[test]
+    fn the_bars_carry_the_spent_figure_and_the_colour_of_spending() {
+        let now = now();
+        let (snap, _) = fixture(now);
+        let spent = bars(&en(), &snap, false, now);
+        let groups: Vec<usize> = spent.iter().map(|b| b.group).collect();
+        assert_eq!(groups, [0, 1, 2], "one bar per group, in the pill's order");
+        assert!((spent[0].frac - 0.24).abs() < 1e-6);
+        assert!((spent[1].frac - 0.54).abs() < 1e-6);
+
+        // Reading the quotas the other way round drains the bar — and leaves
+        // the colour alone. A short red bar is a window with room left and no
+        // time to use it (A15).
+        let left = Config { pct_mode: PctMode::Left, ..en() };
+        let drained = bars(&left, &snap, false, now);
+        assert!((drained[0].frac - 0.76).abs() < 1e-6, "the length follows the figure");
+        assert_eq!(
+            format!("{:?}", drained[0].paint),
+            format!("{:?}", spent[0].paint),
+            "the colour does not"
+        );
+    }
+
+    #[test]
+    fn a_piped_pace_is_three_cells_answering_to_one_name() {
+        // The separator is a cell of its own only so that it can stay grey
+        // while the two numbers either side carry the pace colour. It is
+        // punctuation — but it still answers to the field's name, or crossing
+        // it would blink the hint off and on again.
+        let now = now();
+        let (snap, _) = fixture(now);
+        let cfg = Config { pace_view: PaceView::Piped, ..en() };
+        let cells = cells(&cfg, &snap, false, false, now);
+        let pace: Vec<&Cell> =
+            cells.iter().filter(|c| c.field == Some(Field::FiveHourPace)).collect();
+        assert_eq!(pace.len(), 3);
+        assert_eq!(pace[1].text, "|");
+        assert!(matches!(pace[1].paint, Paint::Dim), "the pipe is punctuation");
+        assert_eq!(pace[0].side, Side::Right, "the halves lean on the separator");
+        assert_eq!(pace[2].side, Side::Left);
+        assert!(
+            pace[0].gap == Gap::Tight && pace[1].gap == Gap::Tight,
+            "and nothing sits between them"
+        );
     }
 
     #[test]

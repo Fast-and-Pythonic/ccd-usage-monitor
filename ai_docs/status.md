@@ -66,7 +66,7 @@ Snapshot of 2026-09-11.
 - The window has no frame and no drop shadow: the DWM one is stripped through
   Win32 and re-stripped after the commands that bring it back (A10).
 - Tray icon: hide/show, click-through, quit.
-- `cargo test`: 158 tests over payload parsing, merge/prune rules and every
+- `cargo test`: 163 tests over payload parsing, merge/prune rules and every
   derived figure.
 - **The config is hand-editable and says so** (A22). `config.toml` is in
   sections — `[sources]`, `[behaviour]`, `[display]`, `[thresholds]`,
@@ -98,8 +98,17 @@ Snapshot of 2026-09-11.
   knows), `view.rs` (what it says) and `ui.rs` (how it is drawn), with
   `tray.rs` beside them. `runtime`, `view` and `tray` contain no egui at all,
   which is checkable with one grep — see A19.
-- **`view.rs` is covered: 26 tests, including a golden one that asserts the
-  whole detail panel word for word.** That is the insurance for the move to
+- **The pill's composition lives in `view.rs`** (A19): `cells` returns the
+  figures in order with a font *role* and a `Paint` instead of a font and an
+  RGB value, `bars` the hairline under each group. `ui.rs` only measures and
+  paints them, and `--serve` publishes the same list, so a CSS widget gets the
+  composition of the line and not just the numbers behind it. Two `--demo`
+  screenshots taken across the change are identical to the byte.
+  *Caveat for the next such comparison:* the demo's reset time is a real
+  wall-clock, so two shots taken minutes apart differ in that one cell and in
+  nothing else.
+- **`view.rs` is covered: 31 tests, including golden ones that assert the whole
+  detail panel and the whole pill.** That is the insurance for the move to
   Slint (A20): the drawing layer is replaced, and a diff in those four lines is
   the difference between a port and a rewrite. Covered besides: the tone
   thresholds with A15's rule that colour reads spending and never the shown
@@ -243,10 +252,11 @@ Snapshot of 2026-09-11.
 - **Autostart** is not wired up. Nothing is written to the registry or the
   Startup folder yet; that is a deliberate omission pending a decision.
 - **`cargo clippy -- -D warnings` does not pass, and has not for a while.**
-  Thirteen findings, none of them new: nine collapsible `if let` / `if` pairs
+  Twelve findings, none of them new: nine collapsible `if let` / `if` pairs
   (`session.rs`, `state.rs`, `runtime.rs`, `history.rs`), an `or_insert_with`
   that could be `or_default`, a manual char comparison, a `sort_by` that is a
-  `sort_by_key`, and `stepper_row` at eight arguments. `--all-targets` adds ten
+  `sort_by_key`, and `stepper_row` at eight arguments. (It was thirteen until
+  `draw_track` was folded into `view::bars`.) `--all-targets` adds ten
   more in test code, all of them the same `field_reassign_with_default`.
   Worth knowing before quoting the command as a gate: it is red for reasons
   that predate whatever is being checked, so the way to use it on a change is

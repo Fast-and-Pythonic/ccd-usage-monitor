@@ -54,6 +54,17 @@ struct Payload {
     five_hour: Option<Quota>,
     seven_day: Option<Quota>,
     context: Option<Context>,
+    /// The pill itself, figure by figure, in the order it reads: the text,
+    /// which group it belongs to, and whether its colour means anything.
+    ///
+    /// `view::Cell` and `view::Bar` travel as they are rather than through a
+    /// DTO of their own, which is the exception `Ink` and `Tone` already are:
+    /// `view.rs` *is* the layer a second front end consumes (A19), so its
+    /// vocabulary is the contract rather than an internal name that happens to
+    /// be visible. `model.rs` is the one that stays behind a DTO.
+    cells: Vec<view::Cell>,
+    /// One hairline per group that has something to show.
+    bars: Vec<view::Bar>,
     /// The detail panel, line for line, already worded and localised — the
     /// cheapest way to put something true on screen without reimplementing any
     /// of the reasoning above.
@@ -238,6 +249,8 @@ fn render(cfg: &Config, rt: &Runtime, snap: &Snapshot, stale: (bool, bool), now:
             .seven_day
             .map(|w| quota(cfg, rt, w, pace::SEVEN_DAY_SECS, now, true)),
         context: snap.context.as_ref().map(|c| context(cfg, c, now)),
+        cells: view::cells(cfg, snap, stale.0, stale.1, now),
+        bars: view::bars(cfg, snap, stale.1, now),
         detail_lines: view::detail_lines(cfg, rt, snap, stale.0, now)
             .into_iter()
             .map(|(label, value)| Line { label, value })

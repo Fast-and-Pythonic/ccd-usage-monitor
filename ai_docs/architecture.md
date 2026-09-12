@@ -490,7 +490,8 @@ The code that was once `ui.rs` is split by what survives a change of GUI:
   the history log (A17).
 * **`view.rs` — what the widget says.** Snapshot and runtime state turned into
   the text, figures and verdicts a person reads: `detail_lines`, `rate_text`,
-  `api_notice`, `field_name`, the pace delta, and colour *as meaning*.
+  `api_notice`, `field_name`, the pace delta, colour *as meaning*, and — since
+  the move to Slint — the composition of the pill itself (`cells`, `bars`).
 * **`ui.rs` — how it is drawn.** Painting, layout, the settings window, the
   palette, the window itself.
 
@@ -505,6 +506,16 @@ were unverifiable as well.
 grep -E "egui::|eframe::|Color32|FontId|Painter" src/runtime.rs src/view.rs src/tray.rs | grep -v "//"
 ```
 Empty output is the condition. Not a style rule — the point of the split.
+
+**The pill's composition is what it says, not how it is drawn.** `view::cells`
+returns the figures in order — text, the widest string each will ever hold, a
+font *role*, a `Paint`, which group it belongs to and which field it is — and
+`view::bars` the hairline under each group. No widths and no fonts: measuring
+text needs a font, and under Slint the process no longer owns one at all, since
+the theme lays out its own text. Moving this out of `ui.rs` *before* the front
+end was replaced is the same trick `--serve` played on A19 — the composition
+became testable while the old GUI was still there to compare against, and the
+proof that nothing shifted is two `--demo` screenshots identical to the byte.
 
 **Colour is a meaning, not a value.** `view::usage_tone` and `view::pace_tone`
 return `Tone { from: Ink, to: Ink, t }`: which two roles a figure sits between

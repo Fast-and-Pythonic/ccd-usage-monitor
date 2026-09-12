@@ -20,8 +20,8 @@ app, which shows none of this itself and does not run the status line (G06).
 - **The context figure is wrong or silent** → G17 and A18, then `src/session.rs`;
   `ccd-usage-monitor --sessions` lists every transcript and what each reports
 - **Changing what a figure or a panel line *says*** → `src/view.rs` (A19). It
-  holds no egui and is where the wording, the pace verdict and the colour
-  *meaning* live
+  holds no egui and is where the wording, the pace verdict, the colour
+  *meaning* and the pill's composition (`cells`, `bars`) live
 - **Changing how a source is read or merged** → `src/runtime.rs` (A19)
 - **Adding or changing a setting** → `src/schema.rs` (A22). One entry there is
   its section in the file, its bounds and its wording; four tests refuse a
