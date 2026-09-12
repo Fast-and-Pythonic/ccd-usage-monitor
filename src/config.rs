@@ -36,17 +36,6 @@ impl SourceKind {
         SourceKind::Session,
     ];
 
-    pub fn label(self, ru: bool) -> &'static str {
-        match (self, ru) {
-            (SourceKind::Bridge, _) => "statusLine",
-            (SourceKind::Api, _) => "usage API",
-            (SourceKind::Desktop, true) => "Приложение",
-            (SourceKind::Desktop, false) => "Desktop app",
-            (SourceKind::Session, true) => "Транскрипт сессии",
-            (SourceKind::Session, false) => "Session transcript",
-        }
-    }
-
     /// The tag used where a whole label will not fit.
     pub fn short(self) -> &'static str {
         match self {
@@ -84,27 +73,6 @@ pub enum DetailMode {
 }
 
 impl DetailMode {
-    pub const ALL: [DetailMode; 3] = [
-        DetailMode::WithSettings,
-        DetailMode::Hover,
-        DetailMode::Never,
-    ];
-
-    pub fn label(self, ru: bool) -> &'static str {
-        match (self, ru) {
-            (DetailMode::Hover, true) => "при наведении",
-            (DetailMode::Hover, false) => "on hover",
-            (DetailMode::WithSettings, true) => "с настройками",
-            (DetailMode::WithSettings, false) => "with settings",
-            (DetailMode::Never, true) => "никогда",
-            (DetailMode::Never, false) => "never",
-        }
-    }
-
-    pub fn next(self) -> DetailMode {
-        let i = DetailMode::ALL.iter().position(|m| *m == self).unwrap_or(0);
-        DetailMode::ALL[(i + 1) % DetailMode::ALL.len()]
-    }
 }
 
 /// What the big percentages and the bars say: how much of a window is gone, or
@@ -181,33 +149,6 @@ pub enum PaceView {
 }
 
 impl PaceView {
-    pub const ALL: [PaceView; 7] = [
-        PaceView::Ratio,
-        PaceView::Points,
-        PaceView::RatioPoints,
-        PaceView::PointsRatio,
-        PaceView::Split,
-        PaceView::Piped,
-        PaceView::Off,
-    ];
-
-    /// The sample itself, not a description of it: a list of forms should show
-    /// the result rather than promise it.
-    pub fn label(self, ru: bool) -> &'static str {
-        match self {
-            PaceView::Off if ru => "выкл",
-            PaceView::Off => "off",
-            PaceView::Ratio => "▲2.0×",
-            PaceView::Points => "▲9%",
-            PaceView::RatioPoints => "▲2.0× 9%",
-            PaceView::PointsRatio => "▲9% 2.0×",
-            // A plain pipe, not a box-drawing rule: the pill paints a real
-            // one, and Segoe UI has no glyph for the pretty character.
-            PaceView::Split => "▲9% | 2.0×",
-            PaceView::Piped => "▲9%|2.0×",
-        }
-    }
-
     pub fn has_ratio(self) -> bool {
         !matches!(self, PaceView::Off | PaceView::Points)
     }
@@ -257,21 +198,6 @@ pub enum BarColour {
 }
 
 impl BarColour {
-    pub fn label(self, ru: bool) -> &'static str {
-        match (self, ru) {
-            (BarColour::Fill, true) => "по расходу",
-            (BarColour::Fill, false) => "by fill",
-            (BarColour::Pace, true) => "по темпу",
-            (BarColour::Pace, false) => "by pace",
-        }
-    }
-
-    pub fn other(self) -> BarColour {
-        match self {
-            BarColour::Fill => BarColour::Pace,
-            BarColour::Pace => BarColour::Fill,
-        }
-    }
 }
 
 /// Which session's context the widget reports.
@@ -294,24 +220,6 @@ pub enum SessionPick {
 }
 
 impl SessionPick {
-    pub fn label(self, ru: bool) -> &'static str {
-        match (self, ru) {
-            (SessionPick::Freshest, true) => "свежайшая",
-            (SessionPick::Freshest, false) => "freshest",
-            (SessionPick::Live, true) => "запущенная",
-            (SessionPick::Live, false) => "running",
-            (SessionPick::Pinned, true) => "выбранная",
-            (SessionPick::Pinned, false) => "pinned",
-        }
-    }
-
-    pub fn next(self) -> SessionPick {
-        match self {
-            SessionPick::Live => SessionPick::Freshest,
-            SessionPick::Freshest => SessionPick::Pinned,
-            SessionPick::Pinned => SessionPick::Live,
-        }
-    }
 }
 
 /// How the denominator of the context figure is decided.
@@ -333,24 +241,6 @@ pub enum CtxLimit {
 }
 
 impl CtxLimit {
-    pub fn label(self, ru: bool) -> &'static str {
-        match (self, ru) {
-            (CtxLimit::Table, true) => "по таблице",
-            (CtxLimit::Table, false) => "from the table",
-            (CtxLimit::Learned, true) => "из statusLine",
-            (CtxLimit::Learned, false) => "as stated",
-            (CtxLimit::Fixed, true) => "вручную",
-            (CtxLimit::Fixed, false) => "by hand",
-        }
-    }
-
-    pub fn next(self) -> CtxLimit {
-        match self {
-            CtxLimit::Learned => CtxLimit::Table,
-            CtxLimit::Table => CtxLimit::Fixed,
-            CtxLimit::Fixed => CtxLimit::Learned,
-        }
-    }
 }
 
 /// What the `ctx` group shows.
@@ -369,27 +259,6 @@ pub enum CtxView {
 }
 
 impl CtxView {
-    pub const ALL: [CtxView; 5] = [
-        CtxView::Pct,
-        CtxView::Tokens,
-        CtxView::PctTokens,
-        CtxView::TokensPct,
-        CtxView::Off,
-    ];
-
-    /// The sample itself, not a description of it — the same rule `PaceView`
-    /// follows: a list of forms should show the result rather than promise it.
-    pub fn label(self, ru: bool) -> &'static str {
-        match self {
-            CtxView::Off if ru => "выкл",
-            CtxView::Off => "off",
-            CtxView::Pct => "14%",
-            CtxView::Tokens => "142k",
-            CtxView::TokensPct => "142k 14%",
-            CtxView::PctTokens => "14% 142k",
-        }
-    }
-
     pub fn has_pct(self) -> bool {
         !matches!(self, CtxView::Off | CtxView::Tokens)
     }
@@ -412,28 +281,6 @@ pub struct Config {
     /// Multiplies every size below, and the paddings with them. The one knob
     /// worth reaching for when the widget moves to another monitor.
     pub scale: f32,
-    /// Point size of the large percentages.
-    pub font_pct: f32,
-    /// Point size of the countdown, the day count and the daily allowance.
-    pub font_time: f32,
-    /// Height of the pill in logical pixels; the text and track positions
-    /// inside it follow.
-    pub pill_height: f32,
-    /// Thickness of the usage bars.
-    pub track_height: f32,
-    /// Clear space above the figures, between them and the bars, and below the
-    /// bars. The pill grows when they do not fit in `pill_height`.
-    pub pad_top: f32,
-    pub gap_text_bars: f32,
-    pub pad_bottom: f32,
-    /// One multiplier for every horizontal gap in the row of figures: between
-    /// two cells, either side of a group divider, and from the edge of the
-    /// pill. They are three different distances that have to stay in
-    /// proportion, so they are set together or not at all.
-    pub gaps_x: f32,
-    /// How round the corners are. Half the pill's height gives back the
-    /// original lozenge; zero gives square corners.
-    pub corner_radius: f32,
     /// Which days the weekly counter and the daily allowance are spread over.
     /// Today is usually half spent already; the reset day is worth only the
     /// hours before the reset, which with a morning reset is next to nothing.
@@ -532,15 +379,6 @@ impl Default for Config {
         Config {
             opacity: 0.82,
             scale: 1.0,
-            font_pct: 14.0,
-            font_time: 14.0,
-            pill_height: 34.0,
-            track_height: 3.0,
-            pad_top: 4.5,
-            gap_text_bars: 3.0,
-            pad_bottom: 4.5,
-            gaps_x: 1.0,
-            corner_radius: 10.0,
             count_today: false,
             count_reset_day: true,
             pct_mode: PctMode::Spent,
@@ -683,15 +521,6 @@ impl Config {
         }
     }
 
-    pub fn set_enabled(&mut self, kind: SourceKind, on: bool) {
-        match kind {
-            SourceKind::Bridge => self.bridge_enabled = on,
-            SourceKind::Api => self.api_enabled = on,
-            SourceKind::Desktop => self.desktop_enabled = on,
-            SourceKind::Session => self.session_enabled = on,
-        }
-    }
-
     pub fn stale_secs(&self, kind: SourceKind) -> i64 {
         let raw = match kind {
             SourceKind::Bridge => self.bridge_stale_secs,
@@ -700,16 +529,6 @@ impl Config {
             SourceKind::Session => self.session_stale_secs,
         };
         raw.clamp(30, 24 * 3600)
-    }
-
-    pub fn set_stale_secs(&mut self, kind: SourceKind, secs: i64) {
-        let secs = secs.clamp(30, 24 * 3600);
-        match kind {
-            SourceKind::Bridge => self.bridge_stale_secs = secs,
-            SourceKind::Api => self.api_stale_secs = secs,
-            SourceKind::Desktop => self.desktop_stale_secs = secs,
-            SourceKind::Session => self.session_stale_secs = secs,
-        }
     }
 
     pub fn session_scan_secs(&self) -> u64 {
@@ -909,6 +728,11 @@ impl Config {
             // stale copy the one a person reads first.
             live.contains(key) && crate::schema::section_of(key).is_none()
         });
+        // And inside a section, only what is still a setting. This is what
+        // retires a key: the nine sizes that moved into the theme with the
+        // move to Slint (A24) are no longer written by `Config`, so the next
+        // save takes them out of `[style]` rather than leaving nine lines
+        // nobody can make do anything.
         for section in crate::schema::Section::ALL {
             if let Some(table) = doc.get_mut(section.key()).and_then(|i| i.as_table_mut()) {
                 table.retain(|key, _| live.contains(key));
@@ -974,56 +798,6 @@ impl Config {
         clamp(self.scale, 0.6, 3.0, 1.0)
     }
 
-    pub fn font_pct(&self) -> f32 {
-        clamp(self.font_pct, 6.0, 48.0, 14.0)
-    }
-
-    pub fn font_time(&self) -> f32 {
-        clamp(self.font_time, 6.0, 48.0, 14.0)
-    }
-
-    pub fn pill_height(&self) -> f32 {
-        clamp(self.pill_height, 18.0, 120.0, 34.0)
-    }
-
-    pub fn track_height(&self) -> f32 {
-        clamp(self.track_height, 0.0, 16.0, 3.0)
-    }
-
-    pub fn pad_top(&self) -> f32 {
-        clamp(self.pad_top, 0.0, 40.0, 4.5)
-    }
-
-    pub fn gap_text_bars(&self) -> f32 {
-        clamp(self.gap_text_bars, 0.0, 40.0, 3.0)
-    }
-
-    pub fn pad_bottom(&self) -> f32 {
-        clamp(self.pad_bottom, 0.0, 40.0, 4.5)
-    }
-
-    pub fn gaps_x(&self) -> f32 {
-        clamp(self.gaps_x, 0.2, 3.0, 1.0)
-    }
-
-    pub fn corner_radius(&self) -> f32 {
-        clamp(self.corner_radius, 0.0, 60.0, 10.0)
-    }
-
-    /// Back to the shipped look, for when a size hunt has gone astray.
-    pub fn reset_sizes(&mut self) {
-        let d = Config::default();
-        self.scale = d.scale;
-        self.font_pct = d.font_pct;
-        self.font_time = d.font_time;
-        self.pill_height = d.pill_height;
-        self.track_height = d.track_height;
-        self.pad_top = d.pad_top;
-        self.gap_text_bars = d.gap_text_bars;
-        self.pad_bottom = d.pad_bottom;
-        self.gaps_x = d.gaps_x;
-        self.corner_radius = d.corner_radius;
-    }
 }
 
 /// The exact text this process last wrote to `config.toml`.
@@ -1418,12 +1192,6 @@ lang = \"ru\"
     }
 
     #[test]
-    fn the_pace_settings_have_two_states_each() {
-        assert_eq!(BarColour::Fill.other(), BarColour::Pace);
-        assert_eq!(BarColour::Fill.other().other(), BarColour::Fill);
-    }
-
-    #[test]
     fn a_config_written_before_the_setting_shows_spending() {
         let cfg: Config = toml::from_str("").unwrap();
         assert_eq!(cfg.pct_mode, PctMode::Spent);
@@ -1432,35 +1200,22 @@ lang = \"ru\"
     }
 
     #[test]
-    fn the_new_sizes_are_clamped_like_the_rest() {
-        let mut cfg = Config::default();
-        assert_eq!(cfg.gaps_x(), 1.0);
-        assert_eq!(cfg.corner_radius(), 10.0);
-
-        // A hand-edited file cannot collapse the row of figures into one blur
-        // or round the pill into something else.
-        cfg.gaps_x = 0.0;
-        assert_eq!(cfg.gaps_x(), 0.2);
-        cfg.gaps_x = 99.0;
-        assert_eq!(cfg.gaps_x(), 3.0);
-        cfg.corner_radius = -5.0;
-        assert_eq!(cfg.corner_radius(), 0.0);
-
-        // Nonsense falls back to the shipped value rather than to a bound.
-        cfg.gaps_x = f32::NAN;
-        assert_eq!(cfg.gaps_x(), 1.0);
-        cfg.corner_radius = f32::INFINITY;
-        assert_eq!(cfg.corner_radius(), 10.0);
-    }
-
-    #[test]
-    fn reset_sizes_puts_the_new_ones_back_too() {
-        let mut cfg = Config::default();
-        cfg.gaps_x = 2.5;
-        cfg.corner_radius = 0.0;
-        cfg.reset_sizes();
-        assert_eq!(cfg.gaps_x, 1.0);
-        assert_eq!(cfg.corner_radius, 10.0);
+    fn a_setting_that_no_longer_exists_is_taken_out_of_the_file() {
+        // The nine sizes moved into the theme. A config still carrying them
+        // must come back without them: a line that looks like a setting and
+        // does nothing is worse than no line, because it is tried first.
+        let before = "[style]
+scale = 1.1
+corner_radius = 10.0
+pill_height = 34.0
+gaps_x = 1.0
+";
+        let after = Config::default().render(before);
+        assert!(after.contains("scale"), "{after}");
+        for gone in ["corner_radius", "pill_height", "gaps_x"] {
+            assert!(!after.contains(gone), "`{gone}` survived:
+{after}");
+        }
     }
 
     #[test]
@@ -1515,8 +1270,9 @@ lang = \"ru\"
         assert_eq!(cfg.session_scan_secs(), 5);
         cfg.session_scan_secs = 99_999;
         assert_eq!(cfg.session_scan_secs(), 600);
-        // The fourth source ages on its own clock like the other three.
-        cfg.set_stale_secs(SourceKind::Session, 1);
+        // The fourth source ages on its own clock like the other three, and
+        // is clamped where it is read rather than where it is written.
+        cfg.session_stale_secs = 1;
         assert_eq!(cfg.stale_secs(SourceKind::Session), 30);
     }
 

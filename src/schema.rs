@@ -32,9 +32,9 @@ use crate::config::Config;
 /// A table in `config.toml`. The order is the order the sections are written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
-    /// How the pill is drawn. Dies with the move to Slint (A20): a theme file
-    /// takes it over, and only `scale` and `opacity` stay behind as the two
-    /// knobs worth having without learning `.slint`.
+    /// How the pill is drawn. Almost all of this moved into the theme with
+    /// the move to Slint (A20, A24); `scale` and `opacity` stayed behind as
+    /// the two knobs worth having without opening a `.slint` file.
     Style,
     /// What the widget says rather than how it looks — the display
     /// conventions. `view.rs` reads these, so they survive any front end and
@@ -695,111 +695,6 @@ pub const ALL: &[Setting] = &[
         ),
         form: true,
     },
-    Setting {
-        key: "font_pct",
-        section: Section::Style,
-        kind: Kind::Float { min: 6.0, max: 48.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Кегль процентов", "Percent font"),
-        tip: w(
-            "Кегль крупных процентов на пилюле.",
-            "Point size of the large percentages on the pill.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "font_time",
-        section: Section::Style,
-        kind: Kind::Float { min: 6.0, max: 48.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Кегль времени", "Time font"),
-        tip: w(
-            "Кегль обратного отсчёта, времени сброса, числа дней и дневной нормы.",
-            "Point size of the countdown, the reset clock, the day count and the \
-             daily allowance.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "pill_height",
-        section: Section::Style,
-        kind: Kind::Float { min: 18.0, max: 120.0, step: 1.0, big: 4.0, show: Show::Plain },
-        label: w("Высота пилюли", "Pill height"),
-        tip: w(
-            "Высота самой пилюли. Если содержимому мало места, она вырастет сама.",
-            "Height of the pill itself. It grows on its own when the contents need \
-             more room.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "track_height",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.0, max: 16.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Толщина полосок", "Bar thickness"),
-        tip: w(
-            "Толщина полосок расхода под цифрами. 0 убирает их совсем.",
-            "Thickness of the usage bars under the figures. Zero hides them.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "pad_top",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.0, max: 40.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Над цифрами", "Above figures"),
-        tip: w(
-            "Отступ между верхом пилюли и строкой цифр.",
-            "Space between the top of the pill and the row of figures.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "gap_text_bars",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.0, max: 40.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Цифры и бары", "Figures to bars"),
-        tip: w(
-            "Просвет между цифрами и полосками расхода.",
-            "The gap between the figures and the usage bars.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "pad_bottom",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.0, max: 40.0, step: 0.5, big: 2.0, show: Show::Plain },
-        label: w("Под барами", "Below bars"),
-        tip: w(
-            "Отступ между полосками и низом пилюли.",
-            "Space between the bars and the bottom of the pill.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "gaps_x",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.2, max: 3.0, step: 0.05, big: 0.2, show: Show::Percent },
-        label: w("Отступы по горизонтали", "Horizontal gaps"),
-        tip: w(
-            "Все горизонтальные просветы сразу: между числами, вокруг разделителей \
-             групп и от края пилюли.",
-            "Every horizontal gap at once: between the figures, either side of the \
-             group dividers, and from the edge of the pill.",
-        ),
-        form: true,
-    },
-    Setting {
-        key: "corner_radius",
-        section: Section::Style,
-        kind: Kind::Float { min: 0.0, max: 60.0, step: 1.0, big: 4.0, show: Show::Plain },
-        label: w("Скругление углов", "Corner radius"),
-        tip: w(
-            "Скругление пилюли, панели и подсказок. 0 даёт прямые углы, половина \
-             высоты — обратно лозенгу.",
-            "How round the pill, the panel and the hints are. Zero gives square \
-             corners; half the height gives back the lozenge.",
-        ),
-        form: true,
-    },
 ];
 
 const STALE_TIP: Words = w(
@@ -934,15 +829,6 @@ mod tests {
             for v in [min, max] {
                 let got = match s.key {
                     "scale" => { cfg.scale = v; cfg.scale() }
-                    "font_pct" => { cfg.font_pct = v; cfg.font_pct() }
-                    "font_time" => { cfg.font_time = v; cfg.font_time() }
-                    "pill_height" => { cfg.pill_height = v; cfg.pill_height() }
-                    "track_height" => { cfg.track_height = v; cfg.track_height() }
-                    "pad_top" => { cfg.pad_top = v; cfg.pad_top() }
-                    "gap_text_bars" => { cfg.gap_text_bars = v; cfg.gap_text_bars() }
-                    "pad_bottom" => { cfg.pad_bottom = v; cfg.pad_bottom() }
-                    "gaps_x" => { cfg.gaps_x = v; cfg.gaps_x() }
-                    "corner_radius" => { cfg.corner_radius = v; cfg.corner_radius() }
                     // `opacity` and the thresholds are clamped where they are
                     // used rather than by an accessor.
                     _ => continue,

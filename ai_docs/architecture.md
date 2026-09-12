@@ -520,17 +520,21 @@ The code that was once `ui.rs` is split by what survives a change of GUI:
 * **`ui.rs` — how it is drawn.** Painting, layout, the settings window, the
   palette, the window itself.
 
-**Why:** the pill is to move to a web front end, where the drawing layer is
-replaced wholesale and the other two must survive unchanged. Left as one file
-they could not be handed over, because both were locked inside an `App` that
-needed an `egui::Context` to exist — and, being unreachable from a test, both
-were unverifiable as well.
+**Why:** the pill was about to move to another toolkit, where the drawing layer
+is replaced wholesale and the other two have to survive unchanged. Left as one
+file they could not have been handed over, because both were locked inside an
+`App` that needed an `egui::Context` to exist — and, being unreachable from a
+test, both were unverifiable as well. The move happened (A20) and the split held:
+`runtime.rs` and `view.rs` were not touched by it.
 
 **The invariant is mechanical, so it can be checked:**
 ```
-grep -E "egui::|eframe::|Color32|FontId|Painter" src/runtime.rs src/view.rs src/tray.rs | grep -v "//"
+grep -E "slint::|slint_interpreter::|Color32|FontId|Painter"   src/runtime.rs src/view.rs src/tray.rs src/serve.rs | grep -v "//"
 ```
-Empty output is the condition. Not a style rule — the point of the split.
+Empty output is the condition. Not a style rule — the point of the split. The
+toolkit named in it has already changed once; what it is checking has not.
+`serve.rs` joined the list when it was written, because a second consumer of
+these layers is the thing that proves they are consumable (A21).
 
 **The pill's composition is what it says, not how it is drawn.** `view::cells`
 returns the figures in order — text, the widest string each will ever hold, a
@@ -564,14 +568,16 @@ where viewport commands and repaint requests actually live.
 `tray.rs` moved across untouched and reports `tray::Command`s instead of acting
 on them. A web front end needs the same tray for the same reason (A05).
 
-## A20: the GUI moves to Slint, and the core stays put
-The pill will be drawn by Slint, with its UI loaded from a `.slint` file at
-runtime through `slint-interpreter`. `runtime.rs` and `view.rs` are untouched by
-the change; `ui.rs` is replaced.
+## A20: the GUI is Slint, and the core stayed put
+The pill is drawn by Slint, with its appearance loaded from a `.slint` file at
+runtime through `slint-interpreter`. `runtime.rs` and `view.rs` were untouched
+by the change; `ui.rs` is gone, and `eframe` with it.
 
-**Why not stay on egui:** every appearance setting is a branch in the drawing
-code, which is why the config grew to 51 fields and `settings_body` to 1339
-lines. Nothing a user wants to change can be changed without a rebuild.
+**Why not stay on egui:** every appearance setting was a branch in the drawing
+code, which is why the config had grown to 51 fields and `settings_body` to
+1339 lines. Nothing a user wanted to change could be changed without a rebuild.
+Both numbers came down with the move: nine of those fields are now the theme's
+business, and the settings window is a repeater over a list.
 
 **Why Slint and not a web front end.** Measured on this machine, private
 working set:
@@ -598,11 +604,12 @@ single-process.
 
 **The figures above are both front ends of the real widget**, release builds,
 `--demo`, window visible, pointer elsewhere — not the spike. Memory is the
-decisive column: 22 MB private against 61, and 48 MB working set against 110.
+decisive column: 21 MB private against 61, and 51 MB working set against 110.
 
-**CPU at rest is a wash, and anything sharper would be invention.** Two runs of
-the same Slint binary came out 0.156 s and 0.172 s per seventy seconds — a
-spread as wide as the gap to egui's 0.156 s. The earlier "0.0 s over ten
+**CPU at rest is a wash, and anything sharper would be invention.** The
+finished Slint build measures 0.109 s per seventy seconds against egui's
+0.156 s, but repeated runs of one binary have come out 0.156 s and 0.172 s — a
+spread as wide as the gap between the two toolkits. The earlier "0.0 s over ten
 seconds" was not a measurement but the method running out of resolution: these
 are `TotalProcessorTime` deltas over 70 seconds, window visible, pointer
 elsewhere, and a shorter window cannot resolve the difference. And the first
@@ -657,12 +664,11 @@ disk, in the compiler it carries.
 *How large that price is was overstated here until 2026-09-12.* The line used
 to read "one doubled binary, 24 MB against 12 MB", which compared a Slint
 binary built with cargo's default release profile against this project's, which
-is `lto = true`, `codegen-units = 1`, `panic = "abort"` and `strip = true`.
-Built the same way, the Slint spike is **14.9 MB against the widget's 12.1 MB**
-— the profile alone accounted for seven of the twelve megabytes the toolkit was
-being charged for. The two are still different programs, so the remaining
-difference is an indication rather than a measurement, but "doubled" was
-wrong.
+is `lto = true`, `codegen-units = 1`, `panic = "abort"` and `strip = true`. The
+profile alone was worth seven of those twelve megabytes. Now that the move is
+finished the comparison is between two builds of the same program: **17.9 MB
+with Slint against 12.1 MB with egui**, and that 5.8 MB buys the interpreter,
+the compiled settings window and `std-widgets`.
 
 **Compiling it instead was reconsidered on 2026-09-11 and rejected.** The case
 for compiling is real: the generated accessors are typed, so a renamed property

@@ -24,18 +24,17 @@ app, which shows none of this itself and does not run the status line (G06).
 - **The context figure is wrong or silent** → G17 and A18, then `src/session.rs`;
   `ccd-usage-monitor --sessions` lists every transcript and what each reports
 - **Changing what a figure or a panel line *says*** → `src/view.rs` (A19). It
-  holds no egui and is where the wording, the pace verdict, the colour
-  *meaning* and the pill's composition (`cells`, `bars`) live
+  holds nothing about drawing and is where the wording, the pace verdict, the
+  colour *meaning* and the pill's composition (`cells`, `bars`) live
 - **Changing how a source is read or merged** → `src/runtime.rs` (A19)
 - **Adding or changing a setting** → `src/schema.rs` (A22). One entry there is
   its section in the file, its bounds and its wording; four tests refuse a
   field that is described in only one of the two places
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
   --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
-- **Changing how the pill looks** → on the Slint front end, `themes/pill.slint`
-  or the copy in `%APPDATA%` (A24); on the egui one, `src/ui.rs`, where sizes
-  come from `Metrics` built from the config (A04). Run `ccd-usage-monitor
-  --slint --demo` and `ccd-usage-monitor --demo` side by side
+- **Changing how the pill looks** → `themes/pill.slint`, or the copy in
+  `%APPDATA%` that actually loads (A24). No rebuild needed for either; run
+  `ccd-usage-monitor --demo` to see it on figures that hold still
 - **The pill is blank, or one figure is missing** → G22 first: a theme one
   contract version behind draws its padding and nothing else
 - **The widget is using more CPU than it should** → G23: anything pushed to a
@@ -47,7 +46,7 @@ app, which shows none of this itself and does not run the status line (G06).
   wipes the extended styles with it)
 - **The widget quits when it is hidden, or a window steals the focus** → G20
   and G21
-- **Upgrading eframe/egui** → gotcha G04
+- **Upgrading Slint** → G18–G23, and re-read A24 before changing a struct the theme receives
 
 ## Five facts first
 1. There are four sources, each an independent switch (A03, A14): the Claude
@@ -58,15 +57,14 @@ app, which shows none of this itself and does not run the status line (G06).
    so the UI must render honestly when a source is silent.
 2. The same executable is both the widget and the status-line command
    (`--bridge`); they communicate through one JSON file, not through IPC.
-3. **The GUI is moving to Slint (A20)** — `ui.rs` is on its way out, the theme
-   becomes a `.slint` file loaded at runtime. `runtime.rs` and `view.rs` are
-   unaffected by design. Licensed under Slint's royalty-free terms, which
-   means the settings window must carry a visible acknowledgement of Slint;
-   the project does not go GPLv3.
+3. **The GUI is Slint (A20)**, and the whole appearance is a `.slint` file read
+   at runtime, so it can be changed without a Rust toolchain (A24). Used under
+   Slint's royalty-free terms, which is why the settings window and the tray
+   both say "Built with Slint"; the project does not go GPLv3.
 4. The code is in three layers (A19) — `runtime.rs` knows, `view.rs` says,
-   `ui.rs` draws — and the first two contain no egui on purpose, which is what
-   makes the move in fact 3 a replacement of one layer rather than a rewrite.
-   One grep checks it; A19 has the line.
+   `slint_ui.rs` draws — and the first two hold nothing about drawing on
+   purpose, which is what made the move from egui a replacement of one layer
+   rather than a rewrite. One grep checks it; A19 has the line.
 5. The endpoint's token is the CLI's, not the desktop app's, so it goes stale on
    a machine where Claude Code is only ever used through the app (G03). It is
    revived by running the CLI once — which is worth doing anyway, because the

@@ -61,8 +61,6 @@ pub struct Tray {
     settings_item: MenuItem,
     pass_item: MenuItem,
     reset_item: MenuItem,
-    /// Both `None` on the egui front end: there is no theme to reload and
-    /// nothing by Slint in it to acknowledge.
     restart_item: Option<MenuItem>,
     slint_item: Option<MenuItem>,
     quit_item: MenuItem,
@@ -94,10 +92,7 @@ fn tray_image() -> Icon {
 }
 
 impl Tray {
-    /// `slint` adds the two items that only mean something on the Slint front
-    /// end: reloading the theme, and the acknowledgement its licence asks for.
-    /// The egui build must not claim to be built with something it is not.
-    pub fn build(ru: bool, slint: bool) -> Option<Tray> {
+    pub fn build(ru: bool) -> Option<Tray> {
         let menu = Menu::new();
         let visible_item = MenuItem::new(visible_label(true, ru), true, None);
         // Also the only way in while clicks fall through the pill.
@@ -109,14 +104,15 @@ impl Tray {
             None,
         );
         let quit_item = MenuItem::new(if ru { "Выход" } else { "Quit" }, true, None);
-        let restart_item = slint.then(|| {
-            MenuItem::new(
-                if ru { "Перезапустить (тема)" } else { "Restart (theme)" },
-                true,
-                None,
-            )
-        });
-        let slint_item = slint.then(|| MenuItem::new("Built with Slint", true, None));
+        let restart_item = Some(MenuItem::new(
+            if ru { "Перезапустить (тема)" } else { "Restart (theme)" },
+            true,
+            None,
+        ));
+        // The acknowledgement the royalty-free licence asks for also lives in
+        // the settings window; here it costs one line and is visible without
+        // opening anything.
+        let slint_item = Some(MenuItem::new("Built with Slint", true, None));
         menu.append(&visible_item).ok()?;
         menu.append(&settings_item).ok()?;
         menu.append(&pass_item).ok()?;

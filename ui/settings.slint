@@ -142,6 +142,11 @@ export component Settings inherits Window {
     in property <string> theme_path: "";
     /// Set when the theme on disk was refused and the built-in one is drawing.
     in property <string> theme_trouble: "";
+    /// How the usage endpoint is doing — polling, rate limited until such a
+    /// time, or silent and why. The age of a reading cannot say any of that,
+    /// and a switch that looks on while nothing arrives is the question this
+    /// answers before it is asked.
+    in property <string> api_state: "";
 
     callback toggled(string, bool);
     callback stepped(string, int);
@@ -159,6 +164,20 @@ export component Settings inherits Window {
     VerticalBox {
         padding: 8px;
         spacing: 6px;
+
+        if api_state != "": Rectangle {
+            background: #ffffff08;
+            border-radius: 4px;
+            VerticalLayout {
+                padding: 6px;
+                Text {
+                    text: api_state;
+                    wrap: word-wrap;
+                    font-size: 11px;
+                    opacity: 0.8;
+                }
+            }
+        }
 
         if theme_trouble != "": Rectangle {
             background: #e8994c20;

@@ -34,12 +34,13 @@ Snapshot of 2026-09-12. State only — why anything is the way it is lives in
 - **`--serve` publishes the snapshot as JSON** on `127.0.0.1:47317` (A21) — both
   windows, the context figure, the panel already worded, CORS verified in a real
   browser from another port.
-- **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `ui.rs` draws. The
-  first two contain no egui, checkable with one grep, and the pill's composition
-  is in `view.rs` — which is what makes the **Slint front end behind `--slint`**
-  (A20, A24, A25) a port: it runs on real data and reads figure for figure the
-  same as the egui pill.
-- **Tests**: 163 in all; 31 of them over `view.rs`, including golden tests of the
+- **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `slint_ui.rs`
+  draws. The first two hold nothing about drawing, checkable with one grep,
+  which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
+- **The settings window is generated from `schema.rs`** (A22): forty-five
+  settings, four kinds of row, and the `.slint` file knows what none of them
+  are. It carries the `AboutSlint` acknowledgement the licence asks for.
+- **Tests**: 167 in all; 31 of them over `view.rs`, including golden tests of the
   whole panel and the whole pill.
 
 ## Open
@@ -50,20 +51,20 @@ Snapshot of 2026-09-12. State only — why anything is the way it is lives in
   with nothing on disk to reveal it: a 5-series model held to 200K by
   `CLAUDE_CODE_DISABLE_1M_CONTEXT`, and a model newer than this build.
   `ctx_limit = "fixed"` is the escape, manual on purpose.
-- **`ui.rs` cannot go yet** (A20): the settings window is unbuilt on Slint, and
-  dragging and the tray menu need hands-on checks that are not possible without a
-  mouse. The settings window also owes the visible Slint acknowledgement the
-  licence requires.
+- **Nobody has clicked the generated form yet.** Dragging, the right click, the
+  tray and the hover were confirmed by hand; a checkbox, a stepper and a session
+  row have not been. The arithmetic is covered — every numeric setting is walked
+  to both its bounds in a test — the wiring from click to saved file is not.
 - **The desktop app does not appear to run the status line** (G06). The figures
   are covered without it, but it is still the only source that *states* a window
   size. One check remains: whether a newly started desktop session picks the
   setting up.
-- **The OAuth token is short-lived** and deliberately not refreshed — writing to
-  another program's credentials file to save a countdown is a bad trade. Expect
-  the endpoint to go quiet on days when Claude Code is not run in a terminal.
+- **The OAuth token is short-lived** and deliberately not refreshed: writing to
+  another program's credentials file to save a countdown is a bad trade, so the
+  endpoint goes quiet on days when Claude Code is not run in a terminal.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
-- **`cargo clippy -- -D warnings` does not pass**, and has not for a while: twelve
-  findings, none new, none in `view.rs`, `serve.rs`, `schema.rs` or `geometry.rs`.
+- **`cargo clippy -- -D warnings` does not pass**, and has not for a while: eleven
+  findings, none new, none in the modules written since.
   Use it by counting findings per file before and after a change.
 
 ## Fragile points
@@ -74,7 +75,6 @@ Snapshot of 2026-09-12. State only — why anything is the way it is lives in
 - **The state-file lock is best-effort by design** (A02). With many simultaneous
   sessions an interleaved write is possible; the worst case is one tick of stale
   figures, corrected on the next.
-- **Window position is trusted as saved**, because a negative coordinate is
-  legitimate on a multi-monitor desktop. If the widget ends up off-screen, the
-  tray menu's "Reset position" is the intended recovery — not a startup heuristic
-  that would fight legitimate layouts.
+- **Window position is trusted as saved**: a negative coordinate is legitimate on
+  a multi-monitor desktop, so the tray's "Reset position" is the recovery rather
+  than a startup heuristic that would fight a real layout.

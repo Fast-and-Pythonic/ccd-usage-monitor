@@ -428,7 +428,7 @@ pub fn run(demo: bool) -> Result<(), String> {
     let panel = theme.panel.create().map_err(|e| format!("cannot build the panel: {e}"))?;
     let palette = Palette::read(&pill);
 
-    let tray = Tray::build(cfg.is_ru(), true);
+    let tray = Tray::build(cfg.is_ru());
     let app = Rc::new(RefCell::new(App {
         cfg,
         geom,
@@ -558,6 +558,12 @@ fn tick(app: &Rc<RefCell<App>>) {
     resize(&mut a);
     place_panel(&mut a);
     read_hover(&mut a);
+    if a.settings.as_ref().is_some_and(|f| f.is_open()) {
+        let state = view::api_state_text(&a.cfg, &a.rt, state::now());
+        if let Some(form) = &a.settings {
+            form.set_api_state(state);
+        }
+    }
 
     if let Some(cfg) = a.watch.poll() {
         let demo = a.demo;
@@ -765,8 +771,10 @@ fn open_settings(app: &Rc<RefCell<App>>) {
     {
         let mut a = app.borrow_mut();
         let (title, rows) = sessions_for(&mut a);
+        let state = view::api_state_text(&a.cfg, &a.rt, state::now());
         if let Some(form) = &a.settings {
             form.set_sessions(&title, rows);
+            form.set_api_state(state);
         }
     }
     if let Some(form) = app.borrow_mut().settings.as_mut() {

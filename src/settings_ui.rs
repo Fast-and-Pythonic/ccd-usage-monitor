@@ -275,6 +275,11 @@ impl Form {
         self.window.set_sessions(ModelRc::new(VecModel::from(sessions)));
     }
 
+    /// What the usage endpoint is doing, in the words `view.rs` gives for it.
+    pub fn set_api_state(&self, state: Option<String>) {
+        self.window.set_api_state(state.unwrap_or_default().into());
+    }
+
     /// Rewrite every row from the config.
     ///
     /// Whole rather than in place: forty-five rows is nothing to rebuild, and a

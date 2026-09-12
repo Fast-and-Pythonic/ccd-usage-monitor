@@ -5,12 +5,48 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-13** — egui is gone, and the settings window is a list
 - **2026-09-12** — the Slint front end lands beside the egui one, not instead of it
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
 
 ---
+
+## 2026-09-13 — egui is gone, and the settings window is a list
+
+Done: [[A20]] finished, [[A24]] and [[A25]] written, `ui.rs` and `eframe` deleted.
+
+The order mattered more than any single step. The composition of the pill moved into
+`view.rs` first, while egui was still running and two `--demo` screenshots could be
+compared to the byte; only then was there something the theme could be handed. Under
+Slint nothing in the process can measure a string — the theme lays out its own text —
+so a composition that still needed a font could not have crossed at all.
+
+The settings window is the part that paid for `schema.rs`. Forty-five settings, four
+kinds of row, and `ui/settings.slint` knows what none of them are. Two gaps in the
+schema turned up while walking the form out of it: it could not read or write a value
+by key, and its choices carried only the spellings the file uses while the wording for
+a menu sat on `label(ru)` methods that only the old window called. Both are closed in
+the schema rather than worked around in the form.
+
+Four traps are recorded as gotchas because each cost a rebuild to find: a window handle
+taken before `show` never starts working ([[G18]]), stripping the frame hands the client
+area the margins ([[G19]]), hiding the last window ends the event loop ([[G20]]), and a
+`show` restores every window style including the extended ones ([[G21]]). Two more came
+from the contract itself: a theme one version behind draws its padding and nothing else
+in complete silence ([[G22]]), and a model pushed on a timer is a repaint whether or not
+it changed ([[G23]]) — that one cost twelve times the CPU of the front end being
+replaced, and looked exactly like the toolkit's fault.
+
+Two measurements in these docs were wrong and are corrected. CPU at rest had been "0.0 s
+over ten seconds", which was the method running out of resolution rather than a zero.
+The binary had been "doubled, 24 MB against 12", which compared a default-profile Slint
+build against this project's `lto`/`strip` one; built the same way the difference is
+about three megabytes.
+
+Decisions: [[A20]], [[A24]], [[A25]]
+Status: Working
 
 ## 2026-09-12 — the Slint front end lands beside the egui one, not instead of it
 

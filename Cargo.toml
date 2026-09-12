@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 chrono = "0.4.45"
 dirs = "6.0.0"
-eframe = "0.36.1"
 raw-window-handle = "0.6"
 # Pinned to an exact version, and the backend and renderer named rather than
 # left to `default`: G05 was a renderer changing under us and taking
