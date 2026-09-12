@@ -363,6 +363,13 @@ struct App {
     visible: bool,
     /// The size last pushed, so the window is not resized on every tick.
     sized: (f32, f32),
+    /// What was last handed to the theme.
+    ///
+    /// Every push makes Slint lay the pill out again and repaint it, and the
+    /// figures change about once a minute while the tick runs four times a
+    /// second. Pushing regardless cost twelve times the CPU of the egui front
+    /// end at rest, for four identical repaints a second.
+    shown: Option<(Vec<view::Cell>, Vec<view::Bar>, bool)>,
 }
 
 /// Far enough off any real desktop that no arrangement of monitors reaches it.
@@ -428,6 +435,7 @@ pub fn run(demo: bool) -> Result<(), String> {
         tray,
         visible: true,
         sized: (0.0, 0.0),
+        shown: None,
     }));
 
     // The drag is the system's own move loop, started from a press anywhere on
@@ -547,13 +555,18 @@ fn tick(app: &Rc<RefCell<App>>) {
 
     let cells = view::cells(&cfg, &snap, stale, ctx_stale, now);
     let bars = view::bars(&cfg, &snap, ctx_stale, now);
-    let model = groups_model(&cfg, &cells, &bars, a.palette);
-
-    let pill = a.pill.clone_strong();
-    a.declared.set(&pill, "groups", Value::Model(model));
-    a.declared.set(&pill, "stale", Value::Bool(stale));
-    a.declared.set(&pill, "scale", Value::Number(cfg.scale() as f64));
-    a.declared.set(&pill, "alpha", Value::Number(cfg.opacity.clamp(0.3, 1.0) as f64));
+    let fresh = (cells, bars, stale);
+    if a.shown.as_ref() != Some(&fresh) {
+        let (cells, bars, stale) = &fresh;
+        let model = groups_model(&cfg, cells, bars, a.palette);
+        let pill = a.pill.clone_strong();
+        a.declared.set(&pill, "groups", Value::Model(model));
+        a.declared.set(&pill, "stale", Value::Bool(*stale));
+        a.declared.set(&pill, "scale", Value::Number(cfg.scale() as f64));
+        a.declared
+            .set(&pill, "alpha", Value::Number(cfg.opacity.clamp(0.3, 1.0) as f64));
+        a.shown = Some(fresh);
+    }
 
     show_panel(&mut a, &cfg, &snap, stale, now);
 }

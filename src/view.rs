@@ -32,7 +32,7 @@ pub enum Ink {
 }
 
 /// A point on a two-colour ramp: `t` of the way from `from` to `to`.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct Tone {
     pub from: Ink,
     pub to: Ink,
@@ -159,7 +159,7 @@ pub enum Side {
 /// that qualifies something else — a wall-clock time beside a countdown, a
 /// figure that is only history — and `Tone` is a figure whose colour is part
 /// of what it says.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 #[serde(rename_all = "lowercase", tag = "kind", content = "tone")]
 pub enum Paint {
     Plain,
@@ -168,7 +168,7 @@ pub enum Paint {
 }
 
 /// One figure in the pill's single line.
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
 pub struct Cell {
     pub text: String,
     /// The widest string this cell will ever hold. Its width is the cell's
@@ -190,7 +190,7 @@ pub struct Cell {
 }
 
 /// The hairline under one group: the same figure as the cells above it.
-#[derive(Clone, Copy, Debug, serde::Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize)]
 pub struct Bar {
     pub group: usize,
     /// The stored reading, always "spent" (A15).
