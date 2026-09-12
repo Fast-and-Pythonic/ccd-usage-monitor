@@ -31,6 +31,9 @@ app, which shows none of this itself and does not run the status line (G06).
 - **Changing how the pill looks** → `src/ui.rs`, run `ccd-usage-monitor --demo`; sizes come
   from `Metrics`, built from the config (A04)
 - **The window has a frame, a shadow, or a dark rectangle** → A10, `src/win.rs`
+- **Doing that frame surgery on a Slint window** → G18 (ask for the handle
+  after `show`, never before) and G19 (state the size *after* stripping the
+  frame, or the drawing grows into the margins)
 - **Upgrading eframe/egui** → gotcha G04
 
 ## Five facts first

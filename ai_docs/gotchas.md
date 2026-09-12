@@ -302,3 +302,45 @@ one that jumps by a large round factor between two reads. `ccd-usage-monitor --s
 prints the token count beside the percentage for every transcript, which is
 where a wrong numerator shows up as an implausible number rather than as a
 plausible percentage.
+
+---
+
+## G18: a Slint window handle taken before `show` never starts working
+**Symptom:** `Frame::from(window.window_handle())` returned `None` every time,
+a hundred ticks in a row, while `window.is_visible()` said `true` and the
+window was plainly on the screen. Nothing about the code said which of the two
+was lying.
+**Root cause:** `slint::Window::window_handle()` is a snapshot of whatever the
+window adapter could provide *at the moment it was called*, not a live view. It
+is documented to be available only "after at least one iteration of the event
+loop following `show()`", and the spike had taken the handle before `show` and
+kept it in a closure. The retry loop then asked the same dead snapshot again on
+every tick, so retrying could never have helped.
+**Fix:** ask the window for a handle each time one is needed — from inside the
+callback, through an upgraded `Weak<ComponentInstance>` — rather than capturing
+one. The first tick after the event loop starts then hands back a real
+`RawWindowHandle::Win32`.
+**How to spot it:** print the `Result` from `HasWindowHandle::window_handle`
+rather than the `Option` a helper returns. An `Err` naming the handle as
+unavailable is a different diagnosis from "this is not a Win32 window", and
+`Option` throws exactly that difference away.
+
+---
+
+## G19: stripping the frame gives the client area the margins it used to spend on it
+**Symptom:** the pill drew at the size the theme asked for on the first frame
+(450x43 physical at 125 %) and was 468x90 on the second — a fifth wider and
+twice as tall — with no resize anywhere in the code.
+**Root cause:** `win::strip` answers `WM_NCCALCSIZE` with "the client area is
+the whole window". The *outer* rectangle does not change, so everything the
+caption and the sizing frame used to occupy becomes client area, and the
+drawing grows into it. The window had been created at the size the theme asked
+for, which was that size plus a frame.
+**Fix:** state the size again after the surgery, not before it — one
+`set_size` in the same callback that strips the frame. The rectangle is then
+stable, which is what `GetWindowRect` in a loop is for (G16).
+**How to spot it:** compare the toolkit's own idea of the window size with
+`GetWindowRect` on the same tick. Two numbers that agree at first and diverge
+by exactly a frame's worth of pixels is this, and it is invisible in a
+screenshot: the picture is merely bigger than expected, which reads as a
+layout mistake.
