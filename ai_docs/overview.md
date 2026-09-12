@@ -66,13 +66,14 @@ Idle, with the pill visible: 51 MB working set of which 21 MB is private, and
 0.109 s of CPU over 70 seconds — about a sixth of a percent of one core. The
 memory is dominated by the GPU stack, not by the app. The binary is 17.9 MB.
 
-For scale, the egui front end this replaced, measured the same way on the same
-machine: 110 MB working set, 61 MB private, 0.156 s of CPU, 12.1 MB binary. A
-third of the memory and two thirds of the processor, for six megabytes on disk.
+The comparison with the egui front end this replaced — and the method behind
+all of these numbers — is in A20, which is the decision they were taken for.
+They are not repeated here: the same figure in two files disagrees with itself
+within a month.
 
 The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
-sample of a second or two rounds this to "0.0 %", which reads as a measurement
-and is not one.
+sample of a second or two rounds it to "0.0 %", which reads as a measurement and
+is not one.
 
 The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
 sample of a second or two rounds this to "0.0 %", which reads as a measurement
