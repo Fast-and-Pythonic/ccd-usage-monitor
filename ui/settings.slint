@@ -35,6 +35,15 @@ export struct SettingRow {
     section: string,
 }
 
+// One conversation the context figure could be about. The only part of this
+// window that is not walked out of the schema: the list is whatever is on disk
+// at the moment, so it has a model of its own (A18).
+export struct SessionRow {
+    id: string,
+    label: string,
+    chosen: bool,
+}
+
 component Row inherits Rectangle {
     in property <SettingRow> entry;
     in property <bool> ru;
@@ -124,6 +133,10 @@ component Row inherits Rectangle {
 
 export component Settings inherits Window {
     in property <[SettingRow]> rows: [];
+    /// Empty unless the context figure is pinned to one conversation, which is
+    /// the only setting for which a list of what exists is the answer.
+    in property <[SessionRow]> sessions: [];
+    in property <string> sessions_title: "";
     in property <bool> ru: true;
     /// Where the theme file is, so the button that opens it can say so.
     in property <string> theme_path: "";
@@ -134,6 +147,7 @@ export component Settings inherits Window {
     callback stepped(string, int);
     callback chose(string, int);
     callback edited(string, string);
+    callback pin(string);
     callback restart();
     callback open_config();
     callback open_theme();
@@ -181,6 +195,36 @@ export component Settings inherits Window {
                         stepped(d) => { root.stepped(r.key, d); }
                         chose(i) => { root.chose(r.key, i); }
                         edited(t) => { root.edited(r.key, t); }
+                    }
+                }
+
+                if sessions_title != "": Text {
+                    text: sessions_title;
+                    font-size: 13px;
+                    font-weight: 700;
+                    opacity: 0.75;
+                }
+                for s in root.sessions: Rectangle {
+                    height: line.preferred-height;
+                    background: pick.has-hover ? #ffffff08
+                        : s.chosen ? #6fcf9720 : transparent;
+                    border-radius: 4px;
+                    pick := TouchArea {
+                        clicked => { root.pin(s.id); }
+                    }
+                    line := HorizontalLayout {
+                        padding: 4px;
+                        spacing: 6px;
+                        Text {
+                            text: s.chosen ? "●" : "○";
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: s.label;
+                            vertical-alignment: center;
+                            wrap: word-wrap;
+                            horizontal-stretch: 1;
+                        }
                     }
                 }
             }

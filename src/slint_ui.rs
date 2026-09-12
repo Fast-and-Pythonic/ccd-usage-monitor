@@ -762,9 +762,67 @@ fn open_settings(app: &Rc<RefCell<App>>) {
             }
         }
     }
+    {
+        let mut a = app.borrow_mut();
+        let (title, rows) = sessions_for(&mut a);
+        if let Some(form) = &a.settings {
+            form.set_sessions(&title, rows);
+        }
+    }
     if let Some(form) = app.borrow_mut().settings.as_mut() {
         form.show();
     }
+}
+
+/// At most this many conversations are offered. The tree can hold hundreds;
+/// past a couple of dozen a list stops being a list and becomes a search
+/// problem, and the answer to that is the id in `config.toml`.
+const SESSION_LIST_MAX: usize = 25;
+
+/// The conversations the context figure could be about, newest first.
+///
+/// Only when one is pinned: otherwise the widget picks for itself and a list
+/// would be decoration. Names and working directories cost a file open each,
+/// so `describe` is called here — when somebody has asked to see them — and
+/// never on the polling path.
+fn sessions_for(a: &mut App) -> (String, Vec<crate::settings_ui::SessionRow>) {
+    use crate::config::SessionPick;
+    if a.cfg.session_pick != SessionPick::Pinned {
+        return (String::new(), Vec::new());
+    }
+    let now = state::now();
+    let ru = a.cfg.is_ru();
+    // Asking to see the list is the one moment a scan is worth its cost, and
+    // the moment it is most likely not to have happened yet: the form can be
+    // opened on the first tick, before the source has swept the tree once.
+    if a.rt.session_list.is_empty() {
+        a.rt.session_list = crate::session::list(&crate::session::live_sessions());
+    }
+    crate::session::describe(&mut a.rt.session_list);
+    let rows = a
+        .rt
+        .session_list
+        .iter()
+        .take(SESSION_LIST_MAX)
+        .map(|e| {
+            let mut label = e.short_name();
+            if let Some(p) = e.project() {
+                label.push_str(" · ");
+                label.push_str(&p);
+            }
+            label.push_str(" · ");
+            label.push_str(&crate::pace::fmt_duration(now - e.modified));
+            crate::settings_ui::SessionRow {
+                id: e.id.as_str().into(),
+                label: label.into(),
+                chosen: e.id == a.cfg.session_id,
+            }
+        })
+        .collect();
+    (
+        if ru { "Разговор".to_string() } else { "Conversation".to_string() },
+        rows,
+    )
 }
 
 /// One change made in the settings window.
@@ -790,6 +848,20 @@ fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change
         _ => {}
     }
     let mut a = app.borrow_mut();
+    if let Change::Pin(id) = &change {
+        if a.cfg.session_id == *id {
+            return;
+        }
+        a.cfg.session_id = id.clone();
+        a.cfg.save();
+        a.rt.session_scan = None;
+        a.shown = None;
+        let (title, rows) = sessions_for(&mut a);
+        if let Some(form) = &a.settings {
+            form.set_sessions(&title, rows);
+        }
+        return;
+    }
     if !crate::settings_ui::apply(&mut a.cfg, key, &change) {
         return;
     }
@@ -801,8 +873,10 @@ fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change
     a.rt.invalidate_files();
     a.shown = None;
     let cfg = a.cfg.clone();
+    let (title, rows) = sessions_for(&mut a);
     if let Some(form) = &a.settings {
         form.refresh(&cfg);
+        form.set_sessions(&title, rows);
     }
     let (visible, click_through, ru) = (a.visible, cfg.click_through, cfg.is_ru());
     if let Some(tray) = &mut a.tray {

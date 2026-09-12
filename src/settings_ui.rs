@@ -206,6 +206,10 @@ impl Form {
         }
         {
             let h = handlers.clone();
+            window.on_pin(move |id| (h.borrow_mut())("", Change::Pin(id.to_string())));
+        }
+        {
+            let h = handlers.clone();
             window.on_restart(move || (h.borrow_mut())("", Change::Restart));
         }
         {
@@ -261,6 +265,16 @@ impl Form {
         self.window.window()
     }
 
+    /// The conversations to offer, and which one is followed now.
+    ///
+    /// Handed in rather than read here: enumerating them costs a directory
+    /// walk and a file open per name, and what may be spent on that is the
+    /// caller's business, not a form's.
+    pub fn set_sessions(&self, title: &str, sessions: Vec<SessionRow>) {
+        self.window.set_sessions_title(title.into());
+        self.window.set_sessions(ModelRc::new(VecModel::from(sessions)));
+    }
+
     /// Rewrite every row from the config.
     ///
     /// Whole rather than in place: forty-five rows is nothing to rebuild, and a
@@ -278,6 +292,8 @@ pub enum Change {
     Step(i32),
     Choice(i32),
     Text(String),
+    /// Follow this conversation, by id.
+    Pin(String),
     Restart,
     OpenConfig,
     OpenTheme,
