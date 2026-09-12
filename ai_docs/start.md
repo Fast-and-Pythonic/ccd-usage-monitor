@@ -34,6 +34,8 @@ app, which shows none of this itself and does not run the status line (G06).
   --slint --demo` and `ccd-usage-monitor --demo` side by side
 - **The pill is blank, or one figure is missing** → G22 first: a theme one
   contract version behind draws its padding and nothing else
+- **The widget is using more CPU than it should** → G23: anything pushed to a
+  Slint property on a timer is a repaint, changed or not
 - **The window has a frame, a shadow, or a dark rectangle** → A10, `src/win.rs`
 - **Doing that frame surgery on a Slint window** → G18 (ask for the handle
   after `show`, never before), G19 (state the size *after* stripping the frame,

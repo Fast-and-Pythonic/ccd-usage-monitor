@@ -422,3 +422,27 @@ different failure and not a survivable one.
 and empty. That shape — the frame without the content — is a model or a list
 that was rejected rather than one that came back empty, because an empty model
 still lays out its surroundings the same way.
+
+---
+
+## G23: a property pushed on a timer is a repaint, whether or not it changed
+**Symptom:** the first release build of the Slint front end spent 1.9 seconds
+of CPU per seventy at rest, against 0.16 for the egui one and 0.17 for the
+Slint spike. Twelve times the cost, with nothing on screen moving and no
+obvious suspect: the same toolkit had measured as cheap as egui a day earlier.
+**Root cause:** the tick runs four times a second, because that is how often
+the state file is worth looking at, and it was rebuilding the model of cells
+and handing it to the theme every time. Slint has no way to know the new model
+says the same thing as the old one, so each push meant a fresh layout and a
+fresh paint — four identical pictures a second. The figures in them change
+about once a minute.
+**Fix:** keep what was last given to the theme and compare before pushing.
+`view::Cell` and `view::Bar` derive `PartialEq` for exactly this. The cost
+fell to 0.19 s per seventy — measured on the *debug* build, which is slower
+than the release one that produced the 1.9.
+**How to spot it:** the giveaway is a cost that scales with the *tick* rather
+than with anything visible. Divide the CPU by the tick rate before blaming the
+toolkit: 1.9 s over 70 s at four ticks a second is about 7 ms of work per tick,
+which is a repaint, not a file check. The same trap is waiting in the settings
+window, where a form bound to config values would otherwise repaint on a timer
+for no reason.

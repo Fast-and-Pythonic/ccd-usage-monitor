@@ -168,7 +168,7 @@ Snapshot of 2026-09-11.
   |---|---|---|
   | private working set | 61 MB | **13 MB** one window, **22 MB** with a second window and a tray |
   | working set | 110 MB | **47–51 MB** |
-  | CPU at rest, 70 s | 0.156 s | 0.156–0.172 s |
+  | CPU at rest, 70 s | 0.156 s | 0.156–0.188 s (see G23) |
   | startup (7 warm runs) | **64 ms** | 143 ms |
   | binary, same release profile | **12.1 MB** | 14.9 MB |
   | transparency | yes | yes |
