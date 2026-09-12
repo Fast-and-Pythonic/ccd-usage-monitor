@@ -3,8 +3,9 @@
 A floating one-line readout for Windows 10/11: how much of your Claude Code
 quota is gone, and how full the current session's context window is. Aimed first
 at the Claude Code **desktop** app, which shows neither and does not run the
-status line the terminal client reports them through. Native Rust + egui, one
-executable, no web stack.
+status line the terminal client reports them through. Native Rust + Slint, one
+executable, no web stack — and the whole appearance is a `.slint` file you can
+edit without a compiler.
 
 ```
 24% ▼1.2× 3:19 20:49 │ 41% ▲1.4× 5d 20% │ ctx 38%
@@ -249,3 +250,24 @@ a real 429 costs.
 - Windows 10/11
 - Claude Code 2.1.x or newer for `rate_limits` in the status-line payload
 - A Claude Pro or Max subscription; API-key users get no rate-limit fields
+
+## The look is a file
+
+The pill's whole appearance — palette, type, paddings, corner radius, the
+thickness of the bars — is `theme.slint`, written to
+`%APPDATA%\ccd-usage-monitor\` the first time the widget runs. Edit it and use
+"Перезапустить" / "Restart" in the tray or the settings window; no Rust
+toolchain is involved.
+
+What the theme does **not** decide is deliberate: the wording and the figures
+arrive already worked out, which colour a figure gets is decided by what it
+means rather than by the file, and the window's behaviour — frameless, on top,
+click-through — is applied by the program. A broken theme falls back to the
+built-in copy and says what was wrong; it cannot produce a window you are
+unable to close.
+
+## Built with Slint
+
+This application uses [Slint](https://slint.dev) under its royalty-free
+licence, which asks that the use be visibly acknowledged. It is: in the
+settings window, and in the tray menu.
