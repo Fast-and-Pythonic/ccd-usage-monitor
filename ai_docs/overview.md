@@ -6,6 +6,8 @@
   glow, see G05)
 - `ureq` 3 (rustls) for the one HTTP call, `serde`/`serde_json`, `toml` and
   `toml_edit` (the config is edited in place, not rewritten — A22),
+  `slint` + `slint-interpreter` 1.17.1 pinned exactly, winit backend and
+  femtovg renderer named rather than defaulted (A20, G05),
   `chrono`, `dirs`, `tray-icon` 0.24
 - Release profile is LTO + strip; the result is a single `.exe` with no runtime
   dependencies beyond the OS.
@@ -33,6 +35,8 @@ The file layout follows the three layers of A19: what the widget knows
 | `config.rs` | `%APPDATA%\ccd-usage-monitor\config.toml` — sectioned, edited in place so comments survive (A22) |
 | `schema.rs` | every setting described once: its kind, its bounds, its section, its words (A22) |
 | `geometry.rs` | `window.json` — where the windows were left; the widget's own memory, not a setting (A22) |
+| `slint_ui.rs` | the Slint front end (`--slint`): two windows, the theme contract, the window policy over the HWND (A20, A24, A25) |
+| `themes/pill.slint` | the whole appearance, read at runtime; written to `%APPDATA%` on first run so it can be edited (A24) |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
 
 ## Data flow

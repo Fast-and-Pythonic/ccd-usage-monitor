@@ -782,3 +782,78 @@ setting is not an event about the quota.
 
 **`window.json` is not watched.** Only the widget writes it, and only about
 itself.
+
+## A24: the theme contract — what the program sends, what the theme declares
+`themes/pill.slint` is the widget's whole appearance, compiled into the binary
+and written to `%APPDATA%\ccd-usage-monitor\theme.slint` on first run. From
+then on the copy on disk is what loads.
+
+**The division is by whose question it answers.** The theme owns the palette,
+the type, the paddings, the corner radius and the hairline thickness. The
+program owns the wording (it arrives already localised from `view.rs`), which
+colour a figure gets, and everything about how the window behaves. The theme
+declares `palette_green`/`amber`/`orange`/`red`/`ink`/`dim`; the program reads
+them back, resolves a `Tone` against them and sends a finished brush. So
+changing a colour in the theme changes it everywhere that colour *means*
+something, and nowhere else — the same split as A19, made concrete.
+
+**The theme reports its own natural size.** `wanted_width` and
+`wanted_height` are `out property <length>` bound to the layout's preferred
+size. This is not a convenience: nothing in the process can measure a string
+any more, because the theme lays out its own text, so a content-sized window is
+only possible if the number comes back out. **The value is a frame behind** —
+an `out` property bound to a layout is recomputed when the theme next lays
+itself out, which is after the callback that changed the text returns — so the
+window is sized from the previous tick's layout. A quarter-second of lag is
+invisible; a window sized to the previous sentence is not.
+
+**No window policy in the theme.** Not `no-frame`, not `always-on-top`. All of
+it is applied from Rust over the HWND (`win.rs`), so a broken or hostile theme
+cannot produce a window that cannot be closed, cannot be dragged, or sits below
+everything. The theme also cannot turn click-through on.
+
+**Tolerance has two halves, and only one of them is optional.** A property the
+theme does not declare is simply not set, so a theme written against an older
+version keeps working with fewer values. A **struct** is different: Slint
+matches it field by field and refuses the whole assignment if it has drifted,
+which leaves the pill blank. So `theme_api` is checked before the theme is used
+at all — the theme states which contract it was written against, and a mismatch
+means the built-in copy draws instead, with the two version numbers on stderr.
+`THEME_API` is bumped whenever `PillCell`, `PillGroup` or `PanelLine` changes
+shape. Failures to set a property are reported once each rather than dropped
+(G22).
+
+**A broken theme is never a dead application.** It falls back to the built-in
+copy and says so. The file is not overwritten — it is somebody's work — so the
+recovery is to delete it, and the message says as much.
+
+## A25: the pill and its panel are two windows
+The detail panel and the field hint are a window of their own, placed under the
+pill by the program, rather than part of the pill's window as they were under
+egui.
+
+**Why.** With one window, opening the panel grew the window and — near the
+bottom of the screen — moved it. The pill's rectangle therefore depended on
+what the pointer was over, and that is a feedback loop: the pointer's position
+is window-relative and only refreshed by real mouse events, so a still pointer
+read as being somewhere it was not, the hint closed, the window shrank back and
+it opened again. That is G16, and it cost a day. With two windows the pill's
+rectangle never changes while the panel opens, so the loop has no way to start.
+
+**What survives of A06.** The flip is still there — the panel opens downwards,
+or upwards when the pill sits too near the bottom of the work area — and so is
+the slide left when a panel wider than the pill would hang off the right edge
+of the screen. Both are now one `SetWindowPos` on a second window instead of a
+resize and a move of the first.
+
+**The panel is never hidden.** It is parked at −30000, −30000 and moved back
+when it is wanted, because `hide` followed by `show` restores the window styles
+and takes `WS_EX_NOACTIVATE` with them — and the `show` that would put it back
+is the same call that steals the focus (G21). A window that is never hidden has
+nothing to restore.
+
+**Hover is read from the system cursor**, not from either toolkit, and covers
+both windows: the pointer moving from the pill onto the panel to read it must
+not close the panel. The theme reports only which figure was *entered*, never
+that one was left, so crossing the gap between two figures does not blink the
+name off.

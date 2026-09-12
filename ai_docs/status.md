@@ -87,6 +87,14 @@ Snapshot of 2026-09-11.
 - **`schema.rs` describes every setting once** — kind, bounds, section, label
   and tooltip in both languages. It already lays out the file; the settings
   form is generated from it when the GUI moves.
+- **The pill is drawn by Slint behind `--slint`, beside the egui one** (A20,
+  A24, A25). `themes/pill.slint` carries the whole appearance and is read at
+  runtime; `slint_ui.rs` owns the two windows, the tray and the window policy.
+  It runs on real data and reads figure for figure the same as the egui pill.
+  The detail panel is a second window, which is what makes the pill's own
+  rectangle stop changing while it opens. Still missing before `ui.rs` can go:
+  the settings window (stage 7), and hands-on checks of dragging and the tray
+  menu, neither of which can be done without a mouse.
 - **The Slint spikes answered every question the move opens with** (in the
   session scratchpad, `pill-spike`). The crates link together — `slint`,
   `slint-interpreter`, `slint-build`, `raw-window-handle 0.6`, `windows-sys` —

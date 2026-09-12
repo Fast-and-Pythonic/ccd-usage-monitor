@@ -28,8 +28,12 @@ app, which shows none of this itself and does not run the status line (G06).
   field that is described in only one of the two places
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
   --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
-- **Changing how the pill looks** → `src/ui.rs`, run `ccd-usage-monitor --demo`; sizes come
-  from `Metrics`, built from the config (A04)
+- **Changing how the pill looks** → on the Slint front end, `themes/pill.slint`
+  or the copy in `%APPDATA%` (A24); on the egui one, `src/ui.rs`, where sizes
+  come from `Metrics` built from the config (A04). Run `ccd-usage-monitor
+  --slint --demo` and `ccd-usage-monitor --demo` side by side
+- **The pill is blank, or one figure is missing** → G22 first: a theme one
+  contract version behind draws its padding and nothing else
 - **The window has a frame, a shadow, or a dark rectangle** → A10, `src/win.rs`
 - **Doing that frame surgery on a Slint window** → G18 (ask for the handle
   after `show`, never before), G19 (state the size *after* stripping the frame,
