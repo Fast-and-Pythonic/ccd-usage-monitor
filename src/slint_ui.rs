@@ -33,6 +33,15 @@ const BUILT_IN: &str = include_str!("../themes/pill.slint");
 /// The same quarter-second the file sources are watched on.
 const TICK: Duration = Duration::from_millis(250);
 
+/// Which version of the theme contract this build speaks.
+///
+/// Bumped whenever a struct sent to the theme changes shape. A *property* the
+/// theme has never heard of costs nothing — it is simply not set — but a
+/// struct is matched field by field, and one that no longer lines up is
+/// refused whole, which leaves the pill blank with nothing said about it
+/// (G22). So the version is checked before the theme is used at all.
+const THEME_API: i64 = 2;
+
 pub fn theme_path() -> std::path::PathBuf {
     crate::config::config_path().with_file_name("theme.slint")
 }
@@ -89,9 +98,12 @@ fn load_theme() -> Theme {
         let _ = std::fs::write(&path, BUILT_IN);
     }
     if let Ok(text) = std::fs::read_to_string(&path) {
-        let (built, trouble) = compile(&text, &path);
+        let (built, mut trouble) = compile(&text, &path);
         if let Some((pill, panel)) = built {
-            return Theme { pill, panel, trouble, fell_back: false };
+            match speaks_our_version(&pill) {
+                Ok(()) => return Theme { pill, panel, trouble, fell_back: false },
+                Err(says) => trouble.push(says),
+            }
         }
         let (built, _) = compile(BUILT_IN, &path);
         if let Some((pill, panel)) = built {
@@ -102,6 +114,28 @@ fn load_theme() -> Theme {
         compile(BUILT_IN, std::path::Path::new("built-in/pill.slint"));
     let (pill, panel) = built.expect("the built-in theme must compile");
     Theme { pill, panel, trouble, fell_back: true }
+}
+
+/// Whether a compiled theme was written against the contract this build sends.
+///
+/// Checked by building one throwaway instance of it, which is the only way to
+/// read a property's value: a `ComponentDefinition` lists what exists, not
+/// what it is set to.
+fn speaks_our_version(
+    def: &slint_interpreter::ComponentDefinition,
+) -> Result<(), String> {
+    let Ok(instance) = def.create() else {
+        return Err("the theme compiled but could not be built".into());
+    };
+    match instance.get_property("theme_api") {
+        Ok(Value::Number(n)) if n as i64 == THEME_API => Ok(()),
+        Ok(Value::Number(n)) => Err(format!(
+            "the theme is written for contract {n}, this build sends {THEME_API}"
+        )),
+        _ => Err(format!(
+            "the theme declares no `theme_api`; this build sends {THEME_API}"
+        )),
+    }
 }
 
 /// The palette the theme declared, read back so that a role can be turned into
@@ -169,6 +203,7 @@ impl Palette {
 /// saying so in the model is easier to draw — and impossible to get wrong —
 /// than having the theme work out where each group started.
 fn groups_model(
+    cfg: &Config,
     cells: &[view::Cell],
     bars: &[view::Bar],
     palette: Palette,
@@ -182,6 +217,16 @@ fn groups_model(
             .map(|c| {
                 Value::Struct(slint_interpreter::Struct::from_iter([
                     ("text".to_string(), Value::String(c.text.as_str().into())),
+                    (
+                        "name".to_string(),
+                        Value::String(
+                            c.field
+                                .map(|f| view::field_name(f, cfg))
+                                .unwrap_or_default()
+                                .as_str()
+                                .into(),
+                        ),
+                    ),
                     ("template".to_string(), Value::String(c.template.as_str().into())),
                     ("role".to_string(), Value::Number(role_code(c.role) as f64)),
                     ("ink".to_string(), Value::Brush(palette.paint(c.paint).into())),
@@ -247,16 +292,30 @@ fn side_code(side: view::Side) -> i32 {
 /// send — costs nothing either, since the property simply keeps its default.
 struct Declared {
     names: Vec<String>,
+    complained: RefCell<std::collections::BTreeSet<String>>,
 }
 
 impl Declared {
     fn of(def: &slint_interpreter::ComponentDefinition) -> Declared {
-        Declared { names: def.properties().map(|(name, _)| name).collect() }
+        Declared {
+            names: def.properties().map(|(name, _)| name).collect(),
+            complained: RefCell::new(std::collections::BTreeSet::new()),
+        }
     }
 
+    /// Errors are reported, once per property, rather than dropped.
+    ///
+    /// Swallowing them is how a theme whose structs had drifted produced a
+    /// pill 36 pixels wide and not one word about why (G22). "Tolerant" has to
+    /// mean "carries on and says so", not "carries on".
     fn set(&self, instance: &ComponentInstance, name: &str, value: Value) {
-        if self.names.iter().any(|n| n == name) {
-            let _ = instance.set_property(name, value);
+        if !self.names.iter().any(|n| n == name) {
+            return;
+        }
+        if let Err(e) = instance.set_property(name, value)
+            && self.complained.borrow_mut().insert(name.to_string())
+        {
+            eprintln!("ccd-usage-monitor: the theme would not take `{name}`: {e}");
         }
     }
 
@@ -290,11 +349,16 @@ struct App {
     panel_up: bool,
     panel_lines: usize,
     panel_sized: (f32, f32),
-    /// The pointer is over the pill, or over the panel under it. Both count:
-    /// a panel that closes when you move onto it to read it is a panel nobody
-    /// can read.
+    /// The pointer is over the pill or over the panel under it — read from the
+    /// cursor position rather than from the theme, because "is the pointer
+    /// over the widget" has to keep the same answer while the pointer is
+    /// still, and a toolkit's own pointer position goes stale exactly then
+    /// (G16). Both windows count: a panel that closes when you move onto it to
+    /// read it is a panel nobody can read.
     hovering: bool,
-    hovering_panel: bool,
+    /// The figure under the pointer, for the line that names it. Held while
+    /// the pointer is anywhere over the pill and cleared when it leaves.
+    hint: Option<String>,
     tray: Option<Tray>,
     visible: bool,
     /// The size last pushed, so the window is not resized on every tick.
@@ -308,7 +372,7 @@ impl App {
     /// Whether the detail panel should be open right now.
     fn detail_wanted(&self) -> bool {
         match self.cfg.detail_mode {
-            crate::config::DetailMode::Hover => self.hovering || self.hovering_panel,
+            crate::config::DetailMode::Hover => self.hovering,
             crate::config::DetailMode::WithSettings => false,
             crate::config::DetailMode::Never => false,
         }
@@ -325,10 +389,14 @@ pub fn run(demo: bool) -> Result<(), String> {
     let geom = crate::geometry::load();
     let theme = load_theme();
     if theme.fell_back {
-        eprintln!("ccd-usage-monitor: the theme did not compile; using the built-in one");
-    }
-    for line in &theme.trouble {
-        eprintln!("  {line}");
+        eprintln!(
+            "ccd-usage-monitor: {} was not used; drawing with the built-in theme.",
+            theme_path().display()
+        );
+        for line in &theme.trouble {
+            eprintln!("  {line}");
+        }
+        eprintln!("  delete that file to have a current one written in its place.");
     }
 
     let declared = Declared::of(&theme.pill);
@@ -338,7 +406,7 @@ pub fn run(demo: bool) -> Result<(), String> {
     let panel = theme.panel.create().map_err(|e| format!("cannot build the panel: {e}"))?;
     let palette = Palette::read(&pill);
 
-    let tray = Tray::build(cfg.is_ru());
+    let tray = Tray::build(cfg.is_ru(), true);
     let app = Rc::new(RefCell::new(App {
         cfg,
         geom,
@@ -356,7 +424,7 @@ pub fn run(demo: bool) -> Result<(), String> {
         panel_lines: 0,
         panel_sized: (0.0, 0.0),
         hovering: false,
-        hovering_panel: false,
+        hint: None,
         tray,
         visible: true,
         sized: (0.0, 0.0),
@@ -389,21 +457,11 @@ pub fn run(demo: bool) -> Result<(), String> {
             Value::Void
         });
     }
-    if callbacks.iter().any(|c| c == "hovered") {
+    if callbacks.iter().any(|c| c == "entered") {
         let app = app.clone();
-        let _ = pill.set_callback("hovered", move |args| {
-            if let Some(Value::Bool(over)) = args.first() {
-                app.borrow_mut().hovering = *over;
-            }
-            Value::Void
-        });
-    }
-
-    if theme.panel.callbacks().any(|c| c == "hovered") {
-        let app = app.clone();
-        let _ = panel.set_callback("hovered", move |args| {
-            if let Some(Value::Bool(over)) = args.first() {
-                app.borrow_mut().hovering_panel = *over;
+        let _ = pill.set_callback("entered", move |args| {
+            if let Some(Value::String(name)) = args.first() {
+                app.borrow_mut().hint = Some(name.to_string());
             }
             Value::Void
         });
@@ -468,6 +526,7 @@ fn tick(app: &Rc<RefCell<App>>) {
     // previous sentence is not.
     resize(&mut a);
     place_panel(&mut a);
+    read_hover(&mut a);
 
     if let Some(cfg) = a.watch.poll() {
         let demo = a.demo;
@@ -488,7 +547,7 @@ fn tick(app: &Rc<RefCell<App>>) {
 
     let cells = view::cells(&cfg, &snap, stale, ctx_stale, now);
     let bars = view::bars(&cfg, &snap, ctx_stale, now);
-    let model = groups_model(&cells, &bars, a.palette);
+    let model = groups_model(&cfg, &cells, &bars, a.palette);
 
     let pill = a.pill.clone_strong();
     a.declared.set(&pill, "groups", Value::Model(model));
@@ -514,11 +573,25 @@ fn show_panel(
     now: i64,
 ) {
     let Some(pf) = a.panel_frame else { return };
-    let lines = if a.visible && a.detail_wanted() {
+    let mut lines = if a.visible && a.detail_wanted() {
         view::detail_lines(cfg, &a.rt, snap, stale, now)
     } else {
         Vec::new()
     };
+    // With the panel open the name of the figure goes into it as the first
+    // line: two surfaces answering one hover is one too many. With the panel
+    // shut, the name is the whole of what the panel says.
+    if let Some(hint) = &a.hint {
+        let label = if cfg.is_ru() { "поле" } else { "field" };
+        if lines.is_empty() && a.visible {
+            // Even with the detail panel switched off entirely: "what is that
+            // number" is a different question from "tell me everything", and
+            // switching off the second should not take away the first.
+            lines.push((label.to_string(), hint.clone()));
+        } else if !lines.is_empty() {
+            lines.insert(0, (label.to_string(), hint.clone()));
+        }
+    }
     if lines.is_empty() {
         if a.panel_up {
             a.panel_up = false;
@@ -549,6 +622,29 @@ fn show_panel(
 
     a.panel_lines = lines.len();
     a.panel_up = true;
+}
+
+/// Is the pointer over the widget, and if it has just left, forget the figure
+/// it was over.
+///
+/// Asked of the system on every tick rather than answered by the theme. The
+/// difference matters: a toolkit reports a pointer position that is only
+/// refreshed by a real mouse event, so a *still* pointer over a window that
+/// has just moved reads as being somewhere it is not — which is how the hint
+/// used to blink on and off several times a second (G16).
+fn read_hover(a: &mut App) {
+    let (cx, cy) = crate::win::cursor();
+    let inside = |r: (i32, i32, i32, i32)| {
+        cx >= r.0 && cx < r.0 + r.2 && cy >= r.1 && cy < r.1 + r.3
+    };
+    let over_pill = a.frame.is_some_and(|f| inside(f.rect()));
+    let over_panel = a.panel_up && a.panel_frame.is_some_and(|f| inside(f.rect()));
+    a.hovering = over_pill || over_panel;
+    if !over_pill {
+        // The name is held while the pointer is anywhere over the pill, gaps
+        // between figures included, and only dropped when it leaves.
+        a.hint = None;
+    }
 }
 
 /// Size the panel to its lines and put it under the pill — or above it, when
@@ -591,6 +687,21 @@ fn place_panel(a: &mut App) {
     // screen it slides left instead, ending flush with the pill's right edge.
     let left = x.min(area_x + area_w - panel_w).max(area_x);
     pf.place(left, top);
+}
+
+/// Start again with the same arguments, and let this process end.
+///
+/// How a changed theme is picked up. Slint's stable API cannot replace the
+/// element tree of a window that is already on screen, and rebuilding the
+/// window inside the process would mean rebuilding every piece of state hung
+/// off it — so the honest version is the cheap one, and the poller's budget
+/// and the history log are read back off disk on the way up.
+fn restart() {
+    let Ok(exe) = std::env::current_exe() else { return };
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if std::process::Command::new(exe).args(args).spawn().is_ok() {
+        let _ = slint::quit_event_loop();
+    }
 }
 
 /// Open `config.toml` in whatever the system opens `.toml` with. Stands in for
@@ -667,6 +778,12 @@ fn pump_tray(a: &mut App) {
                 }
             }
             tray::Command::OpenSettings => open_config(),
+            tray::Command::Restart => restart(),
+            tray::Command::AboutSlint => {
+                let _ = std::process::Command::new("cmd")
+                    .args(["/C", "start", "", "https://slint.dev"])
+                    .spawn();
+            }
             tray::Command::Quit => {
                 let _ = slint::quit_event_loop();
             }

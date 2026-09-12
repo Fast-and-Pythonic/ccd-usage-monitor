@@ -395,3 +395,30 @@ hidden has nothing to restore.
 trusting the call — `GetWindowLongPtrW` on `GWL_STYLE` and `GWL_EXSTYLE`. The
 frame coming back is visible; a lost `WS_EX_NOACTIVATE` is not, until somebody
 loses what they were typing.
+
+---
+
+## G22: a theme one version behind draws nothing, and says nothing
+**Symptom:** the pill came up 36 pixels wide — its padding and no content — on
+a build that had worked minutes earlier. No error, no diagnostic, no missing
+property. The same binary drew correctly when the theme file was deleted.
+**Root cause:** the theme is a file on disk that shadows the copy in the
+binary, and it had been written before a field was added to the `PillCell`
+struct. Slint matches a struct passed through the interpreter field by field,
+so the whole `groups` model was refused with `SetPropertyError::WrongType` —
+and the "tolerant contract" was tolerating it, because `set_property`'s result
+was being dropped on the floor. Tolerance had been built for *properties* the
+theme might not declare, which is safe; a struct that no longer lines up is a
+different failure and not a survivable one.
+**Fix:** two things, and both were needed.
+1. `theme_api` is checked rather than merely declared. The theme states which
+   contract it was written against, the program knows which one it sends, and
+   a mismatch means the file is not used at all — the built-in copy draws, and
+   stderr says which version was found and which was wanted. Bumped whenever a
+   struct changes shape.
+2. `set_property` failures are printed, once per property name. "Tolerant" has
+   to mean "carries on and says so".
+**How to spot it:** a UI that is present, correctly sized around its padding,
+and empty. That shape — the frame without the content — is a model or a list
+that was rejected rather than one that came back empty, because an empty model
+still lays out its surroundings the same way.

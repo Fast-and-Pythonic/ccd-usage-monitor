@@ -312,7 +312,7 @@ impl App {
         if demo {
             cfg.demo = true;
         }
-        let tray = Tray::build(cfg.is_ru());
+        let tray = Tray::build(cfg.is_ru(), false);
         App {
             cfg,
             watch: crate::config::Watch::new(),
@@ -372,6 +372,10 @@ impl App {
                         60.0, 60.0,
                     )));
                 }
+                // Neither reaches this front end: both items are only built
+                // for the Slint one, which is the only one with a theme to
+                // reload and the only one with anything by Slint in it.
+                tray::Command::Restart | tray::Command::AboutSlint => {}
                 tray::Command::Quit => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             }
         }

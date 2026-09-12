@@ -34,6 +34,7 @@ use windows_sys::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
 };
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture;
+use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallWindowProcW, GetWindowLongPtrW, GetWindowRect, SendMessageW, SetWindowLongPtrW,
     SetWindowPos, GWL_EXSTYLE, GWL_STYLE, GWL_WNDPROC, HTCAPTION, HWND_TOPMOST, SWP_FRAMECHANGED,
@@ -135,6 +136,19 @@ pub fn dark_menus() {
             flush();
         }
     }
+}
+
+/// Where the pointer is, in device pixels.
+///
+/// The widget asks the system rather than the toolkit because the question is
+/// "is the pointer over the pill", and the answer has to stay the same while
+/// the pointer is still. A toolkit's pointer position is window-relative and
+/// is only refreshed by a real mouse event, which is exactly the staleness
+/// that made G16 into a loop.
+pub fn cursor() -> (i32, i32) {
+    let mut p = windows_sys::Win32::Foundation::POINT { x: 0, y: 0 };
+    unsafe { GetCursorPos(&mut p) };
+    (p.x, p.y)
 }
 
 /// The widget's window, addressed the way Win32 wants it.

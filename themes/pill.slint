@@ -29,6 +29,9 @@
 //   2 — the `ctx` tag
 export struct PillCell {
     text: string,
+    // What this figure is called, for the line that names it while the pointer
+    // is over it. Empty for punctuation.
+    name: string,
     // The widest string this cell will ever hold. The cell reserves that width
     // whatever it is currently showing, so the pill does not twitch — and
     // everything to the right of a changing digit does not shuffle.
@@ -60,9 +63,32 @@ component Cell inherits Rectangle {
     in property <PillCell> cell;
     in property <length> size;
     in property <int> weight;
+    callback entered(string);
+    callback pressed();
+    callback menu();
 
     // The wider of what is shown and what might be: see `template`.
     width: max(shown.preferred-width, ghost.preferred-width);
+
+    // Reports on entry and never on leaving: which figure the pointer is over
+    // changes as it moves along the pill, but *whether* it is over the pill is
+    // a question the program answers for itself, from the cursor position.
+    // Clearing the name here would blink it off in every gap between figures.
+    TouchArea {
+        changed has-hover => {
+            if (self.has-hover && cell.name != "") {
+                root.entered(cell.name);
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.pressed();
+            }
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+                root.menu();
+            }
+        }
+    }
 
     ghost := Text {
         text: cell.template;
@@ -114,10 +140,15 @@ export component Pill inherits Window {
     out property <length> wanted_width: body.preferred-width;
     out property <length> wanted_height: max(pill_height, body.preferred-height);
 
-    /// Bumped when the program starts sending something this file could not
-    /// have known about. A mismatch is a line in the tray menu, not a refusal
-    /// to start.
-    out property <int> theme_api: 1;
+    /// Which version of the contract above this file was written against.
+    ///
+    /// It is checked, and a theme that does not match is not loaded: the
+    /// program falls back to its built-in copy and says why. Tolerating a
+    /// missing *property* is safe — the theme just does without it — but the
+    /// structs are a different matter, and a `PillCell` that has lost a field
+    /// is refused wholesale by the runtime, leaving the pill empty and silent.
+    /// Bumped whenever `PillCell`, `PillGroup` or `PanelLine` changes shape.
+    out property <int> theme_api: 2;
 
     // ---- what the program listens for -------------------------------------
     /// Pressed with the left button: the program hands the window to the
@@ -125,9 +156,10 @@ export component Pill inherits Window {
     callback pressed();
     /// Pressed with the right button: opens the settings.
     callback menu();
-    /// The pointer entered or left the pill. The panel under it opens on
-    /// hover, and the program is the one that knows whether it should.
-    callback hovered(bool);
+    /// The pointer moved onto this figure. Only ever the name of something
+    /// under the pointer — never a clearing signal, which the program works
+    /// out from the cursor position instead.
+    callback entered(string);
 
     // ---- the sizes this file owns -----------------------------------------
     property <length> pill_height: 34px * scale;
@@ -152,9 +184,6 @@ export component Pill inherits Window {
         border-color: #ffffff16;
 
         TouchArea {
-            changed has-hover => {
-                root.hovered(self.has-hover);
-            }
             pointer-event(e) => {
                 if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
                     root.pressed();
@@ -201,6 +230,9 @@ export component Pill inherits Window {
                                     : c.role == 1 ? font_time
                                     : font_small;
                                 weight: c.role == 0 ? 600 : 400;
+                                entered(name) => { root.entered(name); }
+                                pressed => { root.pressed(); }
+                                menu => { root.menu(); }
                             }
                             // The space after a cell, and whatever goes in it.
                             Rectangle {
@@ -267,9 +299,6 @@ export component Panel inherits Window {
     in property <float> scale: 1.0;
     in property <float> alpha: 0.88;
 
-    /// The pointer is over the panel itself. Without this the panel closes the
-    /// moment anyone moves onto it to read it.
-    callback hovered(bool);
 
     out property <brush> palette_ink: #ececf0;
     out property <brush> palette_dim: #8c8e99;
@@ -287,12 +316,6 @@ export component Panel inherits Window {
         border-radius: corner;
         border-width: 1px;
         border-color: #ffffff16;
-
-        TouchArea {
-            changed has-hover => {
-                root.hovered(self.has-hover);
-            }
-        }
 
         box := VerticalLayout {
             padding: 14px * scale;

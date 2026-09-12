@@ -22,6 +22,14 @@ pub enum Command {
     /// The only way back when a saved position lands on a monitor that no
     /// longer exists.
     ResetPosition,
+    /// Start again, which is how a changed theme is picked up: Slint's stable
+    /// API cannot swap the tree of a window that is already on screen, so the
+    /// window is rebuilt by rebuilding the process.
+    Restart,
+    /// Open slint.dev. The royalty-free licence requires the application to
+    /// say visibly that it is built with Slint (A20); until the settings
+    /// window exists, this menu is the only surface with room to say it.
+    AboutSlint,
     Quit,
 }
 
@@ -53,6 +61,10 @@ pub struct Tray {
     settings_item: MenuItem,
     pass_item: MenuItem,
     reset_item: MenuItem,
+    /// Both `None` on the egui front end: there is no theme to reload and
+    /// nothing by Slint in it to acknowledge.
+    restart_item: Option<MenuItem>,
+    slint_item: Option<MenuItem>,
     quit_item: MenuItem,
     /// Which language the fixed labels were last written in. The two toggles
     /// are rewritten every tick anyway; the rest only when the language moves.
@@ -82,7 +94,10 @@ fn tray_image() -> Icon {
 }
 
 impl Tray {
-    pub fn build(ru: bool) -> Option<Tray> {
+    /// `slint` adds the two items that only mean something on the Slint front
+    /// end: reloading the theme, and the acknowledgement its licence asks for.
+    /// The egui build must not claim to be built with something it is not.
+    pub fn build(ru: bool, slint: bool) -> Option<Tray> {
         let menu = Menu::new();
         let visible_item = MenuItem::new(visible_label(true, ru), true, None);
         // Also the only way in while clicks fall through the pill.
@@ -94,10 +109,24 @@ impl Tray {
             None,
         );
         let quit_item = MenuItem::new(if ru { "Выход" } else { "Quit" }, true, None);
+        let restart_item = slint.then(|| {
+            MenuItem::new(
+                if ru { "Перезапустить (тема)" } else { "Restart (theme)" },
+                true,
+                None,
+            )
+        });
+        let slint_item = slint.then(|| MenuItem::new("Built with Slint", true, None));
         menu.append(&visible_item).ok()?;
         menu.append(&settings_item).ok()?;
         menu.append(&pass_item).ok()?;
         menu.append(&reset_item).ok()?;
+        if let Some(item) = &restart_item {
+            menu.append(item).ok()?;
+        }
+        if let Some(item) = &slint_item {
+            menu.append(item).ok()?;
+        }
         menu.append(&quit_item).ok()?;
 
         let tray = TrayIconBuilder::new()
@@ -113,6 +142,8 @@ impl Tray {
             settings_item,
             pass_item,
             reset_item,
+            restart_item,
+            slint_item,
             quit_item,
             labels_ru: None,
         })
@@ -141,6 +172,10 @@ impl Tray {
                 out.push(Command::ToggleClickThrough);
             } else if id == self.reset_item.id() {
                 out.push(Command::ResetPosition);
+            } else if self.restart_item.as_ref().is_some_and(|i| id == i.id()) {
+                out.push(Command::Restart);
+            } else if self.slint_item.as_ref().is_some_and(|i| id == i.id()) {
+                out.push(Command::AboutSlint);
             } else if id == self.quit_item.id() {
                 out.push(Command::Quit);
             }
@@ -159,6 +194,10 @@ impl Tray {
                 .set_text(if ru { "Настройки" } else { "Settings" });
             self.reset_item
                 .set_text(if ru { "Вернуть на экран" } else { "Reset position" });
+            if let Some(item) = &self.restart_item {
+                item.set_text(if ru { "Перезапустить (тема)" } else { "Restart (theme)" });
+            }
+            // "Built with Slint" is a name and is not translated.
             self.labels_ru = Some(ru);
         }
     }
