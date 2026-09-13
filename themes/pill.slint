@@ -163,26 +163,40 @@ export component Pill inherits Window {
 
    // ---- the sizes this file owns -----------------------------------------
    property <length> pill_height: 34px * scale;
-   property <length> pad_x: 13px * scale;
-   property <length> pad_top: 4.5px * scale;
-   property <length> pad_bottom: 4.5px * scale;
-   property <length> gap_text_bars: 3px * scale;
-   property <length> track_height: 3px * scale;
-   property <length> cell_gap: 9px * scale;
-   property <length> group_gap: 11px * scale;
    property <length> corner: 8px * scale;
-   property <length> font_pct: 14px * scale;
-   property <length> font_time: 14px * scale;
-   property <length> font_small: 12px * scale;
+   // The bar's own thickness, not a gap around it — see track_height below.
+   property <length> track_height: 3px * scale;
+
+   // Horizontal spacing — left/right padding and the gaps between cells
+   // and groups along the pill.
+   property <length> pad_x: 13px * scale; // 13px * scale;
+   property <length> cell_gap: 9px * scale; // 9px * scale;
+   property <length> group_gap: 11px * scale; // 11px * scale;
+
+   // Vertical spacing — top/bottom padding and the gap between a group's
+   // cells and the bar underneath them.
+   property <length> pad_top: 4.5px * scale; // 4.5px * scale;
+   property <length> pad_bottom: 4.5px * scale; // 4.5px * scale;
+   property <length> gap_text_bars: 3px * scale; // 3px * scale;
+
+   property <length> font_pct: 14px * scale; // 14px * scale;
+   property <length> font_time: 14px * scale; // 14px * scale;
+   property <length> font_small: 12px * scale; // 12px * scale;
 
    background: transparent;
 
+   // The pill's body: a rounded, semi-transparent card. Everything below is
+   // drawn inside it; `root` itself stays transparent so only this card's
+   // shape is visible.
    Rectangle {
       background: rgba(19, 19, 22, root.alpha * 255);
       border-radius: corner;
       border-width: 1px;
       border-color: #ffffff16;
 
+      // Drag and right-click menu for the pill as a whole. Separate from
+      // each Cell's own TouchArea below, which only reports hover for the
+      // name-on-pointer tooltip.
       TouchArea {
          pointer-event(e) => {
             if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
@@ -205,6 +219,8 @@ export component Pill inherits Window {
          background: palette_amber;
       }
 
+      // The row of groups, left to right — its preferred size is what
+      // `wanted_width`/`wanted_height` above report back to the program.
       body := HorizontalLayout {
          padding-left: pad_x;
          padding-right: pad_x;
@@ -213,13 +229,17 @@ export component Pill inherits Window {
          spacing: 0px;
          alignment: start;
 
+         // One group per quota window (e.g. the 5-hour and weekly limits).
          for g[gi] in root.groups: HorizontalLayout {
             spacing: 0px;
 
+            // A group is its cells on top, and its progress bar (if any)
+            // underneath them.
             VerticalLayout {
                spacing: gap_text_bars;
                alignment: center;
 
+               // The cells of this group, left to right.
                HorizontalLayout {
                   spacing: 0px;
                   for c[ci] in g.cells: HorizontalLayout {
@@ -255,10 +275,12 @@ export component Pill inherits Window {
                   }
                }
 
+               // The hairline progress bar under a group's cells.
                if g.has_bar: Rectangle {
                   height: track_height;
                   border-radius: self.height / 2;
                   background: #ffffff18;
+                  // The filled portion, drawn over the empty track.
                   Rectangle {
                      x: 0;
                      width: parent.width * g.bar_frac;
@@ -317,10 +339,14 @@ export component Panel inherits Window {
       border-width: 1px;
       border-color: #ffffff16;
 
+      // One line per hovered figure, stacked top to bottom.
       box := VerticalLayout {
          padding: 14px * scale;
          spacing: 2px * scale;
 
+         // A line is its label in a fixed-width gutter, then the value —
+         // so labels of different lengths still leave every value aligned
+         // in one column.
          for l in root.lines: HorizontalLayout {
             spacing: 0px;
             Text {

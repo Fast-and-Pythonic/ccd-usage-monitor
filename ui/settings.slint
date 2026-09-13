@@ -50,6 +50,8 @@ export struct SessionRow {
    chosen: bool,
 }
 
+// One row of the form: a label, then whichever control this setting's
+// `kind` calls for, then — only while hovered — the tip explaining it.
 component Row inherits Rectangle {
    in property <SettingRow> entry;
    in property <bool> ru;
@@ -63,12 +65,16 @@ component Row inherits Rectangle {
    background: touch.has-hover ? #ffffff08 : transparent;
    border-radius: 4px;
 
+   // Covers the whole row, so hover works between the label and the
+   // control too, not just over whichever one the pointer happens to sit
+   // on — that's also what the tip below and the background wait for.
    touch := TouchArea { }
 
    layout := VerticalLayout {
       padding: 4px;
       spacing: 2px;
 
+      // Label on the left, control on the right.
       HorizontalLayout {
          spacing: 8px;
          alignment: space-between;
@@ -81,11 +87,14 @@ component Row inherits Rectangle {
             horizontal-stretch: 1;
          }
 
+         // kind 0: a switch.
          if entry.kind == 0: CheckBox {
             checked: entry.on;
             toggled => { root.toggled(self.checked); }
          }
 
+         // kind 1: a number, stepped by four buttons — a small step
+         // (‹›) and a big one (« »), both defined by the setting itself.
          if entry.kind == 1: HorizontalLayout {
             spacing: 2px;
             Button {
@@ -116,12 +125,14 @@ component Row inherits Rectangle {
             }
          }
 
+         // kind 2: a choice from a fixed list.
          if entry.kind == 2: ComboBox {
             model: entry.choices;
             current-index: entry.choice;
             selected => { root.chose(self.current-index); }
          }
 
+         // kind 3: free text.
          if entry.kind == 3: LineEdit {
             text: entry.text;
             min-width: 150px;
@@ -171,10 +182,15 @@ export component Settings inherits Window {
    preferred-width: 460px;
    preferred-height: 680px;
 
+   // Top to bottom: an optional status line, an optional warning banner,
+   // the scrollable rows and pinned-session list, the action buttons, the
+   // theme path, and the licence footer.
    VerticalBox {
       padding: 8px;
       spacing: 6px;
 
+      // Quiet status line for the usage endpoint — only present while
+      // there's something to say about it.
       if api_state != "": Rectangle {
          background: #ffffff08;
          border-radius: 4px;
@@ -189,6 +205,8 @@ export component Settings inherits Window {
          }
       }
 
+      // Amber warning: the theme on disk was refused, so the built-in
+      // fallback is what's actually drawing right now.
       if theme_trouble != "": Rectangle {
          background: #e8994c20;
          border-radius: 4px;
@@ -204,11 +222,15 @@ export component Settings inherits Window {
          }
       }
 
+      // Everything that might not fit: all forty-five settings, plus the
+      // pinned-session list when there's a conversation to choose from.
       ScrollView {
          vertical-stretch: 1;
          VerticalLayout {
             padding-right: 12px;
             spacing: 1px;
+            // One row per setting; a section header appears above the
+            // first row of each section, per `SettingRow.section`.
             for r in root.rows: VerticalLayout {
                spacing: 1px;
                if r.section != "": Text {
@@ -233,6 +255,8 @@ export component Settings inherits Window {
                font-weight: 700;
                opacity: 0.75;
             }
+            // One line per conversation the context figure could be
+            // pinned to; the filled dot marks the one currently chosen.
             for s in root.sessions: Rectangle {
                height: line.preferred-height;
                background: pick.has-hover ? #ffffff08
@@ -261,6 +285,7 @@ export component Settings inherits Window {
          }
       }
 
+      // The actions that don't belong to any single setting.
       HorizontalLayout {
          spacing: 6px;
          Button {
