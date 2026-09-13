@@ -117,8 +117,15 @@ impl Runtime {
       if seeded {
          history::save(&log);
       }
+      // The API's own last answer, so a restart shows it instead of a blank
+      // pill while the poller waits out the rest of its interval — the
+      // other sources don't carry the quota windows at all when they're
+      // switched off, so this can be the only copy of that data anywhere.
+      let (api, api_last_ok) = api::load_last_reading();
       Runtime {
          history: log,
+         api,
+         api_last_ok,
          ..Runtime::blank()
       }
    }

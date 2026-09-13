@@ -299,6 +299,126 @@ impl PollerSettings {
    }
 }
 
+/// What the poller remembers of itself across a restart: when it last asked,
+/// and what it last learned. The rest of its memory — the penalty, the
+/// budget history — stays in-memory only: losing that after a restart just
+/// means the widget is briefly as cautious as a fresh install, never more.
+///
+/// These two are different. Forgetting `last_request` on every restart is
+/// what made the schedule pointless during active development, when the
+/// widget restarts far more often than the interval — each relaunch asked
+/// again immediately, as if it had never asked before. And forgetting the
+/// reading itself is what left the pill blank until the next poll came in:
+/// the other sources (bridge, desktop, session) don't carry the quota
+/// windows at all when they're switched off, so the API's own last answer is
+/// sometimes the only copy of that data anywhere outside this file.
+fn poll_state_path() -> std::path::PathBuf {
+   crate::state::state_dir().join("api_poll.json")
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(default)]
+struct PollState {
+   last_request: i64,
+   #[serde(flatten)]
+   limits: crate::state::StoredLimits,
+}
+
+fn load_poll_state() -> PollState {
+   std::fs::read_to_string(poll_state_path())
+      .ok()
+      .and_then(|text| serde_json::from_str(&text).ok())
+      .unwrap_or_default()
+}
+
+/// Written whole and swapped in, like `window.json` (`geometry::save`) — one
+/// writer, so no lock, and an error here is not worth interrupting anyone
+/// over: the next write will just try again.
+fn write_poll_state(state: &PollState) {
+   let dir = crate::state::state_dir();
+   if std::fs::create_dir_all(&dir).is_err() {
+      return;
+   }
+   let tmp = dir.join(format!("api_poll.{}.tmp", std::process::id()));
+   let Ok(text) = serde_json::to_string(state) else {
+      return;
+   };
+   if std::fs::write(&tmp, text).is_ok() {
+      let _ = std::fs::rename(&tmp, poll_state_path());
+   } else {
+      let _ = std::fs::remove_file(&tmp);
+   }
+}
+
+fn load_last_request() -> i64 {
+   load_poll_state().last_request
+}
+
+fn save_last_request(last_request: i64) {
+   let mut state = load_poll_state();
+   state.last_request = last_request;
+   write_poll_state(&state);
+}
+
+fn to_stored(w: Window) -> crate::state::StoredWindow {
+   crate::state::StoredWindow {
+      used_percentage: w.used_pct,
+      // `parse_usage` already drops a window that arrived without one.
+      resets_at: w.resets_at.unwrap_or(0),
+      observed_at: w.observed_at,
+   }
+}
+
+fn from_stored(w: &crate::state::StoredWindow) -> Window {
+   Window {
+      used_pct: w.used_percentage,
+      resets_at: Some(w.resets_at),
+      observed_at: w.observed_at,
+      source: Source::Api,
+   }
+}
+
+/// Folds a fresh reading into what was already saved, field by field —
+/// absent fields never overwrite present ones, the same rule `Window::merge`
+/// (A03) follows: a response with only one window due for renewal must not
+/// blank out the other one, which may just not have been due yet.
+fn merge_reading(mut state: PollState, snap: &Snapshot) -> PollState {
+   if let Some(w) = snap.five_hour {
+      state.limits.five_hour = Some(to_stored(w));
+   }
+   if let Some(w) = snap.seven_day {
+      state.limits.seven_day = Some(to_stored(w));
+   }
+   state
+}
+
+fn save_last_reading(snap: &Snapshot) {
+   write_poll_state(&merge_reading(load_poll_state(), snap));
+}
+
+/// What to show while waiting for the first poll of this run: the answer
+/// from the last one, aged honestly. Its `observed_at` is untouched, so the
+/// normal staleness rules (A07, A14) grey it out and then drop it exactly as
+/// they would a live reading nobody has refreshed in a while — nothing here
+/// pretends the data is newer than it is.
+fn reading_from_state(state: &PollState) -> (Snapshot, Option<i64>) {
+   let five_hour = state.limits.five_hour.as_ref().map(from_stored);
+   let seven_day = state.limits.seven_day.as_ref().map(from_stored);
+   let last_ok = five_hour.or(seven_day).map(|w| w.observed_at);
+   (
+      Snapshot {
+         five_hour,
+         seven_day,
+         context: None,
+      },
+      last_ok,
+   )
+}
+
+pub fn load_last_reading() -> (Snapshot, Option<i64>) {
+   reading_from_state(&load_poll_state())
+}
+
 /// Poll in the background, and again immediately whenever someone sends
 /// `Wake::Now`. Waiting on the channel rather than sleeping is what makes
 /// "refresh now" instant instead of up to one interval away.
@@ -312,7 +432,7 @@ pub fn spawn_poller(settings: Arc<PollerSettings>, tx: Sender<ApiEvent>) -> Send
    std::thread::spawn(move || {
       let mut penalty_until: i64 = 0;
       let mut penalty_secs: i64 = 0;
-      let mut last_request: i64 = 0;
+      let mut last_request: i64 = load_last_request();
       // Times of the requests made in the last minute, oldest first.
       let mut history: Vec<i64> = Vec::new();
       // A "refresh now" that has not been satisfied yet; it survives a wait
@@ -343,6 +463,7 @@ pub fn spawn_poller(settings: Arc<PollerSettings>, tx: Sender<ApiEvent>) -> Send
             Action::Request => {
                forced = false;
                last_request = now;
+               save_last_request(now);
                history.push(now);
                let _ = tx.send(ApiEvent::Polling);
                let mut wait = Duration::from_secs(interval.max(1));
@@ -371,7 +492,9 @@ pub fn spawn_poller(settings: Arc<PollerSettings>, tx: Sender<ApiEvent>) -> Send
                            // Everything that shows an age reads this
                            // one number.
                            let seen = crate::state::now();
-                           let _ = tx.send(ApiEvent::Data(parse_usage(&v, seen)));
+                           let snap = parse_usage(&v, seen);
+                           save_last_reading(&snap);
+                           let _ = tx.send(ApiEvent::Data(snap));
                         }
                         Err(e) => {
                            let _ = tx.send(ApiEvent::Unavailable(e.to_string()));
@@ -539,5 +662,101 @@ mod tests {
       };
       assert!(t.is_expired(2_001));
       assert!(!t.is_expired(1_999));
+   }
+
+   // Only the data shape is tested here, not `load_last_request` /
+   // `save_last_request` themselves — those touch the real state directory,
+   // and geometry.rs's equivalent functions aren't unit-tested for the same
+   // reason.
+   #[test]
+   fn an_absent_or_empty_file_is_a_poller_that_has_never_run() {
+      // What `load_last_request` falls back to when the file is missing or
+      // unreadable — the same `0` `decide` already treats as "go at once".
+      let state: PollState = serde_json::from_str("{}").unwrap();
+      assert_eq!(state.last_request, 0);
+   }
+
+   #[test]
+   fn a_saved_request_time_round_trips() {
+      let state = PollState {
+         last_request: 1_700_000_000,
+         ..PollState::default()
+      };
+      let text = serde_json::to_string(&state).unwrap();
+      let back: PollState = serde_json::from_str(&text).unwrap();
+      assert_eq!(back.last_request, 1_700_000_000);
+   }
+
+   fn window(used_pct: f64, observed_at: i64) -> Window {
+      Window {
+         used_pct,
+         resets_at: Some(observed_at + 3600),
+         observed_at,
+         source: Source::Api,
+      }
+   }
+
+   #[test]
+   fn a_reading_with_both_windows_is_saved_whole() {
+      let snap = Snapshot {
+         five_hour: Some(window(10.0, 1_000)),
+         seven_day: Some(window(20.0, 1_000)),
+         context: None,
+      };
+      let state = merge_reading(PollState::default(), &snap);
+      assert_eq!(state.limits.five_hour.unwrap().used_percentage, 10.0);
+      assert_eq!(state.limits.seven_day.unwrap().used_percentage, 20.0);
+   }
+
+   #[test]
+   fn a_window_missing_from_the_answer_does_not_blank_out_the_saved_one() {
+      // The same rule `Window::merge` follows (A03): a response that is only
+      // due to renew one window must not erase the other.
+      let mut saved = PollState::default();
+      saved.limits.seven_day = Some(crate::state::StoredWindow {
+         used_percentage: 20.0,
+         resets_at: 4_600,
+         observed_at: 1_000,
+      });
+      let snap = Snapshot {
+         five_hour: Some(window(15.0, 2_000)),
+         seven_day: None,
+         context: None,
+      };
+      let state = merge_reading(saved, &snap);
+      assert_eq!(state.limits.five_hour.unwrap().used_percentage, 15.0);
+      assert_eq!(
+         state.limits.seven_day.unwrap().used_percentage,
+         20.0,
+         "unchanged"
+      );
+   }
+
+   #[test]
+   fn an_empty_saved_state_reads_back_as_no_reading_at_all() {
+      let (snap, last_ok) = reading_from_state(&PollState::default());
+      assert!(snap.five_hour.is_none());
+      assert!(snap.seven_day.is_none());
+      assert_eq!(
+         last_ok, None,
+         "nothing was ever polled, so nothing was ever ok"
+      );
+   }
+
+   #[test]
+   fn a_saved_reading_comes_back_tagged_as_the_api_source() {
+      let state = merge_reading(
+         PollState::default(),
+         &Snapshot {
+            five_hour: Some(window(30.0, 5_000)),
+            seven_day: None,
+            context: None,
+         },
+      );
+      let (snap, last_ok) = reading_from_state(&state);
+      let five = snap.five_hour.unwrap();
+      assert_eq!(five.source, Source::Api);
+      assert_eq!(five.used_pct, 30.0);
+      assert_eq!(last_ok, Some(5_000));
    }
 }

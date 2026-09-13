@@ -26,6 +26,7 @@
 - **A24** · the theme contract — what the program sends, what the theme declares
 - **A25** · the pill and its panel are two windows
 - **A26** · one indent width, three spaces, enforced rather than remembered
+- **A27** · the poller remembers itself across a restart
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -949,3 +950,33 @@ convention a tool enforces cannot drift.
 
 **Why 3 and not 2 or 4.** No technical reason — it is a preference, applied
 uniformly rather than argued for per language.
+
+## A27: the poller remembers itself across a restart
+`api_poll.json`, next to `state.json` and `window.json`, holds two things the
+poller (`src/api.rs`) used to forget every time the process restarted: when
+it last actually asked (`last_request`), and its last successful reading
+(`five_hour`/`seven_day`, reusing `state::StoredWindow`'s shape). Written
+whole and swapped in, one writer, no lock — the same convention as
+`geometry.rs`'s `window.json` (A22's "the widget's own memory, not a
+setting").
+
+**Why `last_request` matters.** `decide()` (A13's request budget and
+schedule) already refuses to ask more often than `api_interval_secs`, but
+that schedule lived only in the poller thread's own memory. A restart is a
+fresh thread with no memory, and `decide()` treats that the same as "never
+polled" — go at once. During active development the widget restarts far
+more often than the interval, so every restart asked again immediately,
+making the schedule pointless exactly when it mattered most.
+
+**Why the reading matters too.** Fixing the request meant the pill sat empty
+until the next poll came in — sources are switches (A14), and with
+`bridge`/`desktop` off, the API was the *only* source that had ever carried
+the quota windows at all. Persisting the last answer means a restart shows
+it immediately, aged honestly: `observed_at` is untouched, so the existing
+staleness rules (A07, A14) grey it out and then drop it exactly as they
+would a live reading nobody refreshed in a while. Nothing here invents a
+new notion of freshness.
+
+**Absent fields never overwrite present ones**, the same rule `Window::merge`
+follows (A03): a reading that only renews one window must not blank out the
+other one merely because it wasn't due yet.
