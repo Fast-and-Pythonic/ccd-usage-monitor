@@ -11,41 +11,41 @@ app, which shows none of this itself and does not run the status line (G06).
 - `architecture.md` — why it is built this way (A##)
 - `gotchas.md` — traps worth knowing before touching the data layer (G##)
 - `status.md` — what works today, what is open, what is deliberately not done
-  and where the fragile points are. The one file that tracks current state
+   and where the fragile points are. The one file that tracks current state
 - `journal.md` — why the work went the way it did, newest on top. Read the top
-  entries when picking up something that was left mid-move
+   entries when picking up something that was left mid-move
 - `_meta.md` — which standard these docs follow, the tier, and the three things
-  this project most often gets wrong
+   this project most often gets wrong
 
 ## What to read when
 - **First time here** → overview → architecture
 - **Quota numbers are wrong, missing, or stale** → gotchas G01–G03, then
-  `src/state.rs`; `ccd-usage-monitor --sources` says which source claims what
+   `src/state.rs`; `ccd-usage-monitor --sources` says which source claims what
 - **The context figure is wrong or silent** → G17 and A18, then `src/session.rs`;
-  `ccd-usage-monitor --sessions` lists every transcript and what each reports
+   `ccd-usage-monitor --sessions` lists every transcript and what each reports
 - **Changing what a figure or a panel line *says*** → `src/view.rs` (A19). It
-  holds nothing about drawing and is where the wording, the pace verdict, the
-  colour *meaning* and the pill's composition (`cells`, `bars`) live
+   holds nothing about drawing and is where the wording, the pace verdict, the
+   colour *meaning* and the pill's composition (`cells`, `bars`) live
 - **Changing how a source is read or merged** → `src/runtime.rs` (A19)
 - **Adding or changing a setting** → `src/schema.rs` (A22). One entry there is
-  its section in the file, its bounds and its wording; four tests refuse a
-  field that is described in only one of the two places
+   its section in the file, its bounds and its wording; four tests refuse a
+   field that is described in only one of the two places
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
-  --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
+   --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
 - **Changing how the pill looks** → `themes/pill.slint`, or the copy in
-  `%APPDATA%` that actually loads (A24). No rebuild needed for either; run
-  `ccd-usage-monitor --demo` to see it on figures that hold still
+   `%APPDATA%` that actually loads (A24). No rebuild needed for either; run
+   `ccd-usage-monitor --demo` to see it on figures that hold still
 - **The pill is blank, or one figure is missing** → G22 first: a theme one
-  contract version behind draws its padding and nothing else
+   contract version behind draws its padding and nothing else
 - **The widget is using more CPU than it should** → G23: anything pushed to a
-  Slint property on a timer is a repaint, changed or not
+   Slint property on a timer is a repaint, changed or not
 - **The window has a frame, a shadow, or a dark rectangle** → A10, `src/win.rs`
 - **Doing that frame surgery on a Slint window** → G18 (ask for the handle
-  after `show`, never before), G19 (state the size *after* stripping the frame,
-  or the drawing grows into the margins), G21 (a `show` puts the frame back and
-  wipes the extended styles with it)
+   after `show`, never before), G19 (state the size *after* stripping the frame,
+   or the drawing grows into the margins), G21 (a `show` puts the frame back and
+   wipes the extended styles with it)
 - **The widget quits when it is hidden, or a window steals the focus** → G20
-  and G21
+   and G21
 - **Upgrading Slint** → G18–G23, and re-read A24 before changing a struct the theme receives
 
 ## Five facts first

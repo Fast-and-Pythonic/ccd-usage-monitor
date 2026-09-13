@@ -6,5 +6,5 @@
 //! appearance is not a setting, and it needs `std-widgets`.
 
 fn main() {
-    slint_build::compile("ui/settings.slint").expect("the settings window must compile");
+   slint_build::compile("ui/settings.slint").expect("the settings window must compile");
 }

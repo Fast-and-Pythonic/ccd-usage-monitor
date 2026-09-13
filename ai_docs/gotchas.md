@@ -304,17 +304,17 @@ answer to "the last assistant line with a usage object", and only one of them is
 the conversation's own reading.
 
 * **Synthetic lines.** An interrupted request, a 529, an auth failure is written
-  as `"model":"<synthetic>"` with every counter zero. Taking the last assistant
-  line lands on one of these whenever the last thing that happened was an error,
-  and reports a confident nought per cent.
+   as `"model":"<synthetic>"` with every counter zero. Taking the last assistant
+   line lands on one of these whenever the last thing that happened was an error,
+   and reports a confident nought per cent.
 * **Sidechain lines.** A subagent's transcript lives in
-  `<uuid>/subagents/agent-*.jsonl` and carries the **parent's** `sessionId`, so
-  the id cannot tell them apart. Enumerating the tree recursively lists them as
-  sessions; matching on `sessionId` alone lets a subagent's context stand in for
-  the conversation's. `isSidechain` is the field that separates them.
+   `<uuid>/subagents/agent-*.jsonl` and carries the **parent's** `sessionId`, so
+   the id cannot tell them apart. Enumerating the tree recursively lists them as
+   sessions; matching on `sessionId` alone lets a subagent's context stand in for
+   the conversation's. `isSidechain` is the field that separates them.
 * **Repeated lines.** One API message is written as several lines sharing one
-  `message.id`, each repeating the same usage verbatim — one per content block.
-  Summing them multiplies the reading by however many blocks the answer had.
+   `message.id`, each repeating the same usage verbatim — one per content block.
+   Summing them multiplies the reading by however many blocks the answer had.
 
 **Fix:** require `type == "assistant"`, `isSidechain != true`, `model !=
 "<synthetic>"` and a sum above zero, take the last such line by *position* in

@@ -25,6 +25,7 @@
 - **A23** · the config is re-read while the program runs
 - **A24** · the theme contract — what the program sends, what the theme declares
 - **A25** · the pill and its panel are two windows
+- **A26** · one indent width, three spaces, enforced rather than remembered
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -511,14 +512,14 @@ the first place.
 The code that was once `ui.rs` is split by what survives a change of GUI:
 
 * **`runtime.rs` — what the widget knows.** The four sources, their file
-  watching, the poller's channel, the merge (A03), age filtering (A07, A14),
-  the history log (A17).
+   watching, the poller's channel, the merge (A03), age filtering (A07, A14),
+   the history log (A17).
 * **`view.rs` — what the widget says.** Snapshot and runtime state turned into
-  the text, figures and verdicts a person reads: `detail_lines`, `rate_text`,
-  `api_notice`, `field_name`, the pace delta, colour *as meaning*, and — since
-  the move to Slint — the composition of the pill itself (`cells`, `bars`).
+   the text, figures and verdicts a person reads: `detail_lines`, `rate_text`,
+   `api_notice`, `field_name`, the pace delta, colour *as meaning*, and — since
+   the move to Slint — the composition of the pill itself (`cells`, `bars`).
 * **`ui.rs` — how it is drawn.** Painting, layout, the settings window, the
-  palette, the window itself.
+   palette, the window itself.
 
 **Why:** the pill was about to move to another toolkit, where the drawing layer
 is replaced wholesale and the other two have to survive unchanged. Left as one
@@ -639,21 +640,21 @@ radius and a bar.
 
 **What Slint costs.**
 - *A smaller pool of people who can write a theme.* `.slint` reads like QML and
-  is not hard to pick up — it is declarative, it borrows CSS vocabulary, and a
-  language model writes it competently — but the "everyone already knows CSS"
-  argument still does not transfer. The people who can edit a theme are those
-  willing to learn a language for it, which is fewer than the people who would
-  edit a stylesheet, so a theme ecosystem of the Waybar kind is unlikely rather
-  than impossible.
+   is not hard to pick up — it is declarative, it borrows CSS vocabulary, and a
+   language model writes it competently — but the "everyone already knows CSS"
+   argument still does not transfer. The people who can edit a theme are those
+   willing to learn a language for it, which is fewer than the people who would
+   edit a stylesheet, so a theme ecosystem of the Waybar kind is unlikely rather
+   than impossible.
 - *A narrow path.* `slint-interpreter` sees 12 k downloads a quarter against
-  Slint's own 467 k — roughly one user in forty — so fewer bugs are trodden.
+   Slint's own 467 k — roughly one user in forty — so fewer bugs are trodden.
 - *A licence that is no longer unconditional.* **Decided 2026-09-11: the
-  royalty-free terms.** The project keeps its own licence rather than going
-  GPLv3, and in exchange the application must visibly acknowledge that it uses
-  Slint — an `AboutSlint` widget or the Slint badge. The pill is 34 pixels
-  tall, so that acknowledgement belongs in the settings window, which is the
-  one surface with room for it. The royalty-free terms cover desktop; they do
-  not cover embedded, which this is not.
+   royalty-free terms.** The project keeps its own licence rather than going
+   GPLv3, and in exchange the application must visibly acknowledge that it uses
+   Slint — an `AboutSlint` widget or the Slint badge. The pill is 34 pixels
+   tall, so that acknowledgement belongs in the settings window, which is the
+   one surface with room for it. The royalty-free terms cover desktop; they do
+   not cover embedded, which this is not.
 
 **Why the interpreter in production, not the compiler.** Compiling a `.slint`
 file means rebuilding the application through `build.rs`, which needs a Rust
@@ -792,16 +793,16 @@ form that still round-trips.
 important one has not been written yet.
 
 * *The file layout.* `Section` says which table a key is written into, so the
-  file reads in groups rather than in the order the struct declares its fields.
-  The key itself never changes — moving it into a table is a change of
-  position, not of name, so no value can be mistranslated by the migration.
+   file reads in groups rather than in the order the struct declares its fields.
+   The key itself never changes — moving it into a table is a change of
+   position, not of name, so no value can be mistranslated by the migration.
 * *The settings form, at the next stage.* The window that exists today is 1300
-  lines of egui with the label, the tooltip, the step size and the layout
-  braided together. When it is rebuilt in Slint, a form walked out of this list
-  is a repeater over three kinds of row; rebuilt by hand it would be the same
-  1300 lines in a second language. The strings were harvested into the schema
-  *before* that stage on purpose: they exist nowhere else, and that stage
-  deletes the file they live in.
+   lines of egui with the label, the tooltip, the step size and the layout
+   braided together. When it is rebuilt in Slint, a form walked out of this list
+   is a repeater over three kinds of row; rebuilt by hand it would be the same
+   1300 lines in a second language. The strings were harvested into the schema
+   *before* that stage on purpose: they exist nowhere else, and that stage
+   deletes the file they live in.
 
 **Four tests hold the two ends together**, because the failure they prevent is
 the expensive kind — a setting that quietly stops persisting, noticed weeks
@@ -932,3 +933,19 @@ both windows: the pointer moving from the pill onto the panel to read it must
 not close the panel. The theme reports only which figure was *entered*, never
 that one was left, so crossing the gap between two figures does not blink the
 name off.
+
+## A26: one indent width, three spaces, enforced rather than remembered
+`rustfmt.toml` sets `tab_spaces = 3` and `.editorconfig` sets `indent_size = 3`
+for every file. Every existing file — `.rs`, `.slint`, `Cargo.toml`, the
+`.claude/settings.local.json` permissions list, and the hanging indents in
+these docs and `CLAUDE.md` — was reformatted to match.
+
+**Why.** Before this there was no convention at all, and it showed: `.rs`
+files sat at the rustfmt default of 4 spaces while the two `.slint` files
+disagreed with each other, `ui/settings.slint` at 3 and `themes/pill.slint`
+at 4. A convention that is only ever a habit erodes the moment a second
+person, or a second session, touches the code without having absorbed it. A
+convention a tool enforces cannot drift.
+
+**Why 3 and not 2 or 4.** No technical reason — it is a preference, applied
+uniformly rather than argued for per language.
