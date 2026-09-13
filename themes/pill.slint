@@ -162,26 +162,26 @@ export component Pill inherits Window {
    callback entered(string);
 
    // ---- the sizes this file owns -----------------------------------------
-   property <length> pill_height: 34px * scale;
-   property <length> corner: 8px * scale;
+   property <length> pill_height: 0px * scale;
+   property <length> corner: 10px * scale;
    // The bar's own thickness, not a gap around it — see track_height below.
    property <length> track_height: 3px * scale;
 
    // Horizontal spacing — left/right padding and the gaps between cells
    // and groups along the pill.
-   property <length> pad_x: 13px * scale; // 13px * scale;
-   property <length> cell_gap: 9px * scale; // 9px * scale;
-   property <length> group_gap: 11px * scale; // 11px * scale;
+   property <length> pad_x: 6px * scale;
+   property <length> cell_gap: 1px * scale;
+   property <length> group_gap: 5px * scale;
 
    // Vertical spacing — top/bottom padding and the gap between a group's
    // cells and the bar underneath them.
-   property <length> pad_top: 4.5px * scale; // 4.5px * scale;
-   property <length> pad_bottom: 4.5px * scale; // 4.5px * scale;
-   property <length> gap_text_bars: 3px * scale; // 3px * scale;
+   property <length> pad_top: 0px * scale;
+   property <length> gap_text_bars: 1px * scale;
+   property <length> pad_bottom: 3px * scale;
 
-   property <length> font_pct: 14px * scale; // 14px * scale;
-   property <length> font_time: 14px * scale; // 14px * scale;
-   property <length> font_small: 12px * scale; // 12px * scale;
+   property <length> font_pct: 15.6px * scale;
+   property <length> font_time: 15.6px * scale;
+   property <length> font_small: 15px * scale;
 
    background: transparent;
 
