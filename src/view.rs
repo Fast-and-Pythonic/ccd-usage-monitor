@@ -396,6 +396,11 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
    for c in &mut cells[ctx_from..] {
       c.group = 2;
    }
+   // Whichever cell ends up last — a quota figure if ctx is off, ctx's own
+   // last figure otherwise — must not draw the ordinary trailing gap: there
+   // is nothing after it, so `pill.slint` would otherwise render one cell's
+   // worth of blank space past the last visible figure.
+   end_group(&mut cells);
 
    cells
 }
@@ -1162,7 +1167,7 @@ g1 Time Cell Centre green \"1.0×\" SevenDayPace
 g1 Time Cell Centre dim \"3d\" SevenDayDays
 g1 Time Group Centre plain \"15%\" SevenDayAllowance
 g2 Small Cell Centre dim \"ctx\" Context
-g2 Time Cell Centre plain \"38%\" ContextPct
+g2 Time Group Centre plain \"38%\" ContextPct
 "
       );
    }
@@ -1187,6 +1192,9 @@ g2 Time Cell Centre plain \"38%\" ContextPct
       // The context group is still announced, because `session_enabled` is
       // on and "found nothing yet" is worth saying.
       assert_eq!(cells.last().map(|c| c.group), Some(2));
+      // The last cell of the pill draws no trailing gap of its own — there
+      // is nothing after it for `pill.slint` to leave room for.
+      assert_eq!(cells.last().map(|c| c.gap), Some(Gap::Group));
    }
 
    #[test]

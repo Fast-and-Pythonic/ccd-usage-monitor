@@ -30,6 +30,7 @@ non-obvious cause.
 - **G21** · a hidden Slint window comes back with its frame, and loses the bits set on it
 - **G22** · a theme one version behind draws nothing, and says nothing
 - **G23** · a property pushed on a timer is a repaint, whether or not it changed
+- **G24** · the last cell of the pill draws a trailing gap nobody asked for
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -469,3 +470,30 @@ toolkit: 1.9 s over 70 s at four ticks a second is about 7 ms of work per tick,
 which is a repaint, not a file check. The same trap is waiting in the settings
 window, where a form bound to config values would otherwise repaint on a timer
 for no reason.
+
+---
+
+## G24: the last cell of the pill draws a trailing gap nobody asked for
+**Symptom:** the `ctx` percentage — or whichever figure ends up last on the
+pill — sat with visible empty space to its right, inside the pill's own
+rounded card rather than as ordinary window margin.
+**Root cause:** `pill.slint` draws a gap `Rectangle` after *every* cell,
+sized by that cell's own `gap` field (`view::Cell::new` defaults to
+`Gap::Cell`, an ordinary space) — there is no separate code path for "this is
+the last cell on the pill, draw nothing." `view::cells()` did call
+`end_group()` to close the 5-hour and 7-day groups before starting the next
+one, but nothing ever closed the *final* group, because closing it was
+assumed to be pill.slint's job — and pill.slint's own "last group" check
+(`g.last`) only suppresses the divider *between* groups, drawn by a separate
+Rectangle one level up. It says nothing about the ordinary per-cell gap,
+which fires regardless.
+**Fix:** call `end_group(&mut cells)` once more, unconditionally, on the
+whole vector right before `cells()` returns — whichever cell ended up last
+(a quota figure if `ctx` is off, `ctx`'s own last figure otherwise) gets
+`Gap::Group`, which `pill.slint` maps to `0px`.
+**How to spot it:** any time a new field is appended after what used to be
+the last cell (or a conditional branch changes which cell ends up last),
+check whether the *true* last cell of the whole pill — not just the last
+cell of its own group — carries a non-zero-width gap. Grep for `end_group`
+calls in `view.rs`: there should always be exactly one more of them than
+there are group boundaries.
