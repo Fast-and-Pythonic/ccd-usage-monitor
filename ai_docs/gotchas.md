@@ -31,6 +31,7 @@ non-obvious cause.
 - **G22** · a theme one version behind draws nothing, and says nothing
 - **G23** · a property pushed on a timer is a repaint, whether or not it changed
 - **G24** · the last cell of the pill draws a trailing gap nobody asked for
+- **G25** · a restart left a ghost tray icon until the pointer crossed it
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -497,3 +498,33 @@ check whether the *true* last cell of the whole pill — not just the last
 cell of its own group — carries a non-zero-width gap. Grep for `end_group`
 calls in `view.rs`: there should always be exactly one more of them than
 there are group boundaries.
+
+---
+
+## G25: a restart left a ghost tray icon until the pointer crossed it
+**Symptom:** after "Restart" (settings button or tray menu), the old tray
+icon stayed put — a second, stale icon sitting next to the new one — and
+only vanished once the mouse passed over it. A run of restarts left a run
+of ghosts.
+**Root cause:** the tray icon is removed by `tray_icon::TrayIcon`'s own
+`Drop` impl (`Shell_NotifyIcon` with `NIM_DELETE`), which only runs once
+every `Rc<RefCell<App>>` holding it is gone. `restart()` just spawns the new
+process and calls `slint::quit_event_loop()`; nothing forces `App` — and the
+`Tray` inside it — to actually drop before or shortly after that, so exactly
+when the icon disappeared depended on however long Slint's own window
+teardown happens to take (compare G20, G21: this front end's window
+lifecycle already has more than one surprise in it). Windows does not clean
+up a dead notification icon on its own — it leaves the last image drawn
+until the taskbar repaints that slot for some unrelated reason, which a
+mouse crossing it reliably triggers.
+**Fix:** drop the tray explicitly, synchronously, at the moment restart or
+quit is decided — `a.tray = None` — rather than leaving it to whenever the
+rest of the shutdown happens to unwind. Both restart paths (`Change::Restart`
+in `changed`, `tray::Command::Restart` in `pump_tray`) and the `Quit` tray
+command all do this now.
+**How to spot it:** a stale icon that clears on hover, rather than one that
+is simply wrong, is always this shape of bug — the process behind it is
+already gone, and the taskbar just has not been told. Killing a process
+forcibly (`taskkill /F`, Task Manager "End task") skips every destructor
+regardless of this fix — that is an OS-level limitation on any tray app, not
+something to chase in this codebase.

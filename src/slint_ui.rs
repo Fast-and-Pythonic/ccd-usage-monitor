@@ -895,7 +895,15 @@ fn sessions_for(a: &mut App) -> (String, Vec<crate::settings_ui::SessionRow>) {
 fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change) {
    use crate::settings_ui::Change;
    match change {
-      Change::Restart => return restart(),
+      Change::Restart => {
+         // Dropped here rather than left to whenever the process actually
+         // ends: `TrayIcon`'s own `Drop` is what calls `Shell_NotifyIcon`
+         // with `NIM_DELETE`, and Windows does not clean up a dead icon on
+         // its own — it leaves a ghost until the taskbar happens to repaint
+         // that slot, which reads as the old icon "sticking around" (G25).
+         app.borrow_mut().tray = None;
+         return restart();
+      }
       Change::OpenConfig => return open_config(),
       Change::OpenTheme => return open_theme(),
       Change::Closed { pos, size } => {
@@ -1051,13 +1059,19 @@ fn pump_tray(a: &mut App) {
             }
          }
          tray::Command::OpenSettings => a.wants_settings = true,
-         tray::Command::Restart => restart(),
+         // See the comment on `Change::Restart` in `changed` (G25): dropped
+         // now, not left to whenever the process winds down.
+         tray::Command::Restart => {
+            a.tray = None;
+            restart();
+         }
          tray::Command::AboutSlint => {
             let _ = std::process::Command::new("cmd")
                .args(["/C", "start", "", "https://slint.dev"])
                .spawn();
          }
          tray::Command::Quit => {
+            a.tray = None;
             let _ = slint::quit_event_loop();
          }
       }
