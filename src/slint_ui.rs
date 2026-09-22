@@ -666,16 +666,17 @@ fn show_panel(a: &mut App, cfg: &Config, snap: &crate::model::Snapshot, stale: b
    };
    // With the panel open the name of the figure goes into it as the first
    // line: two surfaces answering one hover is one too many. With the panel
-   // shut, the name is the whole of what the panel says.
+   // shut, the name is the whole of what the panel says. It goes in without a
+   // label: the name speaks for itself, and a word in front of it only repeats
+   // "this is what you are pointing at".
    if let Some(hint) = &a.hint {
-      let label = if cfg.is_ru() { "поле" } else { "field" };
       if lines.is_empty() && a.visible {
          // Even with the detail panel switched off entirely: "what is that
          // number" is a different question from "tell me everything", and
          // switching off the second should not take away the first.
-         lines.push((label.to_string(), hint.clone()));
+         lines.push((String::new(), hint.clone()));
       } else if !lines.is_empty() {
-         lines.insert(0, (label.to_string(), hint.clone()));
+         lines.insert(0, (String::new(), hint.clone()));
       }
    }
    if lines.is_empty() {

@@ -38,7 +38,8 @@ the theme it reads).
 | `geometry.rs` | `window.json` — where the windows were left; the widget's own memory, not a setting (A22) |
 | `slint_ui.rs` | the front end: the pill and panel windows, the theme contract, the window policy over the HWND, the tray (A20, A24, A25) |
 | `settings_ui.rs` | the settings window, walked out of `schema.rs` — rows in, values back out (A22) |
-| `themes/pill.slint` | the whole appearance, read at runtime; written to `%APPDATA%` on first run so it can be edited (A24) |
+| `themes/pill.slint` | the default appearance, compiled in; written to `%APPDATA%` (or `data_dir`) on first run so it can be edited (A24) |
+| `settings/` | this repository's `data_dir` (A28). Machine state, ignored by git — except `theme.slint`, the live, hand-tuned theme the widget loads here |
 | `ui/settings.slint` | the form, compiled in through `build.rs`; four kinds of row and no knowledge of any setting |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
 

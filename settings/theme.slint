@@ -348,7 +348,8 @@ export component Panel inherits Window {
 
          // A line is its label in a fixed-width gutter, then the value —
          // so labels of different lengths still leave every value aligned
-         // in one column.
+         // in one column. A line with no label — the name of the hovered
+         // figure — drops the gutter and starts at the edge, as a heading.
          for l in root.lines: HorizontalLayout {
             spacing: 0px;
             Text {
@@ -356,7 +357,7 @@ export component Panel inherits Window {
                color: palette_dim;
                font-size: font;
                font-family: "Segoe UI";
-               width: gutter;
+               width: l.label == "" ? 0px : gutter;
             }
             Text {
                text: l.value;

@@ -32,8 +32,13 @@ app, which shows none of this itself and does not run the status line (G06).
    field that is described in only one of the two places
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
-- **Changing how the pill looks** → `themes/pill.slint`, or the copy in
-   `%APPDATA%` that actually loads (A24). No rebuild needed for either; run
+- **Changing how the pill looks** → `settings/theme.slint` first: in this
+   repository's working setup `data_dir` (A28) points at `settings/`, so that
+   file is the theme that actually loads, and `%APPDATA%` is not in play. It is
+   hand-tuned and differs from the default. `themes/pill.slint` is only the
+   built-in default, written out where no theme exists yet (A24) — change it
+   too when the default should follow, but an edit made only there never shows
+   on this machine. No rebuild needed for the live file; run
    `ccd-usage-monitor --demo` to see it on figures that hold still
 - **The pill is blank, or one figure is missing** → G22 first: a theme one
    contract version behind draws its padding and nothing else

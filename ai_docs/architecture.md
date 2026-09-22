@@ -908,8 +908,11 @@ itself.
 
 ## A24: the theme contract — what the program sends, what the theme declares
 `themes/pill.slint` is the widget's whole appearance, compiled into the binary
-and written to `%APPDATA%\ccd-usage-monitor\theme.slint` on first run. From
-then on the copy on disk is what loads.
+and written to `%APPDATA%\ccd-usage-monitor\theme.slint` on first run — or
+into `data_dir` when that is set (A28), which in this repository's working
+setup is `settings/`. From then on the copy on disk is what loads, so a change
+to the theme contract's *meaning* (not only its shape) has to be carried into
+that copy as well as into the default.
 
 **The division is by whose question it answers.** The theme owns the palette,
 the type, the paddings, the corner radius and the hairline thickness. The
