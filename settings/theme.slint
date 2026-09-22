@@ -1,0 +1,370 @@
+// The pill, and the panel that opens under it.
+//
+// This file is the widget's whole appearance. It is compiled into the binary
+// as a fallback and written to `%APPDATA%\ccd-usage-monitor\theme.slint` on
+// first run; after that the copy on disk is what loads, so everything here can
+// be changed without a Rust toolchain.
+//
+// What this file does NOT decide, on purpose:
+//
+//   * **What the figures say.** Every string arrives already worded and in the
+//     right language. A theme that computed a percentage could disagree with
+//     the one the program publishes over `--serve`.
+//   * **What a colour means.** `ink` on a cell is already resolved — the
+//     program read the palette below, worked out where the figure sits on the
+//     ramp, and handed back a brush. The palette is yours; which of its
+//     colours a figure gets is not.
+//   * **How the window behaves.** No `no-frame`, no `always-on-top`. Those are
+//     applied by the program over the window handle, so that a broken theme
+//     cannot produce a window that is impossible to close or to drag.
+//
+// The program sets only the properties this file declares and binds only the
+// callbacks it declares, so a theme written against an older version keeps
+// working with fewer of them rather than failing.
+
+// How a cell is set. The program sends a role, not a font, so changing the
+// typeface here changes it everywhere it means the same thing.
+//   0 — the large percentages
+//   1 — countdowns, day counts, the context figures
+//   2 — the `ctx` tag
+export struct PillCell {
+   text: string,
+   // What this figure is called, for the line that names it while the pointer
+   // is over it. Empty for punctuation.
+   name: string,
+   // The widest string this cell will ever hold. The cell reserves that width
+   // whatever it is currently showing, so the pill does not twitch — and
+   // everything to the right of a changing digit does not shuffle.
+   template: string,
+   role: int,
+   ink: brush,
+   // 0 — an ordinary space after the cell
+   // 1 — none: the cells either side read as one word
+   // 2 — a short faint rule: two halves of one figure
+   // 3 — the end of the group
+   gap: int,
+   // 0 centre, 1 against the right edge, 2 against the left
+   side: int,
+}
+
+// One limit: its figures, and the hairline underneath them.
+export struct PillGroup {
+   cells: [PillCell],
+   has_bar: bool,
+   // How much of the track is filled, 0..1. Already the right way round: the
+   // program decides whether the figure counts up or down.
+   bar_frac: float,
+   bar_ink: brush,
+   // The last group draws no divider after itself.
+   last: bool,
+}
+
+component Cell inherits Rectangle {
+   in property <PillCell> cell;
+   in property <length> size;
+   in property <int> weight;
+   callback entered(string);
+   callback pressed();
+   callback menu();
+
+   // The wider of what is shown and what might be: see `template`.
+   width: max(shown.preferred-width, ghost.preferred-width);
+
+   // Reports on entry and never on leaving: which figure the pointer is over
+   // changes as it moves along the pill, but *whether* it is over the pill is
+   // a question the program answers for itself, from the cursor position.
+   // Clearing the name here would blink it off in every gap between figures.
+   TouchArea {
+      changed has-hover => {
+         if (self.has-hover && cell.name != "") {
+            root.entered(cell.name);
+         }
+      }
+      pointer-event(e) => {
+         if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+            root.pressed();
+         }
+         if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+            root.menu();
+         }
+      }
+   }
+
+   ghost := Text {
+      text: cell.template;
+      font-size: size;
+      font-family: "Segoe UI";
+      font-weight: weight;
+      opacity: 0;
+   }
+
+   shown := Text {
+      text: cell.text;
+      color: cell.ink;
+      font-size: size;
+      font-family: "Segoe UI";
+      font-weight: weight;
+      width: self.preferred-width;
+      x: cell.side == 1 ? parent.width - self.width
+         : cell.side == 2 ? 0px
+         : (parent.width - self.width) / 2;
+      vertical-alignment: center;
+   }
+}
+
+export component Pill inherits Window {
+   // ---- what the program sends -------------------------------------------
+   in property <[PillGroup]> groups: [];
+   /// The figures on screen are older than their source's threshold.
+   in property <bool> stale: false;
+   /// From the config, because it is a preference rather than a style: how
+   /// large the whole pill is, and how much of the desktop shows through it.
+   in property <float> scale: 1.0;
+   in property <float> alpha: 0.88;
+
+   // ---- what the program reads back --------------------------------------
+   /// The palette, by role. The program resolves a figure's place on the
+   /// green-amber-red ramp against these and sends back a finished brush, so
+   /// changing a colour here changes it everywhere that colour *means*
+   /// something, and nowhere else.
+   out property <brush> palette_green: #6fcf97;
+   out property <brush> palette_amber: #e6b65c;
+   out property <brush> palette_orange: #e8994c;
+   out property <brush> palette_red: #e8695e;
+   out property <brush> palette_ink: #ececf0;
+   out property <brush> palette_dim: #8c8e99;
+
+   /// What the pill would like to be. The program cannot measure a string —
+   /// this file lays out its own text — so the window is sized to whatever
+   /// comes back here.
+   out property <length> wanted_width: body.preferred-width;
+   out property <length> wanted_height: max(pill_height, body.preferred-height);
+
+   /// Which version of the contract above this file was written against.
+   ///
+   /// It is checked, and a theme that does not match is not loaded: the
+   /// program falls back to its built-in copy and says why. Tolerating a
+   /// missing *property* is safe — the theme just does without it — but the
+   /// structs are a different matter, and a `PillCell` that has lost a field
+   /// is refused wholesale by the runtime, leaving the pill empty and silent.
+   /// Bumped whenever `PillCell`, `PillGroup` or `PanelLine` changes shape.
+   out property <int> theme_api: 2;
+
+   // ---- what the program listens for -------------------------------------
+   /// Pressed with the left button: the program hands the window to the
+   /// system's move loop, so the pill can be dragged from anywhere on it.
+   callback pressed();
+   /// Pressed with the right button: opens the settings.
+   callback menu();
+   /// The pointer moved onto this figure. Only ever the name of something
+   /// under the pointer — never a clearing signal, which the program works
+   /// out from the cursor position instead.
+   callback entered(string);
+
+   // ---- the sizes this file owns -----------------------------------------
+   property <length> pill_height: 0px * scale;
+   property <length> corner: 8px * scale;
+   // The bar's own thickness, not a gap around it — see track_height below.
+   property <length> track_height: 3px * scale;
+
+   // Horizontal spacing — left/right padding and the gaps between cells
+   // and groups along the pill.
+   property <length> pad_x: 4px * scale;
+   property <length> cell_gap: 1px * scale;
+   property <length> group_gap: 5px * scale;
+
+   // Vertical spacing — top/bottom padding and the gap between a group's
+   // cells and the bar underneath them.
+   property <length> pad_top: -3px * scale;
+   property <length> gap_text_bars: 0px * scale;
+   property <length> pad_bottom: 3px * scale;
+
+   property <length> font_pct: 15.6px * scale;
+   property <length> font_time: 15.6px * scale;
+   property <length> font_small: 15px * scale;
+   property <length> font_arrow: 10px * scale;
+
+   background: transparent;
+
+   // The pill's body: a rounded, semi-transparent card. Everything below is
+   // drawn inside it; `root` itself stays transparent so only this card's
+   // shape is visible.
+   Rectangle {
+      background: rgba(19, 19, 22, root.alpha * 255);
+      border-radius: corner;
+      border-width: 1px;
+      border-color: #ffffff16;
+
+      // Drag and right-click menu for the pill as a whole. Separate from
+      // each Cell's own TouchArea below, which only reports hover for the
+      // name-on-pointer tooltip.
+      TouchArea {
+         pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+               root.pressed();
+            }
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.right) {
+               root.menu();
+            }
+         }
+      }
+
+      // A quiet marker beats a confident wrong number: the figures are
+      // history, and the pill says so without needing to be hovered.
+      if root.stale: Rectangle {
+         x: 6px * scale;
+         y: parent.height / 2 - 2.5px * scale;
+         width: 5px * scale;
+         height: 5px * scale;
+         border-radius: self.width / 2;
+         background: palette_amber;
+      }
+
+      // The row of groups, left to right — its preferred size is what
+      // `wanted_width`/`wanted_height` above report back to the program.
+      body := HorizontalLayout {
+         padding-left: pad_x;
+         padding-right: pad_x;
+         padding-top: pad_top;
+         padding-bottom: pad_bottom;
+         spacing: 0px;
+         alignment: start;
+
+         // One group per quota window (e.g. the 5-hour and weekly limits).
+         for g[gi] in root.groups: HorizontalLayout {
+            spacing: 0px;
+
+            // A group is its cells on top, and its progress bar (if any)
+            // underneath them.
+            VerticalLayout {
+               spacing: gap_text_bars;
+               alignment: center;
+
+               // The cells of this group, left to right.
+               HorizontalLayout {
+                  spacing: 0px;
+                  for c[ci] in g.cells: HorizontalLayout {
+                     spacing: 0px;
+                     Cell {
+                        cell: c;
+                        size: c.role == 0 ? font_pct
+                           : c.role == 1 ? font_time
+                           : c.role == 3 ? font_arrow
+                           : font_small;
+                        weight: c.role == 0 ? 600 : 400;
+                        entered(name) => { root.entered(name); }
+                        pressed => { root.pressed(); }
+                        menu => { root.menu(); }
+                     }
+                     // The space after a cell, and whatever goes in it.
+                     Rectangle {
+                        width: c.gap == 1 ? 0px
+                           : c.gap == 3 ? 0px
+                           : c.gap == 2 ? cell_gap * 1.5
+                           : cell_gap;
+                        // The rule between two halves of one figure:
+                        // shorter and quieter than the divider between
+                        // groups, because it joins rather than
+                        // separates.
+                        if c.gap == 2: Rectangle {
+                           x: parent.width / 2;
+                           width: 1px;
+                           height: pill_height * 0.32;
+                           y: parent.height / 2 - self.height / 2;
+                           background: #ffffff14;
+                        }
+                     }
+                  }
+               }
+
+               // The hairline progress bar under a group's cells.
+               if g.has_bar: Rectangle {
+                  height: track_height;
+                  border-radius: self.height / 2;
+                  background: #ffffff18;
+                  // The filled portion, drawn over the empty track.
+                  Rectangle {
+                     x: 0;
+                     width: parent.width * g.bar_frac;
+                     height: parent.height;
+                     border-radius: parent.border-radius;
+                     background: g.bar_ink;
+                  }
+               }
+            }
+
+            // The divider between two limits: two gaps with a rule down
+            // the middle of them.
+            if !g.last: Rectangle {
+               width: group_gap * 2;
+               Rectangle {
+                  x: parent.width / 2;
+                  width: 1px;
+                  height: pill_height * 0.48;
+                  y: parent.height / 2 - self.height / 2;
+                  background: #ffffff1a;
+               }
+            }
+         }
+      }
+   }
+}
+
+// The detail panel. A window of its own rather than part of the pill, so that
+// opening it cannot move the pill — which is what made the pill's size depend
+// on what the pointer was over, and that was a feedback loop (G16).
+export struct PanelLine {
+   label: string,
+   value: string,
+}
+
+export component Panel inherits Window {
+   in property <[PanelLine]> lines: [];
+   in property <float> scale: 1.0;
+   in property <float> alpha: 0.88;
+
+
+   out property <brush> palette_ink: #ececf0;
+   out property <brush> palette_dim: #8c8e99;
+   out property <length> wanted_width: box.preferred-width;
+   out property <length> wanted_height: box.preferred-height;
+
+   property <length> corner: 8px * scale;
+   property <length> font: 12.5px * scale;
+   property <length> gutter: 34px * scale;
+
+   background: transparent;
+
+   Rectangle {
+      background: rgba(19, 19, 22, root.alpha * 255);
+      border-radius: corner;
+      border-width: 1px;
+      border-color: #ffffff16;
+
+      // One line per hovered figure, stacked top to bottom.
+      box := VerticalLayout {
+         padding: 14px * scale;
+         spacing: 2px * scale;
+
+         // A line is its label in a fixed-width gutter, then the value —
+         // so labels of different lengths still leave every value aligned
+         // in one column.
+         for l in root.lines: HorizontalLayout {
+            spacing: 0px;
+            Text {
+               text: l.label;
+               color: palette_dim;
+               font-size: font;
+               font-family: "Segoe UI";
+               width: gutter;
+            }
+            Text {
+               text: l.value;
+               color: palette_ink;
+               font-size: font;
+               font-family: "Segoe UI";
+            }
+         }
+      }
+   }
+}

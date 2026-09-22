@@ -4,11 +4,87 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-pub fn config_path() -> PathBuf {
+/// The one place that never moves: where a config is found when nothing has
+/// redirected it yet, and the only place `data_dir` itself is ever read from.
+fn default_base_dir() -> PathBuf {
    dirs::config_dir()
       .unwrap_or_else(std::env::temp_dir)
       .join("ccd-usage-monitor")
-      .join("config.toml")
+}
+
+/// Where every file this program writes actually lives.
+///
+/// One hop: read `data_dir` out of whatever sits at the fixed location, and
+/// if it names a folder, use that instead. The folder found this way is never
+/// itself asked for a `data_dir` of its own — a chain would let two configs
+/// point at each other, and one hop is all the problem this solves needs.
+///
+/// A folder that cannot be created falls back to the fixed location rather
+/// than failing the whole program over one bad setting — the same rule A24
+/// applies to a theme that does not compile: a broken setting must not be a
+/// dead application.
+pub fn base_dir() -> PathBuf {
+   let default = default_base_dir();
+   let text = std::fs::read_to_string(default.join("config.toml")).unwrap_or_default();
+   let (cfg, _) = Config::parse(&text);
+   let dir = cfg.data_dir.trim();
+   if dir.is_empty() {
+      return default;
+   }
+   let redirected = PathBuf::from(dir);
+   if std::fs::create_dir_all(&redirected).is_ok() {
+      redirected
+   } else {
+      default
+   }
+}
+
+pub fn config_path() -> PathBuf {
+   base_dir().join("config.toml")
+}
+
+/// Copies every file this program owns into `new_dir`, then points the fixed
+/// location at it — called once, the moment `data_dir` changes from empty to
+/// set. Copies rather than moves, and never overwrites a file already at the
+/// destination: a broken copy, or a folder shared between two installs, must
+/// not cost the original.
+///
+/// `config.toml` and `theme.slint` come from `default_base_dir`; the rest
+/// (`state.json`, `window.json`, `api_poll.json`) come from where
+/// `state::state_dir` put them *before* it started following this same
+/// redirect — written out here rather than called there, so the answer stays
+/// the historical one no matter how that function changes later.
+pub fn relocate(new_dir: &std::path::Path) -> std::io::Result<()> {
+   std::fs::create_dir_all(new_dir)?;
+   let cfg_dir = default_base_dir();
+   let state_dir = dirs::data_local_dir()
+      .unwrap_or_else(std::env::temp_dir)
+      .join("ccd-usage-monitor");
+   for (dir, name) in [
+      (&cfg_dir, "config.toml"),
+      (&cfg_dir, "theme.slint"),
+      (&state_dir, "state.json"),
+      (&state_dir, "window.json"),
+      (&state_dir, "api_poll.json"),
+   ] {
+      let (from, to) = (dir.join(name), new_dir.join(name));
+      if from.exists() && !to.exists() {
+         let _ = std::fs::copy(&from, &to);
+      }
+   }
+   // Everything else at the fixed location stops mattering from here on —
+   // only `data_dir` is ever read from it (see `base_dir`) — but a stub
+   // rather than a stale full copy is what makes that plain to a person who
+   // opens it looking for the settings that used to be there.
+   #[derive(Serialize)]
+   struct Stub {
+      data_dir: String,
+   }
+   let stub = toml::to_string(&Stub {
+      data_dir: new_dir.to_string_lossy().into_owned(),
+   })
+   .unwrap_or_default();
+   std::fs::write(cfg_dir.join("config.toml"), stub)
 }
 
 /// One of the four places the figures can come from. Each is switched on or
@@ -137,6 +213,9 @@ pub enum PaceView {
    Off,
    Ratio,
    Points,
+   /// The gap in points converted to the window's own time: `0:27` on the
+   /// five-hour window, `3д2ч` on the weekly one. Alone, never in a pair.
+   Time,
    RatioPoints,
    PointsRatio,
    /// Both, with a drawn rule between them like the one between the groups.
@@ -149,11 +228,11 @@ pub enum PaceView {
 
 impl PaceView {
    pub fn has_ratio(self) -> bool {
-      !matches!(self, PaceView::Off | PaceView::Points)
+      !matches!(self, PaceView::Off | PaceView::Points | PaceView::Time)
    }
 
    pub fn has_points(self) -> bool {
-      !matches!(self, PaceView::Off | PaceView::Ratio)
+      !matches!(self, PaceView::Off | PaceView::Ratio | PaceView::Time)
    }
 
    pub fn points_first(self) -> bool {
@@ -368,6 +447,12 @@ pub struct Config {
    /// hour ago says nothing useful about the present, and a confident wrong
    /// number is worse than `--%`.
    pub drop_after_secs: i64,
+   /// Where every file this program writes actually lives, once set — see
+   /// `base_dir`. Empty is the default location. Read only from the copy at
+   /// the fixed location (`default_base_dir`) — a value saved anywhere else
+   /// is stored but never consulted, which is what makes moving to a second
+   /// folder later a manual step: edit it there, not in the settings window.
+   pub data_dir: String,
 }
 
 impl Default for Config {
@@ -415,6 +500,7 @@ impl Default for Config {
          danger_pct: 85.0,
          pace_tolerance: 7.0,
          drop_after_secs: 3600,
+         data_dir: String::new(),
       }
    }
 }
@@ -1200,6 +1286,9 @@ lang = \"ru\"
       assert_eq!(PaceView::Ratio.joiner(), " ");
       assert!(!PaceView::Off.has_points() && !PaceView::Off.has_ratio());
       assert!(PaceView::Ratio.has_ratio() && !PaceView::Ratio.has_points());
+      // Time stands alone: neither of the other two rides along on the pill.
+      assert!(!PaceView::Time.has_points() && !PaceView::Time.has_ratio());
+      assert!(!PaceView::Time.points_first());
       // The panel says both, in whatever order the pill was asked for.
       assert_eq!(PaceView::Points.both(), PaceView::PointsRatio);
       assert_eq!(PaceView::Off.both(), PaceView::RatioPoints);

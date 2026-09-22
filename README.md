@@ -14,7 +14,7 @@ edit without a compiler.
 | Field | Meaning |
 |---|---|
 | `24%` | share of the rolling 5-hour limit already spent — or what is left of it, per `pct_mode` |
-| `▼1.2×` | pace, next to the figure it qualifies: spending is running 1.2 times *slower* than an even burn, so there is headroom; `▲` is the other way. `pace_view` picks the form — the ratio, the gap in points (`▲14%`), both, or neither |
+| `▼1.2×` | pace, next to the figure it qualifies: spending is running 1.2 times *slower* than an even burn, so there is headroom; `▲` is the other way. `pace_view` picks the form — the ratio, the gap in points (`▲14%`), the same gap in time (`▲0:42`), both of the first two, or neither |
 | `3:19` | time left until that window resets |
 | `20:49` | local clock time of the reset |
 | `41%` | share of the weekly limit spent, under the same setting |
@@ -118,7 +118,7 @@ side, one small step and one large one each. What they set:
 | `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
 | `count_today` | `false` | whether today counts towards the day figure and the allowance |
 | `count_reset_day` | `true` | whether the day the quota resets counts — switch it off when the reset is in the morning |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
+| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
 | `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
 | `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
 | `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
@@ -130,6 +130,7 @@ side, one small step and one large one each. What they set:
 | `session_pick` | `live` | which session the context figure is about: `live`, `freshest`, or `pinned` |
 | `session_id` | `""` | the conversation pinned by hand, when `session_pick = "pinned"` |
 | `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
+| `data_dir` | `""` | empty is the usual place; naming a folder moves `config.toml`, `theme.slint` and everything else this program keeps for itself there, and restarts the widget. Useful when the usual place is not directly editable (A28) |
 
 `scale` is the knob to reach for when the widget moves to another monitor;
 the rest are for taste. **Reset sizes** puts them all back. Opacity has the same

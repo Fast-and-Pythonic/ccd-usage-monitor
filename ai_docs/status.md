@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-09-12. State only — why anything is the way it is lives in
+Snapshot of 2026-09-16. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 ## Works
@@ -19,15 +19,15 @@ Snapshot of 2026-09-12. State only — why anything is the way it is lives in
    (A12), pointing at a figure names it (A16, G16). No frame and no drop shadow —
    the DWM one is stripped through Win32 and re-stripped after the commands that
    bring it back (A10).
-- **Pace** beside each limit in whichever of seven forms `pace_view` names (A16);
+- **Pace** beside each limit in whichever of eight forms `pace_view` names (A16);
    green at or under the clock, orange to red above. Colour keys on spending
    whatever the shown figure is (A15).
 - **Settings** in a second native window (A11), described once in `schema.rs`
    (A22) — kind, bounds, section, label and tooltip, in both languages.
 - **The config is hand-editable, in sections, and re-read while running** (A22,
-   A23). Comments and key order survive a click in the menu; the program's own
-   writes are told apart from a person's by the exact text last written, not by a
-   timestamp.
+   A23); `data_dir` (A28) can move it, the theme and every other file this
+   program writes to a folder of choice, for when the usual place is not
+   directly editable. Comments and key order survive a click in the menu.
 - **Rate awareness**: a request budget keeps the endpoint from having to refuse,
    a real 429 pauses polling (A13), and the widget reads a rate out of its own
    history log (A17), seeded from the app's.
@@ -37,10 +37,10 @@ Snapshot of 2026-09-12. State only — why anything is the way it is lives in
 - **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `slint_ui.rs`
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
-- **The settings window is generated from `schema.rs`** (A22): forty-five
+- **The settings window is generated from `schema.rs`** (A22): thirty-seven
    settings, four kinds of row, and the `.slint` file knows what none of them
    are. It carries the `AboutSlint` acknowledgement the licence asks for.
-- **Tests**: 167 in all; 31 of them over `view.rs`, including golden tests of the
+- **Tests**: 178 in all; 33 of them over `view.rs`, including golden tests of the
    whole panel and the whole pill.
 
 ## Open

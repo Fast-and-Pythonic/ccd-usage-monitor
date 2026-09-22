@@ -27,6 +27,7 @@
 - **A25** · the pill and its panel are two windows
 - **A26** · one indent width, three spaces, enforced rather than remembered
 - **A27** · the poller remembers itself across a restart
+- **A28** · `data_dir` moves every file this program writes, in one hop
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -347,20 +348,36 @@ ambiguous at a glance; the detail panel prints `62% spent · 38% left`, the
 current mode first. That is where the two conventions are reconciled, which is
 why the panel is also where the pace verdict and the reset time live.
 
-## A16: the pace is one comparison, said in two units and two places
+## A16: the pace is one comparison, said in three units and two places
 Usage against the share of the window already elapsed — `used_pct - pace_target`
 — is the whole of it. Everything about pace is a rendering of that difference.
 
 **Two units, one decision.** The gap in points (`▲14%`, as claude-pace says it)
 and the ratio (`▲2.0×` from `pace_ratio`: how many times slower the rest has to
 go, the form that says what to *do*) are the same comparison twice. `PaceView`
-is every arrangement of them — either alone, both in either order, both with a
+is every arrangement of them — either alone, the points in time alone, both in either order, both with a
 rule between, both run together behind a written pipe, or none — in one list,
 because which of them helps is taste and both at once is a legitimate answer. It replaced an on/off switch plus a
 two-way unit toggle: three states of two settings that could not express "both".
 The arrow, the verdict word and every colour come from the points whatever the
 form on screen, so no two of them can disagree. `pace_ratio` is clamped at ±9.9:
 a window with nothing left divides by zero, and `inf` is not a reading.
+
+**Time is the points again, at the window's rate.** `pace_secs` turns the gap
+into a share of the window's length — 1% of five hours is three minutes, so nine
+points ahead is `▲0:27`; 1% of a week is 100.8 minutes. The grain follows the
+window rather than the value: `h:mm` for five hours, like the countdown beside
+it, and days with whole hours for the week (`▲3д2ч`), because `73:55` is a sum to
+do and minutes are noise at that scale. It is one form on its own, not paired:
+pairs with it would double a list of seven for no reading the panel does not
+already give. The cell's reserved width depends on the window too, and on the
+shape of the text on show (`pace_time_template`): that text with every digit
+written `0` and an arrow always counted, so `▼6ч` reserves `▲0ч` and `▲3д12ч`
+reserves `▲0д00ч`. Segoe UI's figures are one width, so this is exact for every
+value of the same shape. Reserving the widest week for every value left a
+centred `▼9ч` in a hole three glyphs wide, which read as broken spacing; the
+pill now changes width only when the gap gains a digit or a day count. The panel and `--serve`'s `text` always carry all
+three units (`pace_detail`) and the JSON has `delta_secs` beside `delta_pct`.
 
 **The pace figure sits second, against the percentage.** It qualifies that
 number and nothing else — how much is left and how fast it is going are one
@@ -374,6 +391,35 @@ figure carries the arrow — the direction is shared, and a second one is noise 
 a pill. The detail panel ignores the choice and prints both numbers in the
 chosen order, the same way it prints both of `pct_mode`'s readings: the pill is
 where taste is honoured, the panel is where things are spelled out.
+
+**The arrow is a smaller cell, not a smaller glyph.** `▲`/`▼` read a size too
+large next to the digits beside them, and Segoe UI's small-triangle variants
+(`▴`/`▾`) turned out to be missing from the font — tofu boxes on the live pill,
+found only once shipped, not in a screenshot taken from the source. `view.rs`'s
+`split_arrow` peels the leading arrow off the assembled text and its template
+and draws it as its own cell at `Role::Arrow` — its own theme variable
+(`font_arrow`), apart from `Role::Small`'s (`font_small`, the `ctx` label's)
+even though both started at the same size, because the arrow now sits inline
+beside a number where `Small` never used to — ahead of the number at its usual
+size, same colour, joined with `Gap::Tight` so the pair still reads as one
+figure. The arrow cell is drawn even when this figure has none (an even burn),
+reserving the same sliver of width every time, so the pill does not shift as
+spending crosses the line. `pace_template` and `pace_time_template` keep
+writing a literal `▲` regardless of the real sign — it is only ever a
+placeholder for "there is room for one", and `split_arrow` is what strips it
+back off before either half is measured.
+
+**A cell centres on its own box only, not on a taller sibling's.** Mixing
+`Role::Arrow` inline with `Role::Time` exposed a `pill.slint` gap that had
+sat unnoticed: `Cell`'s `shown` Text had no `y` of its own, so when the
+surrounding layout stretched a cell taller than its text (to match a taller
+sibling in the same row), the text stayed pinned at the stretched box's top
+edge — `vertical-alignment: center` only centres within a Text's *own* box,
+which defaults to exactly its content's height, so it had nothing to do
+before two different sizes ever shared a row. `Role::Small` alone (the `ctx`
+tag) never triggered it: it always stood in a row by itself. Both `shown` and
+the invisible `ghost` now carry `y: (parent.height - self.height) / 2`,
+centring against the cell's actual, post-stretch height instead.
 
 **Green lives below the line only.** The first version ramped green→amber across
 the tolerance, so a two-point overspend came out a tired green — indistinguishable
@@ -980,3 +1026,42 @@ new notion of freshness.
 **Absent fields never overwrite present ones**, the same rule `Window::merge`
 follows (A03): a reading that only renews one window must not blank out the
 other one merely because it wasn't due yet.
+
+## A28: `data_dir` moves every file this program writes, in one hop
+Some environments redirect a packaged program's usual per-user folder to a
+private copy of it — edits made there through the normal, unpackaged route (a
+text editor, another process) never reach what the packaged one reads, and
+neither sees the other change. `config::base_dir()` gives a way around it: a
+setting that, once pointed at an ordinary folder outside that redirected
+place, becomes where `config.toml`, `theme.slint`, `state.json`,
+`window.json` and `api_poll.json` all live from then on.
+
+**One hop, not a chain.** `base_dir()` always starts at the fixed location
+(`default_base_dir`, the same path `config_path` used to be) and reads
+`data_dir` from whatever sits there. If it names a folder, that folder is
+used — and its own `data_dir`, if it has one, is never read. Two configs
+pointing at each other is a problem this only has to not create, not solve.
+
+**A folder that cannot be made falls back to the fixed location**, the same
+rule A24 applies to a theme that fails to compile: a setting typed wrong must
+not be a widget that will not start.
+
+**`relocate` runs once, on the way in.** The moment `data_dir` changes from
+empty to something, `slint_ui::changed` copies every file this program owns
+into the new folder — never overwriting one already there — and rewrites the
+fixed location down to the one line that matters from here on, then restarts
+the same way `Change::Restart` already does (state already loaded into this
+process would otherwise sit at the old location until the next launch
+regardless of what `config.toml` now says). Copies, not moves: a folder that
+turns out to be wrong should cost nothing at the original. Changing the
+setting a second time is not handled the same way — the new value saves into
+whatever `config.toml` is currently in effect, which is the moved copy, not
+the fixed location `base_dir` actually reads `data_dir` from, so a further
+move has to be set by editing the file at the fixed location directly (the
+tip in `schema.rs` says so).
+
+**Two bases became one.** `state_dir` used to be `dirs::data_local_dir()`,
+a different physical folder from `config_path`'s `dirs::config_dir()` — one
+`data_dir` covers both now, since `state::state_dir` is `config::base_dir`
+too. A person pointing this at somewhere they can reach need remember only
+one folder, not two.

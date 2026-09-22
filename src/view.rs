@@ -94,12 +94,23 @@ pub fn pace_tone(delta: f64, cfg: &Config) -> Tone {
 }
 
 /// The widest each form of the pace cell gets, so the pill keeps its width as
-/// the figures move.
-pub fn pace_template(view: PaceView) -> &'static str {
+/// the figures move. Only the time form depends on the window: `h:mm` on a
+/// short one, days and hours on the week.
+///
+/// Always written with a leading `▲`, whichever way the figure actually
+/// points: `split_arrow` peels that glyph off into its own smaller cell and
+/// reserves the rest for the number, so the literal arrow here is only ever
+/// a placeholder for "there is room for one" — the sign it carries is never
+/// read.
+pub fn pace_template(view: PaceView, span: i64) -> &'static str {
    match view {
       PaceView::Off => "",
       PaceView::Ratio => "▲10.0×",
       PaceView::Points => "▲99%",
+      PaceView::Time if span <= 86400 => "▲5:00",
+      // Only for the dashes while the week is unknown: a real figure reserves
+      // for its own shape (`pace_time_template`).
+      PaceView::Time => "▲23ч",
       PaceView::RatioPoints => "▲10.0× 99%",
       PaceView::PointsRatio => "▲99% 10.0×",
       // Two cells with a rule between them, each measured on its own.
@@ -108,11 +119,31 @@ pub fn pace_template(view: PaceView) -> &'static str {
    }
 }
 
+/// The width a time figure reserves, for the gap actually on show.
+///
+/// A weekly gap varies in shape far more than in value: `▲6д23ч` is three
+/// glyphs wider than `▼6ч`, and a centred cell reserved for the first leaves
+/// the second floating in a hole on both sides. So the cell reserves for the
+/// text on show with every digit written as `0` — Segoe UI's figures are all
+/// one width, so that is exactly the width of any value of the same shape —
+/// and always with an arrow, so the arrow coming and going near an even burn
+/// moves nothing. The pill changes width only when a gap gains or loses a
+/// digit or a day count, not as the digits move. A five-hour gap is always
+/// `h:mm`, so there this comes to the same `▲0:00` every time.
+pub fn pace_time_template(text: &str) -> String {
+   let digits: String = text
+      .trim_start_matches(['▲', '▼'])
+      .chars()
+      .map(|c| if c.is_ascii_digit() { '0' } else { c })
+      .collect();
+   format!("▲{digits}")
+}
+
 // ---------------------------------------------------------------------------
 // What the pill is made of
 // ---------------------------------------------------------------------------
 
-/// Which of the pill's three type sizes a cell is set in.
+/// Which of the pill's type sizes a cell is set in.
 ///
 /// A role, not a font: which face and how many points is a question for
 /// whatever draws the pill, and for the theme after that. What is decided here
@@ -126,6 +157,10 @@ pub enum Role {
    Time,
    /// The `ctx` tag.
    Small,
+   /// The pace arrow — Segoe UI has no smaller triangle glyph of its own, so
+   /// a smaller-looking arrow is a smaller cell instead. Its own role rather
+   /// than reusing `Small`, so the theme can size the two independently.
+   Arrow,
 }
 
 /// How much room to leave after a cell, and what to put in it.
@@ -304,7 +339,7 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
       None => {
          cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::FiveHourPct));
          if cfg.pace_view != PaceView::Off {
-            let t = pace_template(cfg.pace_view);
+            let t = pace_template(cfg.pace_view, pace::FIVE_HOUR_SECS);
             cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::FiveHourPace));
          }
          cells.push(Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourLeft));
@@ -354,7 +389,7 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
       None => {
          cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::SevenDayPct));
          if cfg.pace_view != PaceView::Off {
-            let t = pace_template(cfg.pace_view);
+            let t = pace_template(cfg.pace_view, pace::SEVEN_DAY_SECS);
             cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::SevenDayPace));
          }
          cells.push(Cell::new("--", "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
@@ -451,7 +486,32 @@ fn ctx_cells(cfg: &Config, c: &ContextInfo, ctx_stale: bool) -> Vec<Cell> {
    out
 }
 
-/// The pace figure as a cell, when it is wanted and knowable.
+/// Peels a leading arrow off a figure and its template, into a cell of its
+/// own at `Role::Arrow` and one for the number at its usual size.
+///
+/// Segoe UI has no smaller triangle glyph — `▴`/`▾` draw as tofu — so a
+/// smaller-looking arrow has to be a smaller cell instead, sized by its own
+/// theme variable rather than sharing `Role::Small`'s (the `ctx` label), so
+/// the two can be tuned apart. Both cells take the same colour, so the split
+/// changes nothing about what the figure says. The arrow cell is drawn even
+/// when this figure has none, reserving the same sliver of width every time,
+/// so the pill does not shift when spending crosses back over an even burn.
+fn split_arrow(text: &str, template: &str, paint: Paint, field: Field) -> (Cell, Cell) {
+   let mut chars = text.chars();
+   let (arrow, rest) = match chars.next() {
+      Some(c @ ('▲' | '▼')) => (c.to_string(), chars.as_str().to_string()),
+      _ => (String::new(), text.to_string()),
+   };
+   let rest_template = template.strip_prefix(['▲', '▼']).unwrap_or(template);
+   (
+      Cell::new(arrow, "▲", Role::Arrow, paint)
+         .with_gap(Gap::Tight)
+         .named(field),
+      Cell::new(rest, rest_template, Role::Time, paint).named(field),
+   )
+}
+
+/// The pace figure as cells, when it is wanted and knowable.
 fn pace_cells(
    cfg: &Config,
    w: Window,
@@ -465,7 +525,8 @@ fn pace_cells(
       return Vec::new();
    }
    let Some(delta) = pace_delta(w, span, now) else {
-      return vec![Cell::new("--", pace_template(view), Role::Time, Paint::Dim).named(field)];
+      let (arrow, rest) = split_arrow("--", pace_template(view, span), Paint::Dim, field);
+      return vec![arrow, rest];
    };
    let target = w.used_pct - delta;
    let paint = if stale {
@@ -473,29 +534,42 @@ fn pace_cells(
    } else {
       Paint::Tone(pace_tone(delta, cfg))
    };
-   let parts = pace::pace_parts(view, w.used_pct, target);
-   // Both halves and the separator between them answer to the same name.
+   let parts = pace::pace_parts(view, w.used_pct, target, span, &cfg.lang);
+   // The second half of a pair never carries an arrow (only the first piece
+   // ever does), so it stays one plain cell answering to the same name.
    let half =
       |text: &str, template: &str| Cell::new(text, template, Role::Time, paint).named(field);
    match view {
       // Two cells with a rule painted between them.
-      PaceView::Split if parts.len() == 2 => vec![
-         half(&parts[0], "▲99%").with_gap(Gap::Rule),
-         half(&parts[1], "10.0×"),
-      ],
-      // Three cells run together with no gaps: the separator is a cell of
-      // its own only so that it can keep the grey of the clock beside it
-      // while the two numbers carry the pace colour.
-      PaceView::Piped if parts.len() == 2 => vec![
-         half(&parts[0], "▲99%")
-            .with_gap(Gap::Tight)
-            .aligned(Side::Right),
-         Cell::new(view.joiner(), view.joiner(), Role::Time, Paint::Dim)
-            .with_gap(Gap::Tight)
-            .named(field),
-         half(&parts[1], "10.0×").aligned(Side::Left),
-      ],
-      _ => vec![half(&parts.join(view.joiner()), pace_template(view))],
+      PaceView::Split if parts.len() == 2 => {
+         let (arrow, rest) = split_arrow(&parts[0], "▲99%", paint, field);
+         vec![arrow, rest.with_gap(Gap::Rule), half(&parts[1], "10.0×")]
+      }
+      // Four cells run together with no gaps: the separator is a cell of its
+      // own only so that it can keep the grey of the clock beside it while
+      // the arrow and the two numbers carry the pace colour.
+      PaceView::Piped if parts.len() == 2 => {
+         let (arrow, rest) = split_arrow(&parts[0], "▲99%", paint, field);
+         vec![
+            arrow,
+            rest.with_gap(Gap::Tight).aligned(Side::Right),
+            Cell::new(view.joiner(), view.joiner(), Role::Time, Paint::Dim)
+               .with_gap(Gap::Tight)
+               .named(field),
+            half(&parts[1], "10.0×").aligned(Side::Left),
+         ]
+      }
+      PaceView::Time => {
+         let text = parts.join(view.joiner());
+         let template = pace_time_template(&text);
+         let (arrow, rest) = split_arrow(&text, &template, paint, field);
+         vec![arrow, rest]
+      }
+      _ => {
+         let text = parts.join(view.joiner());
+         let (arrow, rest) = split_arrow(&text, pace_template(view, span), paint, field);
+         vec![arrow, rest]
+      }
    }
 }
 
@@ -821,7 +895,7 @@ pub fn detail_lines(
                pace::fmt_reset_full(r, &cfg.lang),
                // Both numbers here whatever the pill was asked for: the
                // panel is where everything is spelled out.
-               pace::pace_text(cfg.pace_view.both(), w.used_pct, target),
+               pace::pace_detail(cfg.pace_view, w.used_pct, target, span, &cfg.lang),
                verdict
             ));
             text.push_str(&rate_text(cfg, rt, w, span, r, now));
@@ -1159,10 +1233,12 @@ mod tests {
          sketch(&cells(&en(), &snap, false, false, now)),
          "\
 g0 Pct Cell Centre green \"24%\" FiveHourPct
-g0 Time Cell Centre green \"▼1.1×\" FiveHourPace
+g0 Arrow Tight Centre green \"▼\" FiveHourPace
+g0 Time Cell Centre green \"1.1×\" FiveHourPace
 g0 Time Cell Centre plain \"3:37\" FiveHourLeft
 g0 Time Group Centre dim \"15:37\" FiveHourClock
 g1 Pct Cell Centre green \"54%\" SevenDayPct
+g1 Arrow Tight Centre green \"\" SevenDayPace
 g1 Time Cell Centre green \"1.0×\" SevenDayPace
 g1 Time Cell Centre dim \"3d\" SevenDayDays
 g1 Time Group Centre plain \"15%\" SevenDayAllowance
@@ -1241,11 +1317,13 @@ g2 Time Group Centre plain \"38%\" ContextPct
    }
 
    #[test]
-   fn a_piped_pace_is_three_cells_answering_to_one_name() {
-      // The separator is a cell of its own only so that it can stay grey
-      // while the two numbers either side carry the pace colour. It is
-      // punctuation — but it still answers to the field's name, or crossing
-      // it would blink the hint off and on again.
+   fn a_piped_pace_is_four_cells_answering_to_one_name() {
+      // The arrow gets its own smaller cell ahead of the number it points
+      // for; the separator after them is a cell of its own only so that it
+      // can stay grey while the arrow and both numbers carry the pace
+      // colour. All four are punctuation-adjacent but still answer to the
+      // field's name, or crossing any of them would blink the hint off and
+      // on again.
       let now = now();
       let (snap, _) = fixture(now);
       let cfg = Config {
@@ -1257,22 +1335,64 @@ g2 Time Group Centre plain \"38%\" ContextPct
          .iter()
          .filter(|c| c.field == Some(Field::FiveHourPace))
          .collect();
-      assert_eq!(pace.len(), 3);
-      assert_eq!(pace[1].text, "|");
+      assert_eq!(pace.len(), 4);
+      assert_eq!(pace[0].role, Role::Arrow, "the arrow draws smaller");
+      assert_eq!(pace[2].text, "|");
       assert!(
-         matches!(pace[1].paint, Paint::Dim),
+         matches!(pace[2].paint, Paint::Dim),
          "the pipe is punctuation"
       );
       assert_eq!(
-         pace[0].side,
+         pace[1].side,
          Side::Right,
-         "the halves lean on the separator"
+         "the number leans on the separator"
       );
-      assert_eq!(pace[2].side, Side::Left);
+      assert_eq!(pace[3].side, Side::Left);
       assert!(
-         pace[0].gap == Gap::Tight && pace[1].gap == Gap::Tight,
-         "and nothing sits between them"
+         pace[0].gap == Gap::Tight && pace[1].gap == Gap::Tight && pace[2].gap == Gap::Tight,
+         "and nothing sits between any of them"
       );
+   }
+
+   #[test]
+   fn a_time_pace_splits_into_an_arrow_and_the_grain_of_its_window() {
+      // Minutes on the five-hour window, days and hours on the week, each in
+      // a cell reserved wide enough for its window's worst case — plus the
+      // arrow's own smaller cell ahead of it.
+      let now = now();
+      let (snap, _) = fixture(now);
+      let cfg = Config {
+         pace_view: PaceView::Time,
+         ..en()
+      };
+      let cells = cells(&cfg, &snap, false, false, now);
+      let pace =
+         |field| -> Vec<&Cell> { cells.iter().filter(|c| c.field == Some(field)).collect() };
+      let five = pace(Field::FiveHourPace);
+      let week = pace(Field::SevenDayPace);
+      assert_eq!(five.len(), 2);
+      assert_eq!(week.len(), 2);
+      assert_eq!(five[0].text, "▼");
+      assert_eq!(five[0].role, Role::Arrow);
+      assert_eq!(five[1].text, "0:11");
+      assert_eq!(five[1].template, "0:00");
+      // On pace for the week: no arrow, but the cell for one still draws.
+      assert_eq!(week[0].text, "");
+      assert_eq!(week[1].text, "0h");
+      assert_eq!(week[1].template, "0h");
+   }
+
+   #[test]
+   fn a_time_reserves_for_the_shape_on_show() {
+      // Each shape of a weekly gap gets its own width, so `▼6ч` does not float
+      // in a cell sized for `▲23ч`, nor that one in a cell sized for days.
+      assert_eq!(pace_time_template("▼6ч"), "▲0ч");
+      assert_eq!(pace_time_template("▲23ч"), "▲00ч");
+      assert_eq!(pace_time_template("▲3д2ч"), "▲0д0ч");
+      assert_eq!(pace_time_template("▼3д12ч"), "▲0д00ч");
+      // No arrow at an even burn, but the room for one stays.
+      assert_eq!(pace_time_template("0h"), "▲0h");
+      assert_eq!(pace_time_template("▼0:34"), "▲0:00");
    }
 
    #[test]
@@ -1638,12 +1758,12 @@ g2 Time Group Centre plain \"38%\" ContextPct
          vec![
             (
                "5h",
-               "24% потрачено · 76% осталось · сброс Пт 15:37 · ▼1.1× 4% \
+               "24% потрачено · 76% осталось · сброс Пт 15:37 · ▼1.1× 4% 0:11 \
                      по графику · usage API"
             ),
             (
                "7d",
-               "54% потрачено · 46% осталось · сброс Пн 17:00 · 1.0× 0% \
+               "54% потрачено · 46% осталось · сброс Пн 17:00 · 1.0× 0% 0ч \
                      по графику · usage API · можно 15%/день"
             ),
             (

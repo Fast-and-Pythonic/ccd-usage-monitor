@@ -130,37 +130,103 @@ pub fn pace_ratio(used_pct: f64, target_pct: f64) -> f64 {
    (time_left / quota_left).clamp(1.0 / RATIO_MAX, RATIO_MAX)
 }
 
-/// The pace figure in pieces, in the order they are shown.
+/// How much of the window a gap of `delta_pct` points is worth, in seconds.
 ///
-/// One string, or two when the form asks for both numbers; empty when it asks
-/// for none. Only the first piece carries the arrow: the two numbers are the
-/// same comparison, so a second arrow would say nothing and crowd the pill.
+/// The gap is a share of the window, so it converts at the window's own rate:
+/// 1% of five hours is three minutes, 1% of a week is 100.8. Capped at the whole
+/// window, which is as far ahead of the clock as spending can meaningfully get.
+pub fn pace_secs(delta_pct: f64, span: i64) -> i64 {
+   (delta_pct.abs().min(100.0) * span as f64 / 100.0).round() as i64
+}
+
+/// `0:27` / `3д2ч` — a pace gap in time, in the grain its window is read in.
 ///
-/// The direction always comes from the difference in points, in either unit, so
-/// that the arrow, the word in the panel and the colour can never disagree. The
-/// ratio is folded to be at least 1 — "1.4 times faster than you have to" reads;
-/// "0.7 times slower" does not.
-pub fn pace_parts(view: PaceView, used_pct: f64, target_pct: f64) -> Vec<String> {
-   if view == PaceView::Off {
-      return Vec::new();
+/// A five-hour window is watched in minutes, so it gets `h:mm` like the
+/// countdown beside it. A week is not: `73:55` is a number to do arithmetic on,
+/// and minutes are noise at that scale, so it gets days and whole hours.
+pub fn fmt_pace_time(secs: i64, span: i64, lang: &str) -> String {
+   let s = secs.max(0);
+   if span <= 86400 {
+      let mins = (s + 30) / 60;
+      return format!("{}:{:02}", mins / 60, mins % 60);
    }
-   let delta = used_pct - target_pct;
-   // Triangles rather than arrows: at pill size a thin up arrow in front of a
-   // digit reads as a 1, and a 2.5x overspend printing as "12.5" is the one
-   // misreading this cell must not allow.
-   let arrow = if delta > 0.5 {
+   let hours = pace_hours(s);
+   let (d, h) = (hours / 24, hours % 24);
+   let (du, hu) = if lang.eq_ignore_ascii_case("ru") {
+      ("д", "ч")
+   } else {
+      ("d", "h")
+   };
+   if d > 0 {
+      format!("{d}{du}{h}{hu}")
+   } else {
+      format!("{h}{hu}")
+   }
+}
+
+/// A weekly gap in whole hours, rounded to the nearest — the grain `3д2ч` is
+/// written in, and what decides whether it has a day count at all.
+pub fn pace_hours(secs: i64) -> i64 {
+   (secs.max(0) + 1800) / 3600
+}
+
+/// The direction of a gap, as the one arrow a figure carries.
+///
+/// Triangles rather than arrows: at pill size a thin up arrow in front of a
+/// digit reads as a 1, and a 2.5x overspend printing as "12.5" is the one
+/// misreading this cell must not allow. Segoe UI has no smaller triangle of
+/// its own (`▴`/`▾` draw as tofu), so shrinking it on screen is `view.rs`'s
+/// job — a cell of its own at the pill's smaller role — not a smaller glyph
+/// here; this stays the one pair of characters everything else measures and
+/// searches for.
+fn pace_arrow(delta: f64) -> &'static str {
+   if delta > 0.5 {
       "▲"
    } else if delta < -0.5 {
       "▼"
    } else {
       ""
-   };
+   }
+}
+
+/// The three renderings of one gap, unarrowed: points, ratio, time.
+fn pace_units(used_pct: f64, target_pct: f64, span: i64, lang: &str) -> [String; 3] {
+   let delta = used_pct - target_pct;
    let points = format!("{:.0}%", delta.abs());
    let ratio = {
       let r = pace_ratio(used_pct, target_pct);
       let shown = if r >= 1.0 { r } else { 1.0 / r };
       format!("{shown:.1}×")
    };
+   let time = fmt_pace_time(pace_secs(delta, span), span, lang);
+   [points, ratio, time]
+}
+
+/// The pace figure in pieces, in the order they are shown.
+///
+/// One string, or two when the form asks for both numbers; empty when it asks
+/// for none. Only the first piece carries the arrow: the two numbers are the
+/// same comparison, so a second arrow would say nothing and crowd the pill.
+///
+/// The direction always comes from the difference in points, in any unit, so
+/// that the arrow, the word in the panel and the colour can never disagree. The
+/// ratio is folded to be at least 1 — "1.4 times faster than you have to" reads;
+/// "0.7 times slower" does not.
+pub fn pace_parts(
+   view: PaceView,
+   used_pct: f64,
+   target_pct: f64,
+   span: i64,
+   lang: &str,
+) -> Vec<String> {
+   if view == PaceView::Off {
+      return Vec::new();
+   }
+   let arrow = pace_arrow(used_pct - target_pct);
+   let [points, ratio, time] = pace_units(used_pct, target_pct, span, lang);
+   if view == PaceView::Time {
+      return vec![format!("{arrow}{time}")];
+   }
 
    let (first, second) = if view.points_first() {
       (points, ratio)
@@ -174,11 +240,37 @@ pub fn pace_parts(view: PaceView, used_pct: f64, target_pct: f64) -> Vec<String>
    out
 }
 
-/// The same pieces as one string, joined the way the form asks. What the pill
-/// shows unless the form wants a rule painted between them, and what the
-/// terminal line and the panel always show.
-pub fn pace_text(view: PaceView, used_pct: f64, target_pct: f64) -> String {
-   pace_parts(view, used_pct, target_pct).join(view.joiner())
+/// The same pieces as one string, joined the way the form asks — what the pill
+/// shows when the form is a single cell. Only the tests need it whole: the pill
+/// and the terminal line each join the pieces themselves.
+#[cfg(test)]
+pub fn pace_text(view: PaceView, used_pct: f64, target_pct: f64, span: i64, lang: &str) -> String {
+   pace_parts(view, used_pct, target_pct, span, lang).join(view.joiner())
+}
+
+/// Every unit of the figure, for the panel and the JSON: the pill is where the
+/// choice is honoured, the panel is where everything is spelled out. The time
+/// form leads with time; every other form says both of its numbers in its own
+/// order and puts time last. One arrow either way, on whatever comes first.
+pub fn pace_detail(
+   view: PaceView,
+   used_pct: f64,
+   target_pct: f64,
+   span: i64,
+   lang: &str,
+) -> String {
+   if view == PaceView::Time {
+      let arrow = pace_arrow(used_pct - target_pct);
+      let [points, ratio, time] = pace_units(used_pct, target_pct, span, lang);
+      return format!("{arrow}{time} {points} {ratio}");
+   }
+   let mut parts = pace_parts(view.both(), used_pct, target_pct, span, lang);
+   parts.push(fmt_pace_time(
+      pace_secs(used_pct - target_pct, span),
+      span,
+      lang,
+   ));
+   parts.join(" ")
 }
 
 /// `26` / `0.4` — a rate, with a decimal only while it needs one. A weekly
@@ -391,9 +483,10 @@ mod tests {
    #[test]
    fn every_form_says_the_same_thing_its_own_way() {
       // 80% spent with 60% of the window gone: over pace, whichever form.
-      let p = |view| pace_text(view, 80.0, 60.0);
+      let p = |view| pace_text(view, 80.0, 60.0, FIVE_HOUR_SECS, "en");
       assert_eq!(p(PaceView::Ratio), "▲2.0×");
       assert_eq!(p(PaceView::Points), "▲20%");
+      assert_eq!(p(PaceView::Time), "▲1:00");
       assert_eq!(p(PaceView::RatioPoints), "▲2.0× 20%");
       assert_eq!(p(PaceView::PointsRatio), "▲20% 2.0×");
       assert_eq!(p(PaceView::Split), "▲20% 2.0×");
@@ -405,23 +498,65 @@ mod tests {
 
    #[test]
    fn only_the_first_part_carries_the_arrow() {
-      let parts = pace_parts(PaceView::RatioPoints, 80.0, 60.0);
-      assert_eq!(parts.len(), 2);
-      assert!(parts[0].starts_with('▲'));
-      assert!(!parts[1].contains('▲') && !parts[1].contains('▼'));
-      assert!(pace_parts(PaceView::Off, 80.0, 60.0).is_empty());
-      assert_eq!(pace_parts(PaceView::Ratio, 80.0, 60.0).len(), 1);
+      let parts = |view| pace_parts(view, 80.0, 60.0, FIVE_HOUR_SECS, "en");
+      let two = parts(PaceView::RatioPoints);
+      assert_eq!(two.len(), 2);
+      assert!(two[0].starts_with('▲'));
+      assert!(!two[1].contains('▲') && !two[1].contains('▼'));
+      assert!(parts(PaceView::Off).is_empty());
+      assert_eq!(parts(PaceView::Ratio).len(), 1);
+      assert_eq!(parts(PaceView::Time).len(), 1);
    }
 
    #[test]
    fn under_pace_folds_the_ratio_to_read_forwards() {
-      assert_eq!(pace_text(PaceView::RatioPoints, 40.0, 60.0), "▼1.5× 20%");
+      assert_eq!(
+         pace_text(PaceView::RatioPoints, 40.0, 60.0, FIVE_HOUR_SECS, "en"),
+         "▼1.5× 20%"
+      );
    }
 
    #[test]
    fn an_even_burn_has_no_arrow() {
-      assert_eq!(pace_text(PaceView::Ratio, 50.0, 50.0), "1.0×");
-      assert_eq!(pace_text(PaceView::Points, 50.0, 50.0), "0%");
+      let p = |view| pace_text(view, 50.0, 50.0, FIVE_HOUR_SECS, "en");
+      assert_eq!(p(PaceView::Ratio), "1.0×");
+      assert_eq!(p(PaceView::Points), "0%");
+      assert_eq!(p(PaceView::Time), "0:00");
+   }
+
+   #[test]
+   fn a_five_hour_gap_is_three_minutes_a_point() {
+      // 100% of five hours is 300 minutes, so each point is 3.
+      let t = |used, target| pace_text(PaceView::Time, used, target, FIVE_HOUR_SECS, "ru");
+      assert_eq!(t(50.0, 41.0), "▲0:27");
+      assert_eq!(t(20.0, 64.0), "▼2:12");
+      // Capped at the whole window rather than running past it.
+      assert_eq!(t(140.0, 10.0), "▲5:00");
+   }
+
+   #[test]
+   fn a_weekly_gap_is_days_and_whole_hours() {
+      let t =
+         |delta: f64, lang| fmt_pace_time(pace_secs(delta, SEVEN_DAY_SECS), SEVEN_DAY_SECS, lang);
+      // 44 points of a week is 73 h 55 min: three days and two hours.
+      assert_eq!(t(44.0, "ru"), "3д2ч");
+      assert_eq!(t(-44.0, "en"), "3d2h");
+      // Under a day there is no day count to show.
+      assert_eq!(t(3.0, "ru"), "5ч");
+      assert_eq!(t(0.0, "ru"), "0ч");
+      assert_eq!(t(100.0, "en"), "7d0h");
+   }
+
+   #[test]
+   fn the_panel_spells_out_every_unit_with_one_arrow() {
+      let d = |view| pace_detail(view, 80.0, 60.0, FIVE_HOUR_SECS, "en");
+      assert_eq!(d(PaceView::Time), "▲1:00 20% 2.0×");
+      assert_eq!(d(PaceView::Piped), "▲20% 2.0× 1:00");
+      assert_eq!(d(PaceView::Ratio), "▲2.0× 20% 1:00");
+      assert_eq!(
+         pace_detail(PaceView::Time, 40.0, 60.0, SEVEN_DAY_SECS, "ru"),
+         "▼1д10ч 20% 1.5×"
+      );
    }
 
    #[test]

@@ -297,6 +297,7 @@ fn role_code(role: view::Role) -> i32 {
       view::Role::Pct => 0,
       view::Role::Time => 1,
       view::Role::Small => 2,
+      view::Role::Arrow => 3,
    }
 }
 
@@ -933,8 +934,26 @@ fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change
       }
       return;
    }
+   // Read before `apply` overwrites it, and only for this one key: every
+   // other setting's old value is of no interest once the new one lands.
+   let data_dir_before = (key == "data_dir").then(|| a.cfg.data_dir.trim().to_string());
    if !crate::settings_ui::apply(&mut a.cfg, key, &change) {
       return;
+   }
+   // The one setting whose *first* value matters, not just its new one: only
+   // an empty-to-something change is a place to move files from, and it is
+   // the only case this handles (see the tip in `schema.rs`).
+   if let Some(before) = data_dir_before {
+      let after = a.cfg.data_dir.trim().to_string();
+      if before.is_empty() && !after.is_empty() {
+         if crate::config::relocate(std::path::Path::new(&after)).is_ok() {
+            a.tray = None;
+            return restart();
+         }
+         // Could not make or copy into the folder: leave it as it was
+         // rather than point at a place half of the files never reached.
+         a.cfg.data_dir.clear();
+      }
    }
    a.cfg.save();
    // The sources' remembered mtimes describe answers to the question the old

@@ -64,7 +64,7 @@ fn pace_cell(w: crate::model::Window, span: i64, now: i64, cfg: &Config) -> Stri
    let sep = format!("{RESET}{DIM}{}{RESET}{tint}", cfg.pace_view.joiner());
    format!(
       " {tint}{}{RESET}",
-      pace::pace_parts(cfg.pace_view, w.used_pct, target).join(&sep)
+      pace::pace_parts(cfg.pace_view, w.used_pct, target, span, &cfg.lang).join(&sep)
    )
 }
 

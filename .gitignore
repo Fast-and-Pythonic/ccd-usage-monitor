@@ -1,1 +1,6 @@
 /target
+
+# The data folder (A28): machine state, not project template — except the
+# theme, which is worth keeping in history since it's hand-tuned.
+/settings/*
+!/settings/theme.slint

@@ -96,6 +96,8 @@ component Cell inherits Rectangle {
       font-family: "Segoe UI";
       font-weight: weight;
       opacity: 0;
+      // See `shown` below: kept in step so the two stay the same shape.
+      y: (parent.height - self.height) / 2;
    }
 
    shown := Text {
@@ -108,6 +110,13 @@ component Cell inherits Rectangle {
       x: cell.side == 1 ? parent.width - self.width
          : cell.side == 2 ? 0px
          : (parent.width - self.width) / 2;
+      // `vertical-alignment: center` only centres within this Text's own
+      // box, which defaults to its own single line's height — no help when
+      // a neighbouring cell of a different role stretches this one taller
+      // than its text. Centring `y` against `parent.height` (the cell once
+      // the row's layout has stretched it) is what actually keeps two roles
+      // of different size sitting on the same line, not one riding high.
+      y: (parent.height - self.height) / 2;
       vertical-alignment: center;
    }
 }
@@ -182,6 +191,11 @@ export component Pill inherits Window {
    property <length> font_pct: 15.6px * scale;
    property <length> font_time: 15.6px * scale;
    property <length> font_small: 15px * scale;
+   // The pace arrow's own size, apart from `font_small`'s — the two used to
+   // share one variable, but the arrow now sits inline beside a number
+   // (Role::Arrow) where the `ctx` tag (Role::Small) never did, so they are
+   // worth tuning apart. Starts equal to `font_small`.
+   property <length> font_arrow: 15px * scale;
 
    background: transparent;
 
@@ -248,6 +262,7 @@ export component Pill inherits Window {
                         cell: c;
                         size: c.role == 0 ? font_pct
                            : c.role == 1 ? font_time
+                           : c.role == 3 ? font_arrow
                            : font_small;
                         weight: c.role == 0 ? 600 : 400;
                         entered(name) => { root.entered(name); }

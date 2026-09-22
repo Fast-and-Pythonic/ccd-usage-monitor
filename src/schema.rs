@@ -4,7 +4,7 @@
 //! Two jobs, and they are the reason this exists as data rather than as code.
 //!
 //! **It lays out `config.toml`.** `Section` is the table a key is written
-//! into, so the file reads in groups instead of as forty-five lines in the
+//! into, so the file reads in groups instead of as thirty-seven lines in the
 //! order a struct happens to declare them. Nothing else knows that mapping;
 //! `config::save` and `config::load` ask here.
 //!
@@ -506,6 +506,29 @@ pub const ALL: &[Setting] = &[
       // A flag for working on the widget, not a setting for using it.
       form: false,
    },
+   Setting {
+      key: "data_dir",
+      section: Section::Behaviour,
+      kind: Kind::Text,
+      label: w("Папка данных", "Data folder"),
+      tip: w(
+         "Пусто — обычное место (`%APPDATA%`). Указав папку, сюда переезжают \
+             config.toml, theme.slint и всё остальное, что программа хранит сама; \
+             виджет перезапустится. Удобно, если обычное место недоступно для \
+             прямого редактирования — например, из-за подмены %APPDATA% у \
+             какой-то из открытых программ. Повторное изменение здесь не \
+             переносит файлы второй раз — новое место нужно задавать в файле, \
+             который лежит там, куда всё уже переехало.",
+         "Empty is the usual place (`%APPDATA%`). Naming a folder moves \
+             config.toml, theme.slint and everything else this program keeps for \
+             itself there; the widget restarts. Useful when the usual place is not \
+             reachable for direct editing — say, because some open program has \
+             %APPDATA% redirected. Changing this again here does not move the \
+             files a second time — a further move has to be set from the file \
+             now sitting wherever everything already moved to.",
+      ),
+      form: true,
+   },
    // ------------------------------------------------------------- display ---
    Setting {
       key: "pct_mode",
@@ -530,6 +553,7 @@ pub const ALL: &[Setting] = &[
       kind: Kind::Choice(&[
          ch("ratio", "▲2.0×", "▲2.0×"),
          ch("points", "▲9%", "▲9%"),
+         ch("time", "▲0:27", "▲0:27"),
          ch("ratio_points", "▲2.0× 9%", "▲2.0× 9%"),
          ch("points_ratio", "▲9% 2.0×", "▲9% 2.0×"),
          ch("split", "▲9% | 2.0×", "▲9% | 2.0×"),
@@ -539,10 +563,12 @@ pub const ALL: &[Setting] = &[
       label: w("Темп", "Pace"),
       tip: w(
          "Что стоит рядом с каждым лимитом на пилюле. Пункты — на сколько расход \
-             обогнал часы; кратность — во сколько раз придётся замедлиться.",
+             обогнал часы; кратность — во сколько раз придётся замедлиться; время — \
+             те же пункты во времени окна: у 5 часов часы и минуты, у недели дни и часы.",
          "What stands beside each limit on the pill. Points are how far spending \
              has run ahead of the clock; the ratio is how many times slower the \
-             rest has to go.",
+             rest has to go; time is the same points in the window's own time: \
+             hours and minutes for five hours, days and hours for the week.",
       ),
       form: true,
    },
@@ -811,7 +837,7 @@ pub fn get(key: &str) -> Option<&'static Setting> {
 
 /// One setting's current value, addressed by key.
 ///
-/// Through serde rather than through a forty-five-arm `match`: the round trip
+/// Through serde rather than through a thirty-seven-arm `match`: the round trip
 /// is the same one `config::save` already relies on, and a `match` is a list
 /// that has to be remembered, which is exactly the kind of list this module
 /// exists to abolish. The cost is serialising the whole config for one read,

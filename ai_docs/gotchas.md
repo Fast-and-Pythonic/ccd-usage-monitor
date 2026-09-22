@@ -142,6 +142,19 @@ the chevron is *painted* as a triangle instead of typed — a shape the font
 cannot fail to provide.
 **How to spot it:** a single character renders wrong while everything around it
 is fine.
+**Recurred under Slint (2026-09-16):** the pace arrows (A16) were swapped from
+`▲`/`▼` to the small-triangle variants `▴`/`▾` (U+25B4/U+25BE — the same
+U+25BE as above) to read smaller next to the digits beside them. Segoe UI
+still does not carry either, and Slint's `Text` has no font-fallback list to
+add a second family to — the live pill showed tofu boxes, caught only once
+shipped, since a screenshot of source text says nothing about a font's actual
+coverage. `▲`/`▼` are back, and the smaller reading comes from `view.rs`'s
+`split_arrow` instead: a separate cell at its own smaller role (`Role::Arrow`),
+rather than a smaller character. No custom font here to add
+a fallback to, so painting a shape was the only other route available — this
+project took the "use a size the font already renders" route instead, which
+G07's original fix did not have as an option (egui's chevron was one glyph
+among running text, not a figure with its own cell to shrink).
 
 ---
 

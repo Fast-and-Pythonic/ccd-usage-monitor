@@ -124,10 +124,14 @@ struct Pace {
    /// `used_pct - target_pct`. Positive is an overspend; everything else
    /// about pace is a rendering of this one number (A16).
    delta_pct: f64,
+   /// The same gap in the window's time, signed like `delta_pct`: 9 points of
+   /// a five-hour window is 1620. Capped at the whole window.
+   delta_secs: i64,
    /// How many times slower the rest of the window has to go. Clamped at 9.9.
    ratio: f64,
    verdict: &'static str,
-   /// Both numbers, in the order the widget was asked for them.
+   /// Every unit — points, ratio, time — led by the one the widget was asked
+   /// for, which carries the arrow.
    text: String,
    tone: Tone,
 }
@@ -182,7 +186,8 @@ fn quota(cfg: &Config, rt: &Runtime, w: Window, span: i64, now: i64, weekly: boo
          delta_pct: delta,
          ratio: pace::pace_ratio(w.used_pct, target),
          verdict: pace::pace_of(w.used_pct, target, cfg.pace_tolerance).key(),
-         text: pace::pace_text(cfg.pace_view.both(), w.used_pct, target),
+         delta_secs: pace::pace_secs(delta, span) * if delta < 0.0 { -1 } else { 1 },
+         text: pace::pace_detail(cfg.pace_view, w.used_pct, target, span, &cfg.lang),
          tone: view::pace_tone(delta, cfg),
       }
    });

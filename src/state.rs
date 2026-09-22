@@ -19,10 +19,12 @@ const SESSION_TTL_SECS: i64 = 24 * 3600;
 /// A lock older than this is presumed abandoned by a killed process.
 const LOCK_STALE_SECS: u64 = 3;
 
+/// Once a distinct location of its own (`dirs::data_local_dir`); now the
+/// same folder `config.toml` and `theme.slint` live in
+/// (`config::base_dir`), so `data_dir` moves everything this program writes
+/// in one step rather than half of it.
 pub fn state_dir() -> PathBuf {
-   dirs::data_local_dir()
-      .unwrap_or_else(std::env::temp_dir)
-      .join("ccd-usage-monitor")
+   crate::config::base_dir()
 }
 
 pub fn state_path() -> PathBuf {
