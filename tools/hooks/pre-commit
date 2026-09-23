@@ -1,0 +1,40 @@
+#!/bin/sh
+# Refuses a commit that the project's own checks would refuse, so they are
+# enforced rather than remembered (A26, A32). Enabled once per clone with
+#
+#    git config core.hooksPath tools/hooks
+#
+# The checks run on the working tree, not on the staged snapshot: stage what
+# you mean to commit, or a half-staged file is judged by its other half.
+
+set -e
+cd "$(git rev-parse --show-toplevel)"
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+if printf '%s\n' "$staged" | grep -qE '\.rs$|^Cargo\.(toml|lock)$|^rustfmt\.toml$'; then
+   echo "pre-commit: cargo fmt --check"
+   cargo fmt --check || {
+      echo "pre-commit: run 'cargo fmt' and stage the result" >&2
+      exit 1
+   }
+   echo "pre-commit: cargo clippy --all-targets -- -D warnings"
+   cargo clippy --quiet --all-targets -- -D warnings || {
+      echo "pre-commit: clippy has findings; fix them rather than allow them" >&2
+      exit 1
+   }
+fi
+
+if printf '%s\n' "$staged" | grep -qE '^ai_docs/|^CLAUDE\.md$'; then
+   # The documentation standard lives outside this repository. Where it is not
+   # checked out beside it, say so and let the commit through: a contributor
+   # without it has nothing to run.
+   std="${AI_DOCS_STANDARD:-../ai-docs-method-pub}"
+   if [ -f "$std/tools/lint_docs.py" ]; then
+      echo "pre-commit: ai_docs lint and index check"
+      python "$std/tools/lint_docs.py" --root . --docs ai_docs --profile engineering --tier M
+      python "$std/tools/make_index.py" --root . --docs ai_docs --check
+   else
+      echo "pre-commit: ai_docs standard not found at $std; docs not checked" >&2
+   fi
+fi

@@ -49,5 +49,7 @@ python <standard>/tools/lint_docs.py --root . --docs ai_docs --profile engineeri
 python <standard>/tools/make_index.py --root . --docs ai_docs
 ```
 
-Run both before a commit. The project is under git, so nothing here is demoted to
-advice.
+Both run by themselves before every commit that touches `ai_docs/`, together with
+`cargo fmt --check` and `cargo clippy -- -D warnings` for code, through
+`tools/hooks/pre-commit` (A32) — once `git config core.hooksPath tools/hooks` has
+been run in the clone. Nothing here is advice.

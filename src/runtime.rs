@@ -288,14 +288,14 @@ impl Runtime {
          self.api_wake = Some(wake);
          self.api_settings = Some(settings);
       }
-      if let Some(settings) = &self.api_settings {
-         if settings.get() != wanted {
-            settings.set(wanted.0, wanted.1);
-            // Only "look at the clock again" — the poller works out for
-            // itself whether anything is due, and usually nothing is.
-            if let Some(wake) = &self.api_wake {
-               let _ = wake.send(api::Wake::Recheck);
-            }
+      if let Some(settings) = &self.api_settings
+         && settings.get() != wanted
+      {
+         settings.set(wanted.0, wanted.1);
+         // Only "look at the clock again" — the poller works out for
+         // itself whether anything is due, and usually nothing is.
+         if let Some(wake) = &self.api_wake {
+            let _ = wake.send(api::Wake::Recheck);
          }
       }
       if !cfg.api_enabled && self.api_rx.is_some() {
@@ -389,10 +389,10 @@ impl Runtime {
          return;
       }
       if !force {
-         if let Some(last) = self.last_wake_request {
-            if last.elapsed() < Duration::from_secs(120) {
-               return;
-            }
+         if let Some(last) = self.last_wake_request
+            && last.elapsed() < Duration::from_secs(120)
+         {
+            return;
          }
          if self.api_last_ok.is_some_and(|ok| now - ok < 60) {
             return;

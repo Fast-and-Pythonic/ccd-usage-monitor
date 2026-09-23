@@ -115,15 +115,15 @@ impl StateFile {
       self
          .sessions
          .retain(|_, s| now - s.observed_at < SESSION_TTL_SECS);
-      if let Some(w) = &self.rate_limits.five_hour {
-         if w.resets_at <= now {
-            self.rate_limits.five_hour = None;
-         }
+      if let Some(w) = &self.rate_limits.five_hour
+         && w.resets_at <= now
+      {
+         self.rate_limits.five_hour = None;
       }
-      if let Some(w) = &self.rate_limits.seven_day {
-         if w.resets_at <= now {
-            self.rate_limits.seven_day = None;
-         }
+      if let Some(w) = &self.rate_limits.seven_day
+         && w.resets_at <= now
+      {
+         self.rate_limits.seven_day = None;
       }
    }
 
@@ -236,10 +236,7 @@ impl StatusLinePayload {
       if let Some(id) = &self.session_id {
          let ctx = self.context_window.as_ref();
          let model = self.model.as_ref().and_then(|m| m.id.clone());
-         let entry = state
-            .sessions
-            .entry(id.clone())
-            .or_insert_with(StoredSession::default);
+         let entry = state.sessions.entry(id.clone()).or_default();
          entry.observed_at = now;
          if let Some(pct) = ctx.and_then(|c| c.used_percentage) {
             entry.context_percent = Some(pct);

@@ -42,6 +42,8 @@ Snapshot of 2026-09-23. State only — why anything is the way it is lives in
    are. It carries the `AboutSlint` acknowledgement the licence asks for.
 - **Tests**: 189 in all; 36 of them over `view.rs`, including golden tests of the
    whole panel and the whole pill.
+- **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
+   findings, and the docs linter, through `tools/hooks/pre-commit`.
 
 ## Open
 
@@ -63,9 +65,6 @@ Snapshot of 2026-09-23. State only — why anything is the way it is lives in
    another program's credentials file to save a countdown is a bad trade, so the
    endpoint goes quiet on days when Claude Code is not run in a terminal.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
-- **`cargo clippy -- -D warnings` does not pass**, and has not for a while: eleven
-   findings, none new, none in the modules written since.
-   Use it by counting findings per file before and after a change.
 
 ## Fragile points
 

@@ -41,10 +41,10 @@ impl Token {
 /// function would be worse than the borrow, so it stays here rather than being
 /// tidied away later.
 pub fn claude_dir() -> Option<std::path::PathBuf> {
-   if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
-      if !dir.is_empty() {
-         return Some(std::path::PathBuf::from(dir));
-      }
+   if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR")
+      && !dir.is_empty()
+   {
+      return Some(std::path::PathBuf::from(dir));
    }
    Some(dirs::home_dir()?.join(".claude"))
 }

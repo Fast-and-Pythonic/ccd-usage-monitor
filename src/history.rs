@@ -176,17 +176,16 @@ impl Log {
 
       // Only when the range does not already begin at its own start: an
       // anchor on top of a real point would collapse the span to nothing.
-      if pts.first().is_none_or(|p| p.0 > from) {
-         if let Some(v) = self
+      if pts.first().is_none_or(|p| p.0 > from)
+         && let Some(v) = self
             .samples
             .iter()
             .filter(|s| s.t < from && s.t >= window_start)
             .filter_map(|s| pick(s).map(|v| (s.t, v)))
             .max_by_key(|p| p.0)
             .map(|p| p.1)
-         {
-            pts.insert(0, (from, v));
-         }
+      {
+         pts.insert(0, (from, v));
       }
 
       // A fall means a reset landed inside the range after all; everything

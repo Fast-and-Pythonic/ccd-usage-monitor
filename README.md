@@ -82,6 +82,13 @@ slightly-old number, it is a different window.
 cargo build --release
 ```
 
+Working on the code, enable the checks a commit has to pass — `cargo fmt`,
+`cargo clippy` with no findings, and the docs linter where it is available:
+
+```
+git config core.hooksPath tools/hooks
+```
+
 Then point Claude Code's status line at the same binary, in
 `~/.claude/settings.json`:
 

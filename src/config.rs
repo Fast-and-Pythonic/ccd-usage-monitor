@@ -1362,16 +1362,20 @@ gaps_x = 1.0
       // `pct_mode` is tuned for quotas that drain; a window fills instead,
       // so an existing config with `pct_mode = left` must not silently flip
       // ctx to "remaining" the way it once did.
-      let mut cfg = Config::default();
-      cfg.pct_mode = PctMode::Left;
+      let cfg = Config {
+         pct_mode: PctMode::Left,
+         ..Config::default()
+      };
       assert_eq!(cfg.ctx_pct_dir, PctMode::Spent);
       assert_eq!(cfg.ctx_tokens_dir(), PctMode::Spent);
    }
 
    #[test]
    fn linked_ctx_directions_follow_the_percentage_until_split() {
-      let mut cfg = Config::default();
-      cfg.ctx_pct_dir = PctMode::Left;
+      let mut cfg = Config {
+         ctx_pct_dir: PctMode::Left,
+         ..Config::default()
+      };
       // Still linked: the token direction mirrors the percentage even though
       // the `ctx_tokens_dir` field itself was never touched.
       assert_eq!(cfg.ctx_tokens_dir(), PctMode::Left);
@@ -1385,8 +1389,10 @@ gaps_x = 1.0
 
    #[test]
    fn the_context_settings_are_clamped_like_the_rest() {
-      let mut cfg = Config::default();
-      cfg.ctx_limit_tokens = 10;
+      let mut cfg = Config {
+         ctx_limit_tokens: 10,
+         ..Config::default()
+      };
       assert_eq!(cfg.ctx_limit_tokens(), 8_192);
       cfg.ctx_limit_tokens = 9_000_000;
       assert_eq!(cfg.ctx_limit_tokens(), 1_000_000);

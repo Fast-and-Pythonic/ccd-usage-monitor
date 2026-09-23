@@ -121,10 +121,10 @@ pub fn live_sessions() -> Vec<LiveSession> {
       if path.extension().and_then(|e| e.to_str()) != Some("json") {
          continue;
       }
-      if let Ok(text) = std::fs::read_to_string(&path) {
-         if let Ok(s) = serde_json::from_str::<LiveSession>(&text) {
-            out.push(s);
-         }
+      if let Ok(text) = std::fs::read_to_string(&path)
+         && let Ok(s) = serde_json::from_str::<LiveSession>(&text)
+      {
+         out.push(s);
       }
    }
    out
@@ -168,9 +168,7 @@ impl SessionEntry {
    /// thinks of it.
    pub fn project(&self) -> Option<String> {
       let cwd = self.cwd.as_ref()?;
-      let leaf = cwd
-         .rsplit(|c| c == '\\' || c == '/')
-         .find(|s| !s.is_empty())?;
+      let leaf = cwd.rsplit(['\\', '/']).find(|s| !s.is_empty())?;
       Some(leaf.to_string())
    }
 }
@@ -230,7 +228,7 @@ pub fn list(live: &[LiveSession]) -> Vec<SessionEntry> {
          });
       }
    }
-   out.sort_by(|a, b| b.modified.cmp(&a.modified));
+   out.sort_by_key(|b| std::cmp::Reverse(b.modified));
    out
 }
 
@@ -430,10 +428,10 @@ pub fn parse_tail(lines: &[String], want_id: Option<&str>, fallback_at: i64) -> 
       if l.kind.as_deref() != Some("assistant") || l.is_sidechain == Some(true) {
          continue;
       }
-      if let (Some(want), Some(have)) = (want_id, l.session_id.as_deref()) {
-         if want != have {
-            continue;
-         }
+      if let (Some(want), Some(have)) = (want_id, l.session_id.as_deref())
+         && want != have
+      {
+         continue;
       }
       let Some(msg) = l.message else { continue };
       if msg.model.as_deref() == Some("<synthetic>") {
@@ -688,10 +686,11 @@ mod tests {
    }
 
    fn cfg_with(limit: CtxLimit, fixed: u64) -> Config {
-      let mut cfg = Config::default();
-      cfg.ctx_limit = limit;
-      cfg.ctx_limit_tokens = fixed;
-      cfg
+      Config {
+         ctx_limit: limit,
+         ctx_limit_tokens: fixed,
+         ..Config::default()
+      }
    }
 
    #[test]

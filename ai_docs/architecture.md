@@ -31,6 +31,7 @@
 - **A29** · the weekly days are counted by the calendar or by the clock
 - **A30** · figures worked out from the time step on the minute
 - **A31** · a hint names the figure, then says what it is now
+- **A32** · a commit has to pass the checks, and a hook says so
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -1165,3 +1166,26 @@ every tick while the panel was up.
 `5-hour limit: left`, the verb first so the two readings of one figure are told
 apart at the first word. The detail under it keeps the same order — `spent 24%`,
 not `24% spent` — so the eye reads each line the same way.
+
+## A32: a commit has to pass the checks, and a hook says so
+`tools/hooks/pre-commit`, enabled with `git config core.hooksPath tools/hooks`,
+refuses a commit when `cargo fmt --check` or `cargo clippy --all-targets -- -D
+warnings` fails, and — for a commit touching `ai_docs/` — when the documentation
+linter or the index check does.
+
+**Why a hook and not a count.** Clippy sat at eleven findings for months, none
+of them bugs, and the rule was to count them per file before a change and after.
+That held only while someone remembered to count, and a count taken twice with
+different flags reads nineteen against eleven with nothing having changed —
+which is how a new finding slips in unnoticed. At zero there is nothing to count:
+any finding at all stops the commit. The same argument as A26, applied to the
+lints instead of the indent.
+
+**Fixed, never allowed.** The findings were cleared by changing the code, not by
+`#[allow]` or a lint table; an allowance is the old count with extra steps.
+
+**What it does not cover.** The tests are not run — they are quick, but a hook
+slow enough to be skipped is worse than one that is not. The checks read the
+working tree rather than the staged snapshot, so a half-staged file is judged by
+its other half. And `core.hooksPath` is local to a clone: a fresh checkout does
+nothing until it is set, which README says.
