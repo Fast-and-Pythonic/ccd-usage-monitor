@@ -277,6 +277,17 @@ pub enum BarColour {
 
 impl BarColour {}
 
+/// How the weekly window's days left are counted (A29).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DaysBy {
+   /// Whole local dates, with `count_today` and `count_reset_day` deciding
+   /// the two ends of the run.
+   Calendar,
+   /// The exact time from now to the reset, nothing to decide.
+   Time,
+}
+
 /// Which session's context the widget reports.
 ///
 /// Not a guess the widget can make well on its own: eighty-odd transcripts sit
@@ -356,9 +367,12 @@ pub struct Config {
    /// Multiplies every size below, and the paddings with them. The one knob
    /// worth reaching for when the widget moves to another monitor.
    pub scale: f32,
-   /// Which days the weekly counter and the daily allowance are spread over.
-   /// Today is usually half spent already; the reset day is worth only the
-   /// hours before the reset, which with a morning reset is next to nothing.
+   /// How the days the weekly allowance is spread over are counted: whole
+   /// calendar days, or the exact time to the reset (A29).
+   pub days_by: DaysBy,
+   /// Which calendar days count, when `days_by` is the calendar; ignored by
+   /// time. Today is usually half spent already; the reset day is worth only
+   /// the hours before the reset, which with a morning reset is next to nothing.
    pub count_today: bool,
    pub count_reset_day: bool,
    /// Whether the percentages and the bars count what is spent or what
@@ -460,6 +474,7 @@ impl Default for Config {
       Config {
          opacity: 0.82,
          scale: 1.0,
+         days_by: DaysBy::Calendar,
          count_today: false,
          count_reset_day: true,
          pct_mode: PctMode::Spent,
@@ -864,9 +879,12 @@ impl Config {
    }
 
    pub fn day_count(&self) -> crate::pace::DayCount {
-      crate::pace::DayCount {
-         today: self.count_today,
-         reset_day: self.count_reset_day,
+      match self.days_by {
+         DaysBy::Time => crate::pace::DayCount::Time,
+         DaysBy::Calendar => crate::pace::DayCount::Calendar {
+            today: self.count_today,
+            reset_day: self.count_reset_day,
+         },
       }
    }
 

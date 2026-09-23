@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::config::{BarColour, Config, CtxView, DetailMode, PaceView, PctMode};
+use crate::config::{BarColour, Config, CtxView, DaysBy, DetailMode, PaceView, PctMode};
 use crate::model::{ContextInfo, Snapshot, Window};
 use crate::pace;
 use crate::runtime::Runtime;
@@ -111,8 +111,11 @@ struct Quota {
    /// `20%/h · runs out 07:19, 0:42 before the reset`, or empty while the log
    /// has too little to say.
    rate_text: String,
-   /// Weekly only.
+   /// Weekly only. Whole days: by the calendar the count the pill shows, by
+   /// time the whole days in `resets_in_secs` (A29).
    days_left: Option<i64>,
+   /// Weekly only: the day count as the pill writes it, `5д` or `4д7ч`.
+   days_text: Option<String>,
    /// Weekly only: how much may be spent per day to finish exactly at 100%.
    daily_allowance_pct: Option<f64>,
 }
@@ -161,6 +164,7 @@ struct Context {
 struct Display {
    lang: String,
    pct_mode: PctMode,
+   days_by: DaysBy,
    pace_view: PaceView,
    ctx_view: CtxView,
    ctx_pct_dir: PctMode,
@@ -209,7 +213,11 @@ fn quota(cfg: &Config, rt: &Runtime, w: Window, span: i64, now: i64, weekly: boo
          None => String::new(),
       },
       days_left: match (weekly, w.resets_at) {
-         (true, Some(r)) => Some(pace::days_until(r, now, cfg.day_count())),
+         (true, Some(r)) => Some(pace::days_until(r, now, cfg.day_count()).floor() as i64),
+         _ => None,
+      },
+      days_text: match (weekly, w.resets_at) {
+         (true, Some(r)) => Some(pace::fmt_days_until(r, now, &cfg.lang, cfg.day_count())),
          _ => None,
       },
       daily_allowance_pct: match (weekly, w.resets_at) {
@@ -267,6 +275,7 @@ fn render(cfg: &Config, rt: &Runtime, snap: &Snapshot, stale: (bool, bool), now:
       display: Display {
          lang: cfg.lang.clone(),
          pct_mode: cfg.pct_mode,
+         days_by: cfg.days_by,
          pace_view: cfg.pace_view,
          ctx_view: cfg.ctx_view,
          ctx_pct_dir: cfg.ctx_pct_dir,
@@ -519,9 +528,30 @@ mod tests {
             .round(),
          15.0
       );
+      assert_eq!(v["seven_day"]["days_text"], "3д");
+      assert_eq!(v["display"]["days_by"], "calendar");
       assert!(
          v["five_hour"]["days_left"].is_null(),
          "a five-hour window has no days"
+      );
+   }
+
+   #[test]
+   fn by_time_the_day_count_stays_whole_and_the_text_carries_the_hours() {
+      // A29: `days_left` keeps its type; the hours travel in `days_text`, and
+      // the allowance divides by the exact 3 d 5 h rather than by 3.
+      let cfg = Config {
+         days_by: DaysBy::Time,
+         ..Config::default()
+      };
+      let v = parsed(&cfg);
+      assert_eq!(v["seven_day"]["days_left"], 3);
+      assert_eq!(v["seven_day"]["days_text"], "3д5ч");
+      assert_eq!(v["display"]["days_by"], "time");
+      let allowance = v["seven_day"]["daily_allowance_pct"].as_f64().unwrap();
+      assert!(
+         (allowance - 46.0 / (3.0 + 5.0 / 24.0)).abs() < 1e-9,
+         "{allowance}"
       );
    }
 

@@ -15,11 +15,11 @@
 - **A13** · a request budget, and a rate limit as a schedule
 - **A14** · sources are switches, each with its own idea of "stale"
 - **A15** · the display convention is a view, not a change to the model
-- **A16** · the pace is one comparison, said in two units and two places
+- **A16** · the pace is one comparison, said in three units and two places
 - **A17** · the widget keeps its own history, seeded from the app's
 - **A18** · the context figure is read from the transcript, not asked for
 - **A19** · three layers, and only one of them is about drawing
-- **A20** · the GUI moves to Slint, and the core stays put
+- **A20** · the GUI is Slint, and the core stayed put
 - **A21** · the snapshot is published as JSON, and that JSON is a contract
 - **A22** · the settings are three files, and one list describes them all
 - **A23** · the config is re-read while the program runs
@@ -28,6 +28,9 @@
 - **A26** · one indent width, three spaces, enforced rather than remembered
 - **A27** · the poller remembers itself across a restart
 - **A28** · `data_dir` moves every file this program writes, in one hop
+- **A29** · the weekly days are counted by the calendar or by the clock
+- **A30** · figures worked out from the time step on the minute
+- **A31** · a hint names the figure, then says what it is now
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -1068,3 +1071,97 @@ a different physical folder from `config_path`'s `dirs::config_dir()` — one
 `data_dir` covers both now, since `state::state_dir` is `config::base_dir`
 too. A person pointing this at somewhere they can reach need remember only
 one folder, not two.
+
+## A29: the weekly days are counted by the calendar or by the clock
+The day figure beside the weekly limit (`5d`) and the daily allowance beside
+that (`20%`) are one division: what is left over the days left. `days_by`
+decides what a day is. `calendar`, the default, counts whole local dates and
+leaves both ends of the run to `count_today` and `count_reset_day`, because
+neither end is obviously a day. `time` counts nothing: the days are the
+seconds to the reset over 86 400, written `4d7h` the way a weekly pace gap is,
+and the two switches do nothing.
+
+**The pace figure is not touched by this setting.** `pace_target` has always
+measured the exact time to the reset against the whole week, in both modes.
+By time the allowance becomes the same comparison as the pace ratio: an even
+burn is 100% over seven days, about 14.3% a day, and the allowance is exactly
+that over the ratio — 54% spent with 3 d 5 h left is `1.0×` (0.996) beside
+`14%` (14.29 / 0.996). By the calendar the two drift apart by the rounding of
+the divisor to whole days.
+
+**The calendar stays the default.** A config written before `days_by` existed
+reads the same figures it always did; the clock is something to switch to, not
+a change that arrives with an update.
+
+**By time there is no floor of one day.** The calendar count is whole, so its
+only special case is zero — everything left is for now. By time the count goes
+below one, and dividing by it anyway is what keeps the two cells agreeing: half
+a day and 40% left is `12h 80%`, a rate that spends exactly the 40% by the
+reset. Flooring at a day would print `40%` beside `12h`: the remainder, not a
+rate per day, and a figure the cell beside it no longer explains. The one guard is a cap at 100%, so the
+cell does not grow into four digits in the last minutes; one function,
+`pace::daily_allowance`, serves both modes, since for whole days the cap and
+the zero case are the old behaviour.
+
+**The cell reserves for the shape on show**, `0d0h` for `3d5h` and `00h` for
+`12h`, for the same reason a weekly pace gap does (`view::pace_time_template`):
+a fixed `0d00h` leaves the short forms floating in a hole.
+
+**`days_left` in the JSON stays an integer.** A21 makes the type part of the
+contract; by time it carries the whole days, and the pill's text travels
+beside it as `days_text`, with `display.days_by` saying which count is on.
+The exact seconds were already there in `resets_in_secs`.
+
+## A30: figures worked out from the time step on the minute
+The pill is rebuilt every 250 ms, and until this the time-derived figures were
+read off that exact second. Each then changed whenever its own rounding
+happened to cross: a pace in time form rounds to the nearest minute and so
+turned over half a minute after the countdown beside it, which rounds up — a
+pace that looked like it lagged the clock. Over pace, the colour's position
+between orange and red slid on every tick, and a model that differs is a
+repaint (G23), four a second.
+
+**One clock for all of them: the start of the current minute.**
+`pace::on_the_minute` is applied inside the functions that turn time into a
+figure — `pace_target` (every form of the pace, its verdict and its colour),
+`days_until` and `fmt_days_until` by time (A29), `history::runs_out_at` (the
+forecast) — rather than by their callers, so the pill, the panel, `--bridge`
+and `--serve` cannot disagree and no new caller can forget it. They all move
+together, once, as the system clock turns over.
+
+**Not everything moves to the minute.** The countdown already rounds up to it
+and is left as Claude Code writes it (G10). The age of a reading and the time
+to the next poll keep their seconds on purpose: a ticking second is how a live
+reading is told from a stuck one. The percentages themselves change only when
+a source reports, which no clock can help — a new reading still moves the pace
+by three minutes a point on the five-hour window.
+
+**By time the day count rounds up too**, like the countdown: with 4 d 6 h 20
+min to go there is more than `4д6ч` left, and `0ч` means over.
+
+## A31: a hint names the figure, then says what it is now
+Pointing at a figure used to give its name and nothing else — `days until the
+weekly reset`. With `detail_mode = never` that name was all anyone got, and
+the question behind a pointed-at `5d` is rarely "what is this" for long: it is
+"which day, what time". So a hint is now a name and a few lines under it,
+worked out by `view::field_detail` from the same snapshot as the pill: the date
+and hour of a reset and the run of days counted, the pace's verdict in words
+and in every unit, the other reading of a percentage and its source's age.
+
+**The theme contract does not change.** The theme is handed each cell's name
+and hands the hovered one back; `Field::named` turns that name back into the
+field by matching it against `field_name`, which is why no two fields may share
+a name — a test walks all of them in both languages. Adding a key to the cell
+struct would have been tidier and would have put every theme on disk one
+contract version behind (G22), drawing nothing, for a lookup this cheap.
+
+**Worked out every tick, handed over only when it changed.** A hint carries an
+age that ticks by the second, so it cannot be built once when the pointer
+arrives. The panel's lines are compared with what it was last given before they
+go to the theme, for the reason G23 gives; before this they were pushed on
+every tick while the panel was up.
+
+**Names start with what they measure.** `Left of the 5-hour limit` rather than
+`5-hour limit: left`, the verb first so the two readings of one figure are told
+apart at the first word. The detail under it keeps the same order — `spent 24%`,
+not `24% spent` — so the eye reads each line the same way.

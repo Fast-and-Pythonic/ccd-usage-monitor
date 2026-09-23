@@ -31,25 +31,42 @@ pub fn fmt_clock(epoch: i64) -> String {
    }
 }
 
+/// The clock every figure worked out *from the time* reads: the start of the
+/// current minute.
+///
+/// The pill is redrawn four times a second, but a pace, a day count or a
+/// forecast read off the exact second each changes whenever its own rounding
+/// happens to cross — a pace in time form half a minute out of step with the
+/// countdown beside it, a colour sliding on every tick (a repaint each time,
+/// G23). Read off the minute, they all step together, once, as the system
+/// clock turns over (A30). Ages and the next-poll countdown keep the second:
+/// a ticking second is how a live reading is told from a stuck one.
+pub fn on_the_minute(now: i64) -> i64 {
+   now.div_euclid(60) * 60
+}
+
 fn round_to_minute(epoch: i64) -> i64 {
    epoch.div_euclid(60) * 60 + if epoch.rem_euclid(60) >= 30 { 60 } else { 0 }
 }
 
-/// Which days belong to the weekly count.
+/// How the days left in the weekly window are counted.
 ///
-/// Neither end is obvious. Today is usually half spent by the time anyone
-/// looks, and the day the window resets is worth only the hours before the
-/// reset — with a reset at 07:00 it is worth almost nothing. Both ends are
-/// therefore a setting rather than a decision made here.
+/// By the calendar, neither end is obvious. Today is usually half spent by the
+/// time anyone looks, and the day the window resets is worth only the hours
+/// before the reset — with a reset at 07:00 it is worth almost nothing. Both
+/// ends are therefore a setting rather than a decision made here.
+///
+/// By time there is nothing to decide: the days are the exact time from now to
+/// the reset, `4д7ч`, and the allowance divides by that (A29).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct DayCount {
-   pub today: bool,
-   pub reset_day: bool,
+pub enum DayCount {
+   Calendar { today: bool, reset_day: bool },
+   Time,
 }
 
 impl Default for DayCount {
    fn default() -> Self {
-      DayCount {
+      DayCount::Calendar {
          today: false,
          reset_day: true,
       }
@@ -58,27 +75,41 @@ impl Default for DayCount {
 
 /// How many days the rest of the weekly quota has to be spread over.
 ///
-/// Counted on local dates rather than by dividing seconds: the question is a
-/// calendar one. The count is the length of a run of days — from today or
-/// tomorrow, up to the reset day or the one before it — so Thursday with a
-/// reset on Tuesday gives 5 by default (Fri…Tue), 6 with today, 4 without the
-/// reset day.
-pub fn days_until(resets_at: i64, now: i64, count: DayCount) -> i64 {
-   let (Some(reset), Some(today)) = (
+/// By the calendar, counted on local dates rather than by dividing seconds:
+/// the count is the length of a run of days — from today or tomorrow, up to
+/// the reset day or the one before it — so Thursday with a reset on Tuesday
+/// gives 5 by default (Fri…Tue), 6 with today, 4 without the reset day. Always
+/// a whole number.
+///
+/// By time, the seconds to the reset over a day's worth of them, fraction and
+/// all.
+pub fn days_until(resets_at: i64, now: i64, count: DayCount) -> f64 {
+   let DayCount::Calendar { today, reset_day } = count else {
+      return (resets_at - on_the_minute(now)).max(0) as f64 / 86400.0;
+   };
+   let (Some(reset), Some(start)) = (
       Local.timestamp_opt(resets_at, 0).single(),
       Local.timestamp_opt(now, 0).single(),
    ) else {
-      return 0;
+      return 0.0;
    };
-   let span = (reset.date_naive() - today.date_naive()).num_days();
-   let drop_first = i64::from(!count.today);
-   let drop_last = i64::from(!count.reset_day);
-   (span + 1 - drop_first - drop_last).max(0)
+   let span = (reset.date_naive() - start.date_naive()).num_days();
+   let drop_first = i64::from(!today);
+   let drop_last = i64::from(!reset_day);
+   (span + 1 - drop_first - drop_last).max(0) as f64
 }
 
-/// `5д` / `5d` — the day count as it appears on the pill.
+/// `5д` / `5d` by the calendar, `4д7ч` / `12ч` by time — the day count as it
+/// appears on the pill. By time it is written the way a weekly pace gap is,
+/// days and whole hours, so the two read alike side by side.
 pub fn fmt_days_until(resets_at: i64, now: i64, lang: &str, count: DayCount) -> String {
-   let d = days_until(resets_at, now, count);
+   if count == DayCount::Time {
+      // Rounded up, as the five-hour countdown is: with 4 d 6 h 20 min to go
+      // there is more than 4д6ч left, and it reads 0ч only once it is over.
+      let secs = (resets_at - on_the_minute(now)).max(0);
+      return fmt_days_hours((secs + 3599) / 3600, lang);
+   }
+   let d = days_until(resets_at, now, count) as i64;
    if lang.eq_ignore_ascii_case("ru") {
       format!("{d}д")
    } else {
@@ -97,16 +128,155 @@ fn weekday_name(day: Weekday, lang: &str) -> &'static str {
    }
 }
 
+/// The run of calendar days the count covers, as the names of its first and
+/// last day — `(Ср, Вт)` — or `None` when no day is left in it. Only for the
+/// calendar count; by time there is no run of days to name.
+pub fn day_run(resets_at: i64, now: i64, count: DayCount, lang: &str) -> Option<(String, String)> {
+   let DayCount::Calendar { today, reset_day } = count else {
+      return None;
+   };
+   let reset = Local.timestamp_opt(resets_at, 0).single()?.date_naive();
+   let start = Local.timestamp_opt(now, 0).single()?.date_naive();
+   let first = if today { start } else { start.succ_opt()? };
+   let last = if reset_day { reset } else { reset.pred_opt()? };
+   (first <= last).then(|| {
+      (
+         weekday_name(first.weekday(), lang).to_string(),
+         weekday_name(last.weekday(), lang).to_string(),
+      )
+   })
+}
+
+/// `вторник, 30 сентября, 10:00` long, `Вт 30 сент., 10:00` short — a reset a
+/// day or more away, where the weekday alone leaves the date to be worked out.
+pub fn fmt_reset_date(epoch: i64, lang: &str, long: bool) -> String {
+   const RU_DAYS: [&str; 7] = [
+      "понедельник",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+      "воскресенье",
+   ];
+   const EN_DAYS: [&str; 7] = [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+   ];
+   const RU_MONTHS: [&str; 12] = [
+      "января",
+      "февраля",
+      "марта",
+      "апреля",
+      "мая",
+      "июня",
+      "июля",
+      "августа",
+      "сентября",
+      "октября",
+      "ноября",
+      "декабря",
+   ];
+   const RU_MON: [&str; 12] = [
+      "янв.",
+      "февр.",
+      "марта",
+      "апр.",
+      "мая",
+      "июня",
+      "июля",
+      "авг.",
+      "сент.",
+      "окт.",
+      "нояб.",
+      "дек.",
+   ];
+   const EN_MONTHS: [&str; 12] = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+   ];
+   let Some(dt) = Local.timestamp_opt(round_to_minute(epoch), 0).single() else {
+      return "--".to_string();
+   };
+   let (d, m) = (dt.day(), dt.month0() as usize);
+   let wd = dt.weekday().num_days_from_monday() as usize;
+   let clock = dt.format("%H:%M");
+   let ru = lang.eq_ignore_ascii_case("ru");
+   match (ru, long) {
+      (true, true) => format!("{}, {d} {}, {clock}", RU_DAYS[wd], RU_MONTHS[m]),
+      (true, false) => format!(
+         "{} {d} {}, {clock}",
+         weekday_name(dt.weekday(), lang),
+         RU_MON[m]
+      ),
+      (false, true) => format!("{}, {d} {}, {clock}", EN_DAYS[wd], EN_MONTHS[m]),
+      (false, false) => format!(
+         "{} {d} {}, {clock}",
+         weekday_name(dt.weekday(), lang),
+         &EN_MONTHS[m][..3]
+      ),
+   }
+}
+
+/// `4 д 7 ч` / `3 ч 37 мин` / `37 мин` — a span in words, for a hint rather
+/// than a cell. Rounded up like the countdown: the minute under way counts,
+/// and past a day the hour under way does.
+pub fn fmt_span_words(secs: i64, lang: &str) -> String {
+   let s = secs.max(0);
+   let ru = lang.eq_ignore_ascii_case("ru");
+   let (du, hu, mu) = if ru {
+      ("д", "ч", "мин")
+   } else {
+      ("d", "h", "min")
+   };
+   if s >= 86400 {
+      let hours = (s + 3599) / 3600;
+      let (d, h) = (hours / 24, hours % 24);
+      return if h > 0 {
+         format!("{d} {du} {h} {hu}")
+      } else {
+         format!("{d} {du}")
+      };
+   }
+   let mins = (s + 59) / 60;
+   let (h, m) = (mins / 60, mins % 60);
+   match (h, m) {
+      (0, m) => format!("{m} {mu}"),
+      (h, 0) => format!("{h} {hu}"),
+      (h, m) => format!("{h} {hu} {m} {mu}"),
+   }
+}
+
 /// How much of the weekly limit may be spent per day to finish exactly at 100%.
 /// Returns percent-per-day.
 ///
-/// `days` is the figure shown beside it (`days_until`), not a fraction of
-/// wall-clock time: the two numbers sit next to each other on the pill and must
-/// agree. Floored at one day, so the last day of a window says "all of it"
-/// rather than dividing by nothing.
-pub fn daily_allowance(used_pct: f64, days: i64) -> f64 {
+/// `days` is the figure shown beside it (`days_until`), not something worked
+/// out afresh: the two numbers sit next to each other on the pill and must
+/// agree. By time that holds under a day too — half a day and 40% left is
+/// `80%` a day, which is what makes `12ч 80%` read right. Capped at 100 so the
+/// cell keeps its width in the last minutes; with nothing left to divide by,
+/// everything left is for now.
+pub fn daily_allowance(used_pct: f64, days: f64) -> f64 {
    let left_pct = (100.0 - used_pct).max(0.0);
-   (left_pct / days.max(1) as f64).min(100.0)
+   if days <= 0.0 {
+      return left_pct.min(100.0);
+   }
+   (left_pct / days).min(100.0)
 }
 
 /// The largest factor `pace_ratio` will report in either direction. Past this
@@ -150,7 +320,11 @@ pub fn fmt_pace_time(secs: i64, span: i64, lang: &str) -> String {
       let mins = (s + 30) / 60;
       return format!("{}:{:02}", mins / 60, mins % 60);
    }
-   let hours = pace_hours(s);
+   fmt_days_hours(pace_hours(s), lang)
+}
+
+/// `3д2ч` / `5ч` — whole hours, with a day count once there is one.
+fn fmt_days_hours(hours: i64, lang: &str) -> String {
    let (d, h) = (hours / 24, hours % 24);
    let (du, hu) = if lang.eq_ignore_ascii_case("ru") {
       ("д", "ч")
@@ -300,9 +474,11 @@ pub fn fmt_rate(per_unit: f64) -> String {
    }
 }
 
-/// Where usage *should* be if the window were consumed at an even rate.
+/// Where usage *should* be if the window were consumed at an even rate — as of
+/// the current minute (`on_the_minute`), so every rendering of the pace, and
+/// its colour, moves once a minute and in step with the clock.
 pub fn pace_target(resets_at: i64, window_secs: i64, now: i64) -> f64 {
-   let elapsed = window_secs - (resets_at - now);
+   let elapsed = window_secs - (resets_at - on_the_minute(now));
    ((elapsed as f64 / window_secs as f64) * 100.0).clamp(0.0, 100.0)
 }
 
@@ -441,21 +617,21 @@ mod tests {
    #[test]
    fn allowance_spreads_the_rest_over_the_days_shown() {
       // 54% used with 3 days on the pill -> 46/3 per day, and nothing else.
-      let got = daily_allowance(54.0, 3);
+      let got = daily_allowance(54.0, 3.0);
       assert!((got - 46.0 / 3.0).abs() < 1e-9, "got {got}");
    }
 
    #[test]
    fn allowance_is_finite_when_no_days_are_counted() {
       // Both ends switched off on the reset day: everything left is for now.
-      assert_eq!(daily_allowance(40.0, 0), 60.0);
-      assert!(daily_allowance(0.0, 0).is_finite());
+      assert_eq!(daily_allowance(40.0, 0.0), 60.0);
+      assert!(daily_allowance(0.0, 0.0).is_finite());
    }
 
    #[test]
    fn allowance_is_zero_when_the_window_is_spent() {
-      assert_eq!(daily_allowance(100.0, 5), 0.0);
-      assert_eq!(daily_allowance(140.0, 5), 0.0);
+      assert_eq!(daily_allowance(100.0, 5.0), 0.0);
+      assert_eq!(daily_allowance(140.0, 5.0), 0.0);
    }
 
    #[test]
@@ -569,10 +745,42 @@ mod tests {
 
    #[test]
    fn target_tracks_elapsed_share_of_the_window() {
-      let now = 1_700_000_000;
+      let now = 1_700_000_040;
       // Half of a five-hour window gone.
       let t = pace_target(now + FIVE_HOUR_SECS / 2, FIVE_HOUR_SECS, now);
       assert!((t - 50.0).abs() < 1e-9, "got {t}");
+   }
+
+   #[test]
+   fn the_pace_steps_once_a_minute_with_the_clock() {
+      // A30: anywhere inside one minute the target is the same number, so
+      // the figure and its colour hold still; it moves as the minute turns.
+      let minute = 1_700_000_040;
+      let reset = minute + FIVE_HOUR_SECS / 2 + 17;
+      let at = |s| pace_target(reset, FIVE_HOUR_SECS, minute + s);
+      assert_eq!(at(0), at(59));
+      assert!(at(60) > at(59));
+      // In time form the gap now turns over with the countdown beside it,
+      // not half a minute after it.
+      let gap = |s| pace_text(PaceView::Time, 60.0, at(s), FIVE_HOUR_SECS, "en");
+      assert_eq!(gap(0), gap(59));
+      assert_ne!(gap(59), gap(60));
+   }
+
+   #[test]
+   fn by_time_the_day_count_rounds_up_like_a_countdown() {
+      let now = 1_770_000_000;
+      // 4 d 6 h 20 min is more than 4д6ч, as 2:19:40 is more than 2:19.
+      let reset = now + 4 * 86400 + 6 * 3600 + 20 * 60;
+      assert_eq!(fmt_days_until(reset, now, "ru", DayCount::Time), "4д7ч");
+      // The last minutes of the window are still an hour on the pill.
+      assert_eq!(fmt_days_until(now + 120, now, "ru", DayCount::Time), "1ч");
+      assert_eq!(fmt_days_until(now, now, "ru", DayCount::Time), "0ч");
+      // Held for the minute, like the pace.
+      assert_eq!(
+         days_until(reset, now + 59, DayCount::Time),
+         days_until(reset, now, DayCount::Time)
+      );
    }
 
    #[test]
@@ -606,44 +814,45 @@ mod tests {
       let d = DayCount::default();
       // Thursday to the Tuesday after next week reads as five days no matter
       // what hour the reset lands on.
-      assert_eq!(days_until(local_days_ahead(now, 5, 3), now, d), 5);
-      assert_eq!(days_until(local_days_ahead(now, 5, 22), now, d), 5);
-      assert_eq!(days_until(local_days_ahead(now, 1, 4), now, d), 1);
+      assert_eq!(days_until(local_days_ahead(now, 5, 3), now, d), 5.0);
+      assert_eq!(days_until(local_days_ahead(now, 5, 22), now, d), 5.0);
+      assert_eq!(days_until(local_days_ahead(now, 1, 4), now, d), 1.0);
    }
 
    #[test]
    fn both_ends_of_the_run_are_settings() {
       let now = 1_770_000_000;
       let reset = local_days_ahead(now, 5, 10);
-      let count = |today, reset_day| days_until(reset, now, DayCount { today, reset_day });
-      assert_eq!(count(false, true), 5, "tomorrow through the reset day");
-      assert_eq!(count(true, true), 6, "today as well");
-      assert_eq!(count(false, false), 4, "neither end");
-      assert_eq!(count(true, false), 5, "today, but not the reset day");
+      let count =
+         |today, reset_day| days_until(reset, now, DayCount::Calendar { today, reset_day });
+      assert_eq!(count(false, true), 5.0, "tomorrow through the reset day");
+      assert_eq!(count(true, true), 6.0, "today as well");
+      assert_eq!(count(false, false), 4.0, "neither end");
+      assert_eq!(count(true, false), 5.0, "today, but not the reset day");
    }
 
    #[test]
    fn a_reset_today_or_already_past_is_zero_days() {
       let now = 1_770_000_000;
       let d = DayCount::default();
-      assert_eq!(days_until(now, now, d), 0);
-      assert_eq!(days_until(now - 3 * 86400, now, d), 0);
+      assert_eq!(days_until(now, now, d), 0.0);
+      assert_eq!(days_until(now - 3 * 86400, now, d), 0.0);
       // Today *is* the reset day: it counts only when both ends do.
-      let both = DayCount {
+      let both = DayCount::Calendar {
          today: true,
          reset_day: true,
       };
-      assert_eq!(days_until(now, now, both), 1);
+      assert_eq!(days_until(now, now, both), 1.0);
       assert_eq!(
          days_until(
             now,
             now,
-            DayCount {
+            DayCount::Calendar {
                today: true,
                reset_day: false
             }
          ),
-         0
+         0.0
       );
    }
 
@@ -654,6 +863,100 @@ mod tests {
       let d = DayCount::default();
       assert_eq!(fmt_days_until(then, now, "ru", d), "5д");
       assert_eq!(fmt_days_until(then, now, "en", d), "5d");
+   }
+
+   #[test]
+   fn by_time_the_days_are_the_clock_to_the_reset() {
+      let now = 1_770_000_000;
+      let reset = now + 4 * 86400 + 7 * 3600;
+      assert!((days_until(reset, now, DayCount::Time) - (4.0 + 7.0 / 24.0)).abs() < 1e-9);
+      assert_eq!(fmt_days_until(reset, now, "ru", DayCount::Time), "4д7ч");
+      assert_eq!(fmt_days_until(reset, now, "en", DayCount::Time), "4d7h");
+      // Under a day there is no day count, as with a pace gap.
+      assert_eq!(
+         fmt_days_until(now + 12 * 3600, now, "ru", DayCount::Time),
+         "12ч"
+      );
+      // A reset already past is nothing left, not a negative span.
+      assert_eq!(days_until(now - 600, now, DayCount::Time), 0.0);
+   }
+
+   #[test]
+   fn by_time_the_allowance_is_the_rest_over_the_time_left() {
+      // Half a day and 40% left: 80% a day, so `12ч 80%` reads right.
+      assert!((daily_allowance(60.0, 0.5) - 80.0).abs() < 1e-9);
+      // The last minutes stay within the cell.
+      assert_eq!(daily_allowance(60.0, 0.01), 100.0);
+      let now = 1_770_000_000;
+      let d = days_until(now + 2 * 86400, now, DayCount::Time);
+      assert!((daily_allowance(50.0, d) - 25.0).abs() < 1e-9);
+   }
+
+   #[test]
+   fn a_reset_date_is_spelled_out_long_and_short() {
+      let at = Local
+         .with_ymd_and_hms(2026, 9, 29, 10, 0, 0)
+         .single()
+         .unwrap()
+         .timestamp();
+      assert_eq!(
+         fmt_reset_date(at, "ru", true),
+         "вторник, 29 сентября, 10:00"
+      );
+      assert_eq!(fmt_reset_date(at, "ru", false), "Вт 29 сент., 10:00");
+      assert_eq!(
+         fmt_reset_date(at, "en", true),
+         "Tuesday, 29 September, 10:00"
+      );
+      assert_eq!(fmt_reset_date(at, "en", false), "Tue 29 Sep, 10:00");
+   }
+
+   #[test]
+   fn a_span_in_words_rounds_up_like_the_countdown() {
+      assert_eq!(fmt_span_words(3 * 3600 + 37 * 60, "ru"), "3 ч 37 мин");
+      assert_eq!(fmt_span_words(3 * 3600 + 36 * 60 + 20, "ru"), "3 ч 37 мин");
+      assert_eq!(fmt_span_words(37 * 60, "en"), "37 min");
+      assert_eq!(fmt_span_words(2 * 3600, "en"), "2 h");
+      assert_eq!(
+         fmt_span_words(4 * 86400 + 6 * 3600 + 20 * 60, "ru"),
+         "4 д 7 ч"
+      );
+      assert_eq!(fmt_span_words(2 * 86400, "en"), "2 d");
+   }
+
+   #[test]
+   fn the_run_of_days_names_its_ends() {
+      let now = 1_770_000_000;
+      let reset = local_days_ahead(now, 5, 10);
+      let named =
+         |today, reset_day| day_run(reset, now, DayCount::Calendar { today, reset_day }, "en");
+      let wd = |days| {
+         weekday_name(
+            Local
+               .timestamp_opt(local_days_ahead(now, days, 12), 0)
+               .unwrap()
+               .weekday(),
+            "en",
+         )
+         .to_string()
+      };
+      assert_eq!(named(false, true), Some((wd(1), wd(5))));
+      assert_eq!(named(true, false), Some((wd(0), wd(4))));
+      assert_eq!(day_run(reset, now, DayCount::Time, "en"), None);
+      // Nothing left of the run: the reset is tomorrow and neither end counts.
+      let soon = local_days_ahead(now, 1, 10);
+      assert_eq!(
+         day_run(
+            soon,
+            now,
+            DayCount::Calendar {
+               today: false,
+               reset_day: false
+            },
+            "en"
+         ),
+         None
+      );
    }
 
    #[test]

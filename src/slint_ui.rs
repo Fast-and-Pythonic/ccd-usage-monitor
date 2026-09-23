@@ -382,6 +382,9 @@ struct App {
    panel_frame: Option<crate::win::Frame>,
    panel_up: bool,
    panel_lines: usize,
+   /// What the panel was last given, so an unchanged panel is not handed to
+   /// the theme again on every tick — that is a repaint each time (G23).
+   panel_shown: Option<PanelModel>,
    panel_sized: (f32, f32),
    /// The pointer is over the pill or over the panel under it — read from the
    /// cursor position rather than from the theme, because "is the pointer
@@ -484,6 +487,7 @@ pub fn run(demo: bool) -> Result<(), String> {
       panel_frame: None,
       panel_up: false,
       panel_lines: 0,
+      panel_shown: None,
       panel_sized: (0.0, 0.0),
       hovering: false,
       hint: None,
@@ -650,6 +654,9 @@ fn tick(app: &Rc<RefCell<App>>) {
    show_panel(&mut a, &cfg, &snap, stale, now);
 }
 
+/// What the panel is handed: its lines, then the scale and the opacity.
+type PanelModel = (Vec<(String, String)>, f32, f32);
+
 /// Put the detail panel under the pill, or take it away.
 ///
 /// It flips above the pill near the bottom of the screen, which is all that is
@@ -664,29 +671,46 @@ fn show_panel(a: &mut App, cfg: &Config, snap: &crate::model::Snapshot, stale: b
    } else {
       Vec::new()
    };
-   // With the panel open the name of the figure goes into it as the first
-   // line: two surfaces answering one hover is one too many. With the panel
-   // shut, the name is the whole of what the panel says. It goes in without a
-   // label: the name speaks for itself, and a word in front of it only repeats
-   // "this is what you are pointing at".
-   if let Some(hint) = &a.hint {
+   // With the panel open the figure's hint goes into it first: two surfaces
+   // answering one hover is one too many. With the panel shut, the hint is
+   // the whole of what the panel says. Its lines go in without a label: the
+   // name speaks for itself, and what follows it is about that one figure,
+   // worked out afresh each tick so a countdown in it does not freeze (A31).
+   if let Some(hint) = a.hint.clone() {
+      let mut block = vec![(String::new(), hint.clone())];
+      if let Some(field) = view::Field::named(&hint, cfg) {
+         block.extend(
+            view::field_detail(field, cfg, &a.rt, snap, now)
+               .into_iter()
+               .map(|l| (String::new(), l)),
+         );
+      }
       if lines.is_empty() && a.visible {
          // Even with the detail panel switched off entirely: "what is that
          // number" is a different question from "tell me everything", and
          // switching off the second should not take away the first.
-         lines.push((String::new(), hint.clone()));
+         lines = block;
       } else if !lines.is_empty() {
-         lines.insert(0, (String::new(), hint.clone()));
+         lines.splice(0..0, block);
       }
    }
    if lines.is_empty() {
       if a.panel_up {
          a.panel_up = false;
          a.panel_lines = 0;
+         a.panel_shown = None;
          pf.place(PARKED.0, PARKED.1);
       }
       return;
    }
+
+   let scale = cfg.scale();
+   let alpha = cfg.opacity.clamp(0.3, 1.0);
+   let fresh = (lines, scale, alpha);
+   if a.panel_shown.as_ref() == Some(&fresh) {
+      return;
+   }
+   let lines = &fresh.0;
 
    let panel = a.panel.clone_strong();
    let rows: Vec<Value> = lines
@@ -704,15 +728,13 @@ fn show_panel(a: &mut App, cfg: &Config, snap: &crate::model::Snapshot, stale: b
       Value::Model(slint::ModelRc::new(slint::VecModel::from(rows))),
    );
    a.panel_declared
-      .set(&panel, "scale", Value::Number(cfg.scale() as f64));
-   a.panel_declared.set(
-      &panel,
-      "alpha",
-      Value::Number(cfg.opacity.clamp(0.3, 1.0) as f64),
-   );
+      .set(&panel, "scale", Value::Number(scale as f64));
+   a.panel_declared
+      .set(&panel, "alpha", Value::Number(alpha as f64));
 
    a.panel_lines = lines.len();
    a.panel_up = true;
+   a.panel_shown = Some(fresh);
 }
 
 /// Is the pointer over the widget, and if it has just left, forget the figure

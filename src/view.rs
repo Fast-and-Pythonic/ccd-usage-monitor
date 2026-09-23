@@ -139,6 +139,19 @@ pub fn pace_time_template(text: &str) -> String {
    format!("▲{digits}")
 }
 
+/// The width the weekly day count reserves. By the calendar it is never more
+/// than `00д`; by time it is `4д7ч` or `12ч`, and it reserves for the shape on
+/// show for the same reason a weekly pace gap does (`pace_time_template`).
+pub fn days_template(count: pace::DayCount, text: &str) -> String {
+   if count != pace::DayCount::Time {
+      return "00д".to_string();
+   }
+   text
+      .chars()
+      .map(|c| if c.is_ascii_digit() { '0' } else { c })
+      .collect()
+}
+
 // ---------------------------------------------------------------------------
 // What the pill is made of
 // ---------------------------------------------------------------------------
@@ -382,7 +395,8 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
             ),
             None => ("--".to_string(), "--%".to_string()),
          };
-         cells.push(Cell::new(day, "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
+         let day_width = days_template(cfg.day_count(), &day);
+         cells.push(Cell::new(day, &day_width, Role::Time, Paint::Dim).named(Field::SevenDayDays));
          cells
             .push(Cell::new(allowance, "100%", Role::Time, plain).named(Field::SevenDayAllowance));
       }
@@ -663,59 +677,322 @@ pub enum Field {
    ContextBar,
 }
 
-/// What to call a field, in the language the pill is speaking.
+impl Field {
+   /// Every field, in the order the pill reads. The hint is handed back by
+   /// the theme as the name it was given, so this is how a name is turned back
+   /// into the field it names — without the theme contract carrying a key.
+   pub const ALL: [Field; 14] = [
+      Field::FiveHourPct,
+      Field::FiveHourPace,
+      Field::FiveHourLeft,
+      Field::FiveHourClock,
+      Field::FiveHourBar,
+      Field::SevenDayPct,
+      Field::SevenDayPace,
+      Field::SevenDayDays,
+      Field::SevenDayAllowance,
+      Field::SevenDayBar,
+      Field::Context,
+      Field::ContextPct,
+      Field::ContextTokens,
+      Field::ContextBar,
+   ];
+
+   /// The field a hint names, if any does.
+   pub fn named(name: &str, cfg: &Config) -> Option<Field> {
+      Field::ALL.into_iter().find(|f| field_name(*f, cfg) == name)
+   }
+}
+
+/// What to call a field, in the language the pill is speaking. The first
+/// line of the hint; `field_detail` is what goes under it.
 pub fn field_name(field: Field, cfg: &Config) -> String {
    let ru = cfg.is_ru();
    // The percentages follow `pct_mode`, so their names have to as well: the
    // hint is there to remove doubt, not to add a second reading of it.
-   let (spent, left) = if ru {
-      ("потрачено", "осталось")
-   } else {
-      ("spent", "left")
-   };
-   let side = match cfg.pct_mode {
-      crate::config::PctMode::Spent => spent,
-      crate::config::PctMode::Left => left,
+   let quota = |limit_ru: &str, limit_en: &str| match (cfg.pct_mode, ru) {
+      (PctMode::Left, true) => format!("Осталось от {limit_ru}"),
+      (PctMode::Spent, true) => format!("Потрачено из {limit_ru}"),
+      (PctMode::Left, false) => format!("Left of the {limit_en}"),
+      (PctMode::Spent, false) => format!("Spent of the {limit_en}"),
    };
    // `ctx` reads by its own pair of directions, not `pct_mode` — see
    // `ctx_dir_linked`.
-   let ctx_pct_side = match cfg.ctx_pct_dir {
-      crate::config::PctMode::Spent => spent,
-      crate::config::PctMode::Left => left,
-   };
-   let ctx_tok_side = match cfg.ctx_tokens_dir() {
-      crate::config::PctMode::Spent => spent,
-      crate::config::PctMode::Left => left,
-   };
+   let ctx_pct_side = cfg.ctx_pct_dir.label(ru);
+   let ctx_tok_side = cfg.ctx_tokens_dir().label(ru);
    match (field, ru) {
-      (Field::FiveHourPct, true) => format!("5-часовой лимит: {side}"),
-      (Field::FiveHourPct, false) => format!("5-hour limit: {side}"),
-      (Field::FiveHourPace, true) => "темп: расход против часов".into(),
-      (Field::FiveHourPace, false) => "pace: spending against the clock".into(),
-      (Field::FiveHourLeft, true) => "до сброса 5-часового лимита".into(),
-      (Field::FiveHourLeft, false) => "until the 5-hour window resets".into(),
-      (Field::FiveHourClock, true) => "время сброса".into(),
-      (Field::FiveHourClock, false) => "clock time of the reset".into(),
-      (Field::FiveHourBar, true) => "полоса 5 часов: то же число".into(),
-      (Field::FiveHourBar, false) => "5-hour bar: the same figure".into(),
-      (Field::SevenDayPct, true) => format!("недельный лимит: {side}"),
-      (Field::SevenDayPct, false) => format!("weekly limit: {side}"),
-      (Field::SevenDayPace, true) => "темп недели: расход против дней".into(),
-      (Field::SevenDayPace, false) => "weekly pace: spending against the days".into(),
-      (Field::SevenDayDays, true) => "дней до сброса недели".into(),
-      (Field::SevenDayDays, false) => "days until the weekly reset".into(),
-      (Field::SevenDayAllowance, true) => "дневная норма до сброса".into(),
-      (Field::SevenDayAllowance, false) => "daily allowance until the reset".into(),
-      (Field::SevenDayBar, true) => "полоса недели: то же число".into(),
-      (Field::SevenDayBar, false) => "weekly bar: the same figure".into(),
-      (Field::Context, true) => "контекст сессии".into(),
-      (Field::Context, false) => "session context window".into(),
-      (Field::ContextPct, true) => format!("контекст: доля окна, {ctx_pct_side}"),
-      (Field::ContextPct, false) => format!("context: share of the window, {ctx_pct_side}"),
-      (Field::ContextTokens, true) => format!("контекст: токенов, {ctx_tok_side}"),
-      (Field::ContextTokens, false) => format!("context: tokens, {ctx_tok_side}"),
-      (Field::ContextBar, true) => "полоса контекста: та же доля".into(),
-      (Field::ContextBar, false) => "context bar: the same share".into(),
+      (Field::FiveHourPct, _) => quota("5-часового лимита", "5-hour limit"),
+      (Field::FiveHourPace, true) => "Темп 5-часового лимита".into(),
+      (Field::FiveHourPace, false) => "5-hour limit pace".into(),
+      (Field::FiveHourLeft, true) => "До сброса 5-часового лимита".into(),
+      (Field::FiveHourLeft, false) => "Until the 5-hour limit resets".into(),
+      (Field::FiveHourClock, true) => "Время сброса 5-часового лимита".into(),
+      (Field::FiveHourClock, false) => "When the 5-hour limit resets".into(),
+      (Field::FiveHourBar, true) => "Полоса 5-часового лимита".into(),
+      (Field::FiveHourBar, false) => "5-hour limit bar".into(),
+      (Field::SevenDayPct, _) => quota("недельного лимита", "weekly limit"),
+      (Field::SevenDayPace, true) => "Темп недельного лимита".into(),
+      (Field::SevenDayPace, false) => "Weekly limit pace".into(),
+      (Field::SevenDayDays, true) => "Дней до сброса недельного лимита".into(),
+      (Field::SevenDayDays, false) => "Days until the weekly limit resets".into(),
+      (Field::SevenDayAllowance, true) => "Дневная норма".into(),
+      (Field::SevenDayAllowance, false) => "Daily allowance".into(),
+      (Field::SevenDayBar, true) => "Полоса недельного лимита".into(),
+      (Field::SevenDayBar, false) => "Weekly limit bar".into(),
+      (Field::Context, true) => "Контекст сессии".into(),
+      (Field::Context, false) => "Session context".into(),
+      (Field::ContextPct, true) => format!("Контекст сессии: {ctx_pct_side}"),
+      (Field::ContextPct, false) => format!("Session context: {ctx_pct_side}"),
+      (Field::ContextTokens, true) => format!("Контекст сессии, токены: {ctx_tok_side}"),
+      (Field::ContextTokens, false) => format!("Session context, tokens: {ctx_tok_side}"),
+      (Field::ContextBar, true) => "Полоса контекста".into(),
+      (Field::ContextBar, false) => "Context bar".into(),
+   }
+}
+
+/// What the hint says under the name: the figure's own facts, live — the other
+/// reading of a percentage, the date of a reset, what a pace means in words.
+///
+/// The name says what a figure *is*; this says what it is *now*, which is the
+/// part a bare number cannot. With the detail panel switched off it is the
+/// only place any of it is said (A31).
+pub fn field_detail(
+   field: Field,
+   cfg: &Config,
+   rt: &Runtime,
+   snap: &Snapshot,
+   now: i64,
+) -> Vec<String> {
+   let ru = cfg.is_ru();
+   let lang = cfg.lang.as_str();
+   let tr = |r: &str, e: &str| if ru { r.to_string() } else { e.to_string() };
+   let no_data = || vec![tr("нет данных", "no data")];
+   let source = |label: &str, at: i64| {
+      if ru {
+         format!("данные: {label}, {} назад", pace::fmt_duration(now - at))
+      } else {
+         format!("from {label}, {} ago", pace::fmt_duration(now - at))
+      }
+   };
+   let weekly = matches!(
+      field,
+      Field::SevenDayPct
+         | Field::SevenDayPace
+         | Field::SevenDayDays
+         | Field::SevenDayAllowance
+         | Field::SevenDayBar
+   );
+   let (window, span) = if weekly {
+      (snap.seven_day, pace::SEVEN_DAY_SECS)
+   } else {
+      (snap.five_hour, pace::FIVE_HOUR_SECS)
+   };
+   // "в 15:37" for a reset within the day, the date for one further off.
+   let reset_at = |r: i64| {
+      if weekly {
+         pace::fmt_reset_date(r, lang, false)
+      } else if ru {
+         format!("в {}", pace::fmt_clock(r))
+      } else {
+         format!("at {}", pace::fmt_clock(r))
+      }
+   };
+   let unknown_reset = || tr("время сброса неизвестно", "reset time unknown");
+
+   match field {
+      Field::Context | Field::ContextPct | Field::ContextTokens | Field::ContextBar => {
+         let Some(c) = &snap.context else {
+            return no_data();
+         };
+         let mut out = Vec::new();
+         if field == Field::ContextBar {
+            out.push(format!(
+               "{} {:.0}%",
+               cfg.ctx_pct_dir.label(ru),
+               cfg.ctx_pct_dir.shown(c.used_pct)
+            ));
+         }
+         if let (Some(t), Some(l)) = (c.used_tokens, c.limit_tokens) {
+            let guess = match (c.limit_stated, ru) {
+               (true, _) => "",
+               (false, true) => " (размер окна — оценка)",
+               (false, false) => " (window size guessed)",
+            };
+            let (t, l) = (pace::fmt_tokens(t), pace::fmt_tokens(l));
+            out.push(if ru {
+               format!("{t} из {l} токенов{guess}")
+            } else {
+               format!("{t} of {l} tokens{guess}")
+            });
+         }
+         let mut who = Vec::new();
+         if let Some(m) = &c.model {
+            who.push(format!("{} {m}", tr("модель", "model")));
+         }
+         if let Some(l) = &c.label {
+            who.push(format!("{} «{l}»", tr("сессия", "session")));
+         }
+         if !who.is_empty() {
+            out.push(who.join(" · "));
+         }
+         out.push(source(c.source.label(), c.observed_at));
+         out
+      }
+
+      Field::FiveHourPct | Field::SevenDayPct => {
+         let Some(w) = window else { return no_data() };
+         let other = cfg.pct_mode.other();
+         let reset = match w.resets_at {
+            Some(r) => format!("{} {}", tr("сброс", "resets"), reset_at(r)),
+            None => unknown_reset(),
+         };
+         vec![
+            format!(
+               "{} {:.0}% · {reset}",
+               other.label(ru),
+               other.shown(w.used_pct)
+            ),
+            source(w.source.label(), w.observed_at),
+         ]
+      }
+
+      Field::FiveHourBar | Field::SevenDayBar => {
+         let Some(w) = window else { return no_data() };
+         let colour = match (cfg.bar_colour, ru) {
+            (BarColour::Fill, true) => "цвет — по расходу",
+            (BarColour::Fill, false) => "colour by fill",
+            (BarColour::Pace, true) => "цвет — по темпу",
+            (BarColour::Pace, false) => "colour by pace",
+         };
+         vec![format!(
+            "{} {:.0}% · {colour}",
+            cfg.pct_mode.label(ru),
+            cfg.pct_mode.shown(w.used_pct)
+         )]
+      }
+
+      Field::FiveHourPace | Field::SevenDayPace => {
+         let Some(w) = window else { return no_data() };
+         let Some(r) = w.resets_at else {
+            return vec![unknown_reset()];
+         };
+         let target = pace::pace_target(r, span, now);
+         let verdict = pace::pace_of(w.used_pct, target, cfg.pace_tolerance);
+         let (meaning, gap) = match (verdict, ru) {
+            (pace::Pace::Ahead, true) => ("с запасом: тратишь медленнее ровного темпа", "запас"),
+            (pace::Pace::OnTrack, true) => ("по графику: тратишь почти ровно", "разница"),
+            (pace::Pace::Behind, true) => {
+               ("перерасход: тратишь быстрее ровного темпа", "перерасход")
+            }
+            (pace::Pace::Ahead, false) => {
+               ("under pace: spending slower than an even burn", "ahead by")
+            }
+            (pace::Pace::OnTrack, false) => ("on pace: spending about evenly", "off by"),
+            (pace::Pace::Behind, false) => {
+               ("over pace: spending faster than an even burn", "behind by")
+            }
+         };
+         let units = pace::pace_detail(cfg.pace_view, w.used_pct, target, span, lang);
+         let mut out = vec![
+            meaning.to_string(),
+            format!("{gap} {}", units.split(' ').collect::<Vec<_>>().join(" · ")),
+            if ru {
+               format!("при ровной трате было бы потрачено {target:.0}%")
+            } else {
+               format!("an even burn would have spent {target:.0}%")
+            },
+         ];
+         if weekly {
+            out.push(tr("ровный темп — 14.3%/день", "an even burn is 14.3%/day"));
+         }
+         let rate = rate_text(cfg, rt, w, span, r, now);
+         let rate = rate.trim_start_matches(" · ");
+         if !rate.is_empty() {
+            out.push(format!("{} {rate}", tr("скорость", "rate")));
+         }
+         out
+      }
+
+      Field::FiveHourLeft => match window.and_then(|w| w.resets_at) {
+         Some(r) => vec![format!("{} {}", tr("сброс", "resets"), reset_at(r))],
+         None => vec![unknown_reset()],
+      },
+
+      Field::FiveHourClock => match window.and_then(|w| w.resets_at) {
+         Some(r) => vec![format!(
+            "{} {}",
+            tr("через", "in"),
+            pace::fmt_span_words(r - now, lang)
+         )],
+         None => vec![unknown_reset()],
+      },
+
+      Field::SevenDayDays => {
+         let Some(r) = window.and_then(|w| w.resets_at) else {
+            return vec![unknown_reset()];
+         };
+         let count = cfg.day_count();
+         let how = match count {
+            pace::DayCount::Time => tr(
+               "по времени: точное время до сброса",
+               "by time: the exact time to the reset",
+            ),
+            pace::DayCount::Calendar { today, reset_day } => {
+               let mut left_out = Vec::new();
+               if !today {
+                  left_out.push(tr("без сегодня", "not today"));
+               }
+               if !reset_day {
+                  left_out.push(tr("без дня сброса", "not the reset day"));
+               }
+               let aside = if left_out.is_empty() {
+                  String::new()
+               } else {
+                  format!(" ({})", left_out.join(", "))
+               };
+               let head = tr("по календарю:", "by calendar:");
+               match pace::day_run(r, now, count, lang) {
+                  Some((a, b)) if a == b => format!("{head} {a}{aside}"),
+                  Some((a, b)) => format!("{head} {a}–{b}{aside}"),
+                  None => tr(
+                     "по календарю: дней не осталось",
+                     "by calendar: no days left",
+                  ),
+               }
+            }
+         };
+         vec![
+            format!(
+               "{}: {}",
+               tr("сброс", "resets"),
+               pace::fmt_reset_date(r, lang, true)
+            ),
+            format!(
+               "{} {}",
+               tr("через", "in"),
+               pace::fmt_span_words(r - now, lang)
+            ),
+            how,
+         ]
+      }
+
+      Field::SevenDayAllowance => {
+         let Some(w) = window else { return no_data() };
+         let mut out = vec![tr(
+            "столько можно тратить в день, чтобы к сбросу выйти ровно на 100%",
+            "what may be spent per day to reach exactly 100% at the reset",
+         )];
+         if let Some(r) = w.resets_at {
+            let left = PctMode::Left.shown(w.used_pct);
+            let days = pace::fmt_days_until(r, now, lang, cfg.day_count());
+            out.push(if ru {
+               format!("осталось {left:.0}% на {days}")
+            } else {
+               format!("{left:.0}% left over {days}")
+            });
+         }
+         out
+      }
    }
 }
 
@@ -1249,6 +1526,24 @@ g2 Time Group Centre plain \"38%\" ContextPct
    }
 
    #[test]
+   fn by_time_the_day_cell_carries_hours_and_reserves_for_them() {
+      // A29: 3 d 5 h to the reset is `3d5h`, not `3d`, and the allowance
+      // beside it divides by the same 3 d 5 h: 46 / 3.21 is 14, not 15.
+      let now = now();
+      let (snap, _) = fixture(now);
+      let cfg = Config {
+         days_by: crate::config::DaysBy::Time,
+         ..en()
+      };
+      let cells = cells(&cfg, &snap, false, false, now);
+      let get = |f| cells.iter().find(|c| c.field == Some(f)).unwrap();
+      let days = get(Field::SevenDayDays);
+      assert_eq!(days.text, "3d5h");
+      assert_eq!(days.template, "0d0h");
+      assert_eq!(get(Field::SevenDayAllowance).text, "14%");
+   }
+
+   #[test]
    fn a_window_nobody_has_reported_is_a_row_of_dashes() {
       // Not an absent group: a group that simply is not there looks exactly
       // like a source somebody switched off, and those are different facts.
@@ -1424,6 +1719,62 @@ g2 Time Group Centre plain \"38%\" ContextPct
    }
 
    #[test]
+   fn every_name_leads_back_to_its_field_and_says_more_under_it() {
+      // A31: the theme hands back only the name, so each name must be told
+      // apart from every other, and each field has something to add.
+      let now = now();
+      let (snap, rt) = fixture(now);
+      for lang in ["ru", "en"] {
+         let cfg = Config {
+            lang: lang.to_string(),
+            ..Config::default()
+         };
+         for field in Field::ALL {
+            assert_eq!(Field::named(&field_name(field, &cfg), &cfg), Some(field));
+            let lines = field_detail(field, &cfg, &rt, &snap, now);
+            assert!(!lines.is_empty(), "{lang}: {field:?} adds nothing");
+            assert!(lines.iter().all(|l| !l.is_empty()), "{lang}: {field:?}");
+         }
+      }
+      assert_eq!(Field::named("something else", &Config::default()), None);
+   }
+
+   #[test]
+   fn the_day_count_hint_gives_the_date_and_the_days_it_covers() {
+      // Friday noon, the week resetting in 3 d 5 h: Monday at 17:00.
+      let now = now();
+      let (snap, rt) = fixture(now);
+      let cfg = Config {
+         lang: "ru".to_string(),
+         ..Config::default()
+      };
+      assert_eq!(
+         field_detail(Field::SevenDayDays, &cfg, &rt, &snap, now),
+         [
+            "сброс: понедельник, 14 сентября, 17:00",
+            "через 3 д 5 ч",
+            "по календарю: Сб–Пн (без сегодня)",
+         ]
+      );
+      let by_time = Config {
+         days_by: crate::config::DaysBy::Time,
+         ..cfg.clone()
+      };
+      assert_eq!(
+         field_detail(Field::SevenDayDays, &by_time, &rt, &snap, now)[2],
+         "по времени: точное время до сброса"
+      );
+      assert_eq!(
+         field_detail(Field::FiveHourClock, &cfg, &rt, &snap, now),
+         ["через 3 ч 37 мин"]
+      );
+      assert_eq!(
+         field_detail(Field::SevenDayAllowance, &cfg, &rt, &snap, now)[1],
+         "осталось 46% на 3д"
+      );
+   }
+
+   #[test]
    fn the_percentage_is_named_the_way_it_is_read() {
       let mut cfg = Config {
          lang: "ru".to_string(),
@@ -1431,14 +1782,14 @@ g2 Time Group Centre plain \"38%\" ContextPct
       };
 
       cfg.pct_mode = PctMode::Spent;
-      assert!(field_name(Field::FiveHourPct, &cfg).ends_with("потрачено"));
+      assert!(field_name(Field::FiveHourPct, &cfg).starts_with("Потрачено"));
       cfg.pct_mode = PctMode::Left;
-      assert!(field_name(Field::FiveHourPct, &cfg).ends_with("осталось"));
+      assert!(field_name(Field::FiveHourPct, &cfg).starts_with("Осталось"));
 
       cfg.lang = "en".to_string();
-      assert!(field_name(Field::SevenDayPct, &cfg).ends_with("left"));
+      assert!(field_name(Field::SevenDayPct, &cfg).starts_with("Left"));
       cfg.pct_mode = PctMode::Spent;
-      assert!(field_name(Field::SevenDayPct, &cfg).ends_with("spent"));
+      assert!(field_name(Field::SevenDayPct, &cfg).starts_with("Spent"));
    }
 
    #[test]
@@ -1450,7 +1801,7 @@ g2 Time Group Centre plain \"38%\" ContextPct
       };
       // The quotas read "left" here, but ctx must not follow them.
       assert!(field_name(Field::ContextPct, &cfg).ends_with("spent"));
-      assert!(field_name(Field::FiveHourPct, &cfg).ends_with("left"));
+      assert!(field_name(Field::FiveHourPct, &cfg).starts_with("Left"));
 
       cfg.ctx_dir_linked = false;
       cfg.ctx_tokens_dir = PctMode::Left;

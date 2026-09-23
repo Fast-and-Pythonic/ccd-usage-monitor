@@ -19,8 +19,8 @@ edit without a compiler.
 | `20:49` | local clock time of the reset |
 | `41%` | share of the weekly limit spent, under the same setting |
 | `▲1.4×` | the same pace figure for the weekly window |
-| `5d` | days left until the weekly window resets — which days count is a setting |
-| `20%` | how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it |
+| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`) |
+| `20%` | how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it, so by time half a day and 40% left reads `80%` |
 | `ctx 38%` | how full the session's context window is — the share, the token count (`309k`), or both, per `ctx_view` |
 
 Under each group a hairline track shows the same figure as a bar, so switching
@@ -30,10 +30,12 @@ keys it on the pace instead, which is a different question — a full bar and a
 bar about to overflow are not the same thing — and then a short red bar means
 quota left with no time to spend it in.
 
-Point at a figure and a small box under the pill names it — `until the 5-hour
-window resets`, `weekly pace: spending against the days`. The bars are named
-too. With the detail panel already open the name goes in it as the first line
-instead, so one hover never opens two surfaces.
+Point at a figure and a small box under the pill names it — `Until the 5-hour
+limit resets`, `Weekly limit pace` — and says what it is right now: the date and
+hour of the reset under the day count, what the pace means in words and in all
+three units, the other reading of a percentage and where it came from. The bars
+are covered too. With the detail panel already open the hint goes in it as the
+first lines instead, so one hover never opens two surfaces.
 
 Pace is coloured on a scale of its own: green only while spending is at or
 under the clock, and orange deepening to red the moment it is over. There is no
@@ -116,8 +118,9 @@ side, one small step and one large one each. What they set:
 | `corner_radius` | `10.0` | how round the pill, the panel and the hints are — `0` for square corners, half the pill's height for the original lozenge |
 | `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left` |
 | `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
-| `count_today` | `false` | whether today counts towards the day figure and the allowance |
-| `count_reset_day` | `true` | whether the day the quota resets counts — switch it off when the reset is in the morning |
+| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, the two settings below decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
+| `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
 | `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
 | `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
 | `pace_rate` | `true` | the observed rate and the forecast in the detail panel |

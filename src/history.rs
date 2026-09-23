@@ -209,13 +209,14 @@ impl Log {
 }
 
 /// When the window hits 100% if the rate holds. `None` while nothing is being
-/// spent — an unbounded answer is not a forecast.
+/// spent — an unbounded answer is not a forecast. Counted from the current
+/// minute, like every other figure worked out from the time (A30).
 pub fn runs_out_at(used_pct: f64, rate_per_hour: f64, now: i64) -> Option<i64> {
    if rate_per_hour <= 0.01 {
       return None;
    }
    let left = (100.0 - used_pct).max(0.0);
-   Some(now + (left / rate_per_hour * 3600.0) as i64)
+   Some(crate::pace::on_the_minute(now) + (left / rate_per_hour * 3600.0) as i64)
 }
 
 #[cfg(test)]
@@ -299,10 +300,12 @@ mod tests {
    #[test]
    fn the_forecast_answers_only_while_something_is_being_spent() {
       // 40% left at 20%/h runs out in two hours.
-      assert_eq!(runs_out_at(60.0, 20.0, 1000), Some(1000 + 2 * 3600));
-      assert_eq!(runs_out_at(60.0, 0.0, 1000), None);
+      assert_eq!(runs_out_at(60.0, 20.0, 960), Some(960 + 2 * 3600));
+      assert_eq!(runs_out_at(60.0, 0.0, 960), None);
       // Already spent: the answer is now, not never.
-      assert_eq!(runs_out_at(100.0, 20.0, 1000), Some(1000));
+      assert_eq!(runs_out_at(100.0, 20.0, 960), Some(960));
+      // Counted from the minute, so it holds still until the clock turns.
+      assert_eq!(runs_out_at(60.0, 20.0, 1019), Some(960 + 2 * 3600));
    }
 
    #[test]

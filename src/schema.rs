@@ -439,16 +439,37 @@ pub const ALL: &[Setting] = &[
       form: true,
    },
    Setting {
+      key: "days_by",
+      section: Section::Behaviour,
+      kind: Kind::Choice(&[
+         ch("calendar", "по календарю", "by calendar"),
+         ch("time", "по времени", "by time"),
+      ]),
+      label: w("Счёт дней", "Day count"),
+      tip: w(
+         "Как считать дни до недельного сброса. По календарю — целые дни, а какие \
+             из них входят, решают два переключателя ниже. По времени — точное \
+             время до сброса, 4д7ч, и дневная норма делится на него; переключатели \
+             ниже тогда не действуют.",
+         "How the days to the weekly reset are counted. By calendar, whole days, \
+             and the two switches below decide which of them count. By time, the \
+             exact time to the reset, 4d7h, and the daily allowance divides by it; \
+             the switches below do nothing then.",
+      ),
+      form: true,
+   },
+   Setting {
       key: "count_today",
       section: Section::Behaviour,
       kind: Kind::Bool,
       label: w("Считать сегодня", "Count today"),
       tip: w(
          "Входит ли текущий день в счётчик дней и в дневную норму. Сегодня \
-             обычно уже наполовину прожито, поэтому по умолчанию не считается.",
+             обычно уже наполовину прожито, поэтому по умолчанию не считается. \
+             Только при счёте по календарю.",
          "Whether the current day counts towards the day figure and the daily \
              allowance. Today is usually half spent by the time you look, so it \
-             does not by default.",
+             does not by default. Only when days are counted by calendar.",
       ),
       form: true,
    },
@@ -459,9 +480,11 @@ pub const ALL: &[Setting] = &[
       label: w("Считать день сброса", "Count reset day"),
       tip: w(
          "Входит ли день, в который квота обновляется. Он стоит только тех \
-             часов, что до сброса: если сброс в 7 утра, этот день лучше выключить.",
+             часов, что до сброса: если сброс в 7 утра, этот день лучше выключить. \
+             Только при счёте по календарю.",
          "Whether the day the quota resets counts. It is worth only the hours \
-             before the reset: with a reset at 07:00 that day is better left out.",
+             before the reset: with a reset at 07:00 that day is better left out. \
+             Only when days are counted by calendar.",
       ),
       form: true,
    },
