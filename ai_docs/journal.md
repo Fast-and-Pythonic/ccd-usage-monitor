@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-23** — a setting's tip floats over the form instead of opening a line in it
 - **2026-09-13** — egui is gone, and the settings window is a list
 - **2026-09-12** — the Slint front end lands beside the egui one, not instead of it
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
@@ -12,6 +13,25 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
 
 ---
+
+## 2026-09-23 — a setting's tip floats over the form instead of opening a line in it
+
+Done: `ui/settings.slint` shows each tip in Slint's own `Tooltip` rather than as a
+line that appears under the hovered row.
+
+The line took room in the layout, so pointing at a row pushed every row below it
+down, and the form jumped under the cursor while it was being read. A popup takes
+no room. Slint 1.17 lowers `Tooltip` to an overlay popup that only observes input,
+so the checkbox, the steppers and the menus under it still take their clicks.
+
+The tooltip carries its own content rather than `text:`: the built-in text form
+does not wrap, and the longer tips would have been one line wider than the window.
+The first version of that content looked right in the source and came out as an
+empty box with the text off to its right; why is [[G26]]. It was found by the
+user, then reproduced and checked by rendering the form with a simulated hover,
+at the top, at the right edge and at the bottom of the list.
+
+Status: Working
 
 ## 2026-09-13 — egui is gone, and the settings window is a list
 

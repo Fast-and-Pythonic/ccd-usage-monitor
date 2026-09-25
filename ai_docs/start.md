@@ -51,7 +51,7 @@ app, which shows none of this itself and does not run the status line (G06).
    wipes the extended styles with it)
 - **The widget quits when it is hidden, or a window steals the focus** → G20
    and G21
-- **Upgrading Slint** → G18–G23, and re-read A24 before changing a struct the theme receives
+- **Upgrading Slint** → G18–G23 and G26, and re-read A24 before changing a struct the theme receives
 
 ## Five facts first
 1. There are four sources, each an independent switch (A03, A14): the Claude

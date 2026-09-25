@@ -32,6 +32,7 @@ non-obvious cause.
 - **G23** · a property pushed on a timer is a repaint, whether or not it changed
 - **G24** · the last cell of the pill draws a trailing gap nobody asked for
 - **G25** · a restart left a ghost tray icon until the pointer crossed it
+- **G26** · a Slint `Tooltip` with its own content comes out as wide as its text on one line
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -541,3 +542,28 @@ already gone, and the taskbar just has not been told. Killing a process
 forcibly (`taskkill /F`, Task Manager "End task") skips every destructor
 regardless of this fix — that is an OS-level limitation on any tray app, not
 something to chase in this codebase.
+
+---
+
+## G26: a Slint `Tooltip` with its own content comes out as wide as its text on one line
+**Symptom:** the settings window's tips, moved into Slint's `Tooltip` element,
+opened as an empty dark box pinned to the window's left edge, with the text
+starting past its right border and running off the window.
+**Root cause:** custom content given to `Tooltip` is not the popup. The
+compiler puts it inside the style's `ToolTipImpl`, which draws the background
+and the border, and sizes the popup to that element's *preferred* size — the
+largest any of its children asks for. A `Rectangle { width: 320px; Text {
+wrap: word-wrap } }` still passes up the text's preferred width, which for
+wrapped text is its whole length on one line: about a thousand pixels for a
+two-sentence tip. `width` and even `preferred-width` on that `Rectangle` did
+not change it. The popup was then clamped to the window, and the 320-pixel
+block sat centred inside a thousand-pixel box, off to the right.
+**Fix:** make the content's root a layout and cap the text itself —
+`Tooltip { VerticalLayout { padding…; Text { wrap: word-wrap; max-width:
+320px; } } }` — and leave the background and border to `ToolTipImpl`. The
+`text:` form is not an alternative: it does not wrap at all.
+**How to spot it:** a tooltip whose frame and whose text disagree about where
+they are is this. Rendering it without a mouse works: load the `.slint` file
+with `slint-interpreter`, `dispatch_event` a `PointerMoved` every 100 ms for a
+while so the real cursor's events cannot cancel the hover, then
+`take_snapshot` — the popup is part of the snapshot.

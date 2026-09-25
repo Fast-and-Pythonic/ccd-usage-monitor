@@ -19,6 +19,7 @@ import {
    CheckBox,
    ComboBox,
    LineEdit,
+   Palette,
    ScrollView,
    VerticalBox,
 } from "std-widgets.slint";
@@ -51,7 +52,7 @@ export struct SessionRow {
 }
 
 // One row of the form: a label, then whichever control this setting's
-// `kind` calls for, then — only while hovered — the tip explaining it.
+// `kind` calls for. The tip explaining it pops up over the form on hover.
 component Row inherits Rectangle {
    in property <SettingRow> entry;
    in property <bool> ru;
@@ -65,9 +66,8 @@ component Row inherits Rectangle {
    background: touch.has-hover ? #ffffff08 : transparent;
    border-radius: 4px;
 
-   // Covers the whole row, so hover works between the label and the
-   // control too, not just over whichever one the pointer happens to sit
-   // on — that's also what the tip below and the background wait for.
+   // Covers the whole row, so the highlight works between the label and
+   // the control too, not just over whichever one the pointer sits on.
    touch := TouchArea { }
 
    layout := VerticalLayout {
@@ -139,15 +139,35 @@ component Row inherits Rectangle {
             edited => { root.edited(self.text); }
          }
       }
+   }
 
-      // The explanation appears under the row the pointer is on. Forty-five
-      // settings each carrying two permanent lines would be a wall; the
-      // question "what is this one" is only ever asked about one of them.
-      if touch.has-hover && entry.tip != "": Text {
-         text: entry.tip;
-         wrap: word-wrap;
-         font-size: 11px;
-         opacity: 0.65;
+   // The explanation floats over the form next to the pointer. Forty-five
+   // settings each carrying two permanent lines would be a wall, and a line
+   // that appears inside the row on hover pushes every row below it down —
+   // the form jumps under the cursor. A popup takes no room in the layout.
+   //
+   // Custom content rather than `text:`, because the built-in tooltip does
+   // not wrap and some tips run to a few hundred characters. The content is
+   // dropped inside the style's `ToolTipImpl`, which draws the background and
+   // the border, and the popup is sized to that element's preferred size. So
+   // the root here must be a layout, and the width is capped on the text
+   // itself: a `Rectangle` of fixed width passes the text's one-line length
+   // up regardless, and the popup came out a thousand pixels wide with this
+   // block centred far off to its right.
+   if entry.tip != "": Tooltip {
+      VerticalLayout {
+         padding-left: 9px;
+         padding-right: 9px;
+         padding-top: 6px;
+         padding-bottom: 6px;
+
+         Text {
+            text: entry.tip;
+            wrap: word-wrap;
+            max-width: 320px;
+            font-size: 11px;
+            color: Palette.foreground;
+         }
       }
    }
 }
