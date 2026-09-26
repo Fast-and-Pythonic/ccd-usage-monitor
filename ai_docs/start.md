@@ -39,7 +39,8 @@ app, which shows none of this itself and does not run the status line (G06).
 - **Changing how the pill looks** → `settings/theme.slint` first: in this
    repository's working setup `data_dir` (A28) points at `settings/`, so that
    file is the theme that actually loads, and `%APPDATA%` is not in play. It is
-   hand-tuned and differs from the default. `themes/pill.slint` is only the
+   hand-tuned; since 2026-09-27 the default is a copy of it, and the two part
+   only when one is edited without the other. `themes/pill.slint` is only the
    built-in default, written out where no theme exists yet (A24) — change it
    too when the default should follow, but an edit made only there never shows
    on this machine. No rebuild needed for the live file; run
