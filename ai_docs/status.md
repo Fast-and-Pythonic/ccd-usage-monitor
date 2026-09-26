@@ -39,9 +39,9 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
 - **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `slint_ui.rs`
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
-- **The settings window is generated from `schema.rs`** (A22, A33): six pages
-   of cards, forty-seven settings, and the `.slint` file knows none of them. It
-   carries the `AboutSlint` acknowledgement the licence asks for.
+- **The settings window is generated from `schema.rs`** (A22, A33): five pages,
+   a card per figure of the pill, forty-seven settings, and the `.slint` file
+   knows none of them. It carries the `AboutSlint` acknowledgement.
 - **Tests**: 202 in all; 36 over `view.rs`, with golden tests of panel and pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.

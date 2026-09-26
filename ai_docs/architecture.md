@@ -1239,9 +1239,24 @@ a page longer than the window simply scrolls.
 thing a key is, so someone editing it finds the thresholds together. A page
 groups by what someone opening the window is trying to do. The two orders
 disagree — a source's expiry is a `Sources` key and sits on the source's card,
-but the days count is `Behaviour` and sits with the pace — and neither is wrong,
-so both exist. Within a card the order is the order of `ALL`, which does not
-reach the file: `config.rs` writes keys in the order `Config` serialises them.
+and the days count is `Behaviour` and sits on the card of the day figure — and
+neither is wrong, so both exist. Within a card the order is the order of `ALL`,
+which does not reach the file: `config.rs` writes keys in the order `Config`
+serialises them.
+
+**A card is one thing on the pill, and holds all of it** (2026-09-27). The
+first cut of the pages split by kind of setting: the switches that put a figure
+on the pill on one page, how that figure is worked out and coloured on another
+("Pace and thresholds"). Changing the day figure meant two pages, and the pace
+three cards. Now the **Limits** page has a card per figure — percentages (which
+way they count, and the amber and red thresholds), pace (its form, the weekly
+form, whether each limit carries it, the tolerance), the five-hour reset, the
+days to the weekly reset with the daily allowance that divides by them, and the
+bars. A setting shared by both limits sits once, on its figure's card; the one
+thing that differs per limit, whether the figure is shown, is a switch per limit
+on that same card. The detail panel is a card on **Appearance**, and the one
+expiry common to every source, `drop_after_secs`, the last card on **Sources**.
+Only `Group`, `Page` and labels changed: no key moved in the file.
 
 **What `Needs` is for.** A setting that does nothing at the moment is noise, but
 the two cases differ. A switched-off source still has an expiry, and seeing it

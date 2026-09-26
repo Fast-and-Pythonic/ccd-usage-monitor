@@ -150,31 +150,28 @@ impl Words {
 /// orders disagree, and neither is wrong.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
-   Sources,
    Quotas,
    Context,
-   Pace,
    Look,
+   Sources,
    System,
 }
 
 impl Page {
    /// The order down the side of the window.
-   pub const ALL: [Page; 6] = [
-      Page::Sources,
+   pub const ALL: [Page; 5] = [
       Page::Quotas,
       Page::Context,
-      Page::Pace,
       Page::Look,
+      Page::Sources,
       Page::System,
    ];
 
    pub fn title(self, ru: bool) -> &'static str {
       let words = match self {
          Page::Sources => w("Источники", "Sources"),
-         Page::Quotas => w("Квоты", "Quotas"),
+         Page::Quotas => w("Лимиты", "Limits"),
          Page::Context => w("Контекст", "Context"),
-         Page::Pace => w("Темп и пороги", "Pace and thresholds"),
          Page::Look => w("Вид", "Appearance"),
          Page::System => w("Система", "System"),
       };
@@ -198,8 +195,6 @@ impl Page {
             "M4.5 3.5h9a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2z\
              M2.5 7h13M5.5 10.5h4"
          }
-         // A pulse.
-         Page::Pace => "M1.5 9h3l2 -5l4 10l2 -5h4",
          // A sun.
          Page::Look => {
             "M6 9a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2\
@@ -218,23 +213,22 @@ impl Page {
 /// order they stand in `ALL`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Group {
+   Pct,
+   Pace,
+   Reset5h,
+   Days,
+   Bars,
+   CtxShow,
+   Session,
+   Window,
+   Pill,
+   Panel,
+   Theme,
    SrcBridge,
    SrcApi,
    SrcDesktop,
    SrcSession,
-   QuotaPill,
-   Pill5h,
-   PillWeek,
-   QuotaPanel,
-   Session,
-   Window,
-   CtxShow,
-   Colours,
-   Pace,
-   Days,
    Stale,
-   Pill,
-   Theme,
    General,
    Files,
    About,
@@ -242,24 +236,23 @@ pub enum Group {
 
 impl Group {
    /// The order the cards stand in, page by page.
-   pub const ALL: [Group; 20] = [
+   pub const ALL: [Group; 19] = [
+      Group::Pct,
+      Group::Pace,
+      Group::Reset5h,
+      Group::Days,
+      Group::Bars,
+      Group::CtxShow,
+      Group::Session,
+      Group::Window,
+      Group::Pill,
+      Group::Panel,
+      Group::Theme,
       Group::SrcBridge,
       Group::SrcApi,
       Group::SrcDesktop,
       Group::SrcSession,
-      Group::QuotaPill,
-      Group::Pill5h,
-      Group::PillWeek,
-      Group::QuotaPanel,
-      Group::Session,
-      Group::Window,
-      Group::CtxShow,
-      Group::Colours,
-      Group::Pace,
-      Group::Days,
       Group::Stale,
-      Group::Pill,
-      Group::Theme,
       Group::General,
       Group::Files,
       Group::About,
@@ -267,11 +260,14 @@ impl Group {
 
    pub fn page(self) -> Page {
       match self {
-         Group::SrcBridge | Group::SrcApi | Group::SrcDesktop | Group::SrcSession => Page::Sources,
-         Group::QuotaPill | Group::Pill5h | Group::PillWeek | Group::QuotaPanel => Page::Quotas,
-         Group::Session | Group::Window | Group::CtxShow => Page::Context,
-         Group::Colours | Group::Pace | Group::Days | Group::Stale => Page::Pace,
-         Group::Pill | Group::Theme => Page::Look,
+         Group::Pct | Group::Pace | Group::Reset5h | Group::Days | Group::Bars => Page::Quotas,
+         Group::CtxShow | Group::Session | Group::Window => Page::Context,
+         Group::Pill | Group::Panel | Group::Theme => Page::Look,
+         Group::SrcBridge
+         | Group::SrcApi
+         | Group::SrcDesktop
+         | Group::SrcSession
+         | Group::Stale => Page::Sources,
          Group::General | Group::Files | Group::About => Page::System,
       }
    }
@@ -281,18 +277,20 @@ impl Group {
    pub fn title(self, ru: bool) -> Option<&'static str> {
       let words = match self {
          Group::SrcBridge | Group::SrcApi | Group::SrcDesktop | Group::SrcSession => return None,
-         Group::QuotaPill => w("На пилюле", "On the pill"),
-         Group::Pill5h => w("Пятичасовой лимит на пилюле", "Five-hour limit on the pill"),
-         Group::PillWeek => w("Недельный лимит на пилюле", "Weekly limit on the pill"),
-         Group::QuotaPanel => w("Подробности", "Details"),
+         Group::Pct => w("Проценты", "Percentages"),
+         Group::Pace => w("Темп", "Pace"),
+         Group::Reset5h => w("Сброс пятичасового лимита", "Five-hour reset"),
+         Group::Days => w(
+            "Дни до недельного сброса и норма",
+            "Days to the weekly reset, and allowance",
+         ),
+         Group::Bars => w("Бары", "Bars"),
+         Group::CtxShow => w("Что показывать", "What to show"),
          Group::Session => w("Сессия", "Session"),
          Group::Window => w("Окно контекста", "Context window"),
-         Group::CtxShow => w("Что показывать", "What to show"),
-         Group::Colours => w("Цвет по расходу", "Colour by spending"),
-         Group::Pace => w("Темп", "Pace"),
-         Group::Days => w("Дни до недельного сброса", "Days to the weekly reset"),
-         Group::Stale => w("Старые показания", "Old readings"),
          Group::Pill => w("Пилюля", "The pill"),
+         Group::Panel => w("Панель подробностей", "Detail panel"),
+         Group::Stale => w("Старые показания", "Old readings"),
          Group::Theme => w("Тема", "Theme"),
          Group::General => w("Общее", "General"),
          Group::Files => w("Файлы", "Files"),
@@ -649,76 +647,6 @@ pub const ALL: &[Setting] = &[
       needs: needs("ctx_limit", "fixed", Otherwise::Hide),
    },
    Setting {
-      key: "days_by",
-      section: Section::Behaviour,
-      kind: Kind::Choice(&[
-         ch("calendar", "по календарю", "by calendar"),
-         ch("time", "по времени", "by time"),
-      ]),
-      label: w("Счёт дней", "Day count"),
-      tip: w(
-         "Как считать дни до недельного сброса. По календарю — целые дни, а какие \
-             из них входят, решают два переключателя ниже. По времени — точное \
-             время до сброса, 4д7ч, и дневная норма делится на него; переключатели \
-             ниже тогда не действуют.",
-         "How the days to the weekly reset are counted. By calendar, whole days, \
-             and the two switches below decide which of them count. By time, the \
-             exact time to the reset, 4d7h, and the daily allowance divides by it; \
-             the switches below do nothing then.",
-      ),
-      group: Some(Group::Days),
-      needs: None,
-   },
-   Setting {
-      key: "days_form",
-      section: Section::Display,
-      // Shown as themselves, as the pace forms are.
-      kind: Kind::Choice(&[ch("units", "3д16ч", "3d16h"), ch("colon", "3:16", "3:16")]),
-      label: w("Вид счётчика", "Count reads as"),
-      tip: w(
-         "Как выглядит время до недельного сброса на пилюле. 3:16 — дни и часы \
-             через двоеточие: короче, но читается так же, как часы и минуты \
-             пятичасового окна рядом. Только при счёте по времени.",
-         "How the time to the weekly reset reads on the pill. 3:16 is days and \
-             hours around a colon: shorter, but it reads like the hours and minutes \
-             of the five-hour window beside it. Only when days are counted by time.",
-      ),
-      group: Some(Group::Days),
-      needs: needs("days_by", "time", Otherwise::Hide),
-   },
-   Setting {
-      key: "count_today",
-      section: Section::Behaviour,
-      kind: Kind::Bool,
-      label: w("Считать сегодня", "Count today"),
-      tip: w(
-         "Входит ли текущий день в счётчик дней и в дневную норму. Сегодня \
-             обычно уже наполовину прожито, поэтому по умолчанию не считается. \
-             Только при счёте по календарю.",
-         "Whether the current day counts towards the day figure and the daily \
-             allowance. Today is usually half spent by the time you look, so it \
-             does not by default. Only when days are counted by calendar.",
-      ),
-      group: Some(Group::Days),
-      needs: needs("days_by", "calendar", Otherwise::Hide),
-   },
-   Setting {
-      key: "count_reset_day",
-      section: Section::Behaviour,
-      kind: Kind::Bool,
-      label: w("Считать день сброса", "Count reset day"),
-      tip: w(
-         "Входит ли день, в который квота обновляется. Он стоит только тех \
-             часов, что до сброса: если сброс в 7 утра, этот день лучше выключить. \
-             Только при счёте по календарю.",
-         "Whether the day the quota resets counts. It is worth only the hours \
-             before the reset: with a reset at 07:00 that day is better left out. \
-             Only when days are counted by calendar.",
-      ),
-      group: Some(Group::Days),
-      needs: needs("days_by", "calendar", Otherwise::Hide),
-   },
-   Setting {
       key: "click_through",
       section: Section::Behaviour,
       kind: Kind::Bool,
@@ -791,7 +719,7 @@ pub const ALL: &[Setting] = &[
       key: "pct_mode",
       section: Section::Display,
       kind: Kind::Choice(SPENT_LEFT),
-      label: w("Проценты", "Percentages"),
+      label: w("Проценты показывают", "Percentages show"),
       tip: w(
          "Что показывают большие проценты и полоски под ними: сколько квоты уже \
              потрачено или сколько её осталось. Цвет в обоих случаях считается по \
@@ -800,7 +728,7 @@ pub const ALL: &[Setting] = &[
              quota is spent, or how much is left. The colour is keyed on spending \
              either way, so 10% left shows red.",
       ),
-      group: Some(Group::QuotaPill),
+      group: Some(Group::Pct),
       needs: None,
    },
    Setting {
@@ -818,7 +746,7 @@ pub const ALL: &[Setting] = &[
          ch("piped", "▲9%|2.0×", "▲9%|2.0×"),
          ch("off", "выкл", "off"),
       ]),
-      label: w("Темп", "Pace"),
+      label: w("Вид", "Reads as"),
       tip: w(
          "Что стоит рядом с каждым лимитом на пилюле. Пункты — на сколько расход \
              обогнал часы; кратность — во сколько раз придётся замедлиться; время — \
@@ -828,7 +756,7 @@ pub const ALL: &[Setting] = &[
              rest has to go; time is the same points in the window's own time: \
              hours and minutes for five hours, days and hours for the week.",
       ),
-      group: Some(Group::QuotaPill),
+      group: Some(Group::Pace),
       needs: None,
    },
    Setting {
@@ -845,7 +773,7 @@ pub const ALL: &[Setting] = &[
              colon: shorter, but it reads like the hours and minutes of the \
              five-hour pace beside it. The detail panel always spells it out.",
       ),
-      group: Some(Group::QuotaPill),
+      group: Some(Group::Pace),
       needs: needs("pace_view", "time", Otherwise::Hide),
    },
    Setting {
@@ -855,7 +783,7 @@ pub const ALL: &[Setting] = &[
          ch("fill", "по расходу", "by fill"),
          ch("pace", "по темпу", "by pace"),
       ]),
-      label: w("Цвет баров", "Bar colour"),
+      label: w("Цвет", "Colour"),
       tip: w(
          "По расходу — краснеет к концу квоты. По темпу — краснеет, когда \
              тратишь быстрее часов, даже если потрачено мало. Короткий красный бар \
@@ -864,14 +792,14 @@ pub const ALL: &[Setting] = &[
              spending outruns the clock, however little is gone. A short red bar \
              means quota left and no time to use it.",
       ),
-      group: Some(Group::QuotaPill),
+      group: Some(Group::Bars),
       needs: None,
    },
    Setting {
       key: "show_5h_pace",
       section: Section::Display,
       kind: Kind::Bool,
-      label: w("Темп", "Pace"),
+      label: w("На пятичасовом", "On the five-hour"),
       tip: w(
          "Темп пятичасового лимита на пилюле. Только для пилюли: панель \
              подробностей и строка статуса показывают всё, а при «Темп = выкл» \
@@ -880,7 +808,7 @@ pub const ALL: &[Setting] = &[
              the status line show every figure, and with Pace off it is shown \
              nowhere.",
       ),
-      group: Some(Group::Pill5h),
+      group: Some(Group::Pace),
       needs: None,
    },
    Setting {
@@ -894,7 +822,7 @@ pub const ALL: &[Setting] = &[
          "How long until the five-hour limit resets, 3:19. The pill only: the \
              detail panel and the status line show every figure.",
       ),
-      group: Some(Group::Pill5h),
+      group: Some(Group::Reset5h),
       needs: None,
    },
    Setting {
@@ -908,14 +836,14 @@ pub const ALL: &[Setting] = &[
          "When the five-hour limit resets, by the local clock, 20:49. The pill \
              only: the detail panel and the status line show every figure.",
       ),
-      group: Some(Group::Pill5h),
+      group: Some(Group::Reset5h),
       needs: None,
    },
    Setting {
       key: "show_week_pace",
       section: Section::Display,
       kind: Kind::Bool,
-      label: w("Темп", "Pace"),
+      label: w("На недельном", "On the weekly"),
       tip: w(
          "Темп недельного лимита на пилюле. Только для пилюли: панель \
              подробностей и строка статуса показывают всё, а при «Темп = выкл» \
@@ -924,7 +852,7 @@ pub const ALL: &[Setting] = &[
              status line show every figure, and with Pace off it is shown \
              nowhere.",
       ),
-      group: Some(Group::PillWeek),
+      group: Some(Group::Pace),
       needs: None,
    },
    Setting {
@@ -940,7 +868,7 @@ pub const ALL: &[Setting] = &[
              counted by time. The pill only: the detail panel and the status \
              line show every figure.",
       ),
-      group: Some(Group::PillWeek),
+      group: Some(Group::Days),
       needs: None,
    },
    Setting {
@@ -956,8 +884,80 @@ pub const ALL: &[Setting] = &[
              reset. The pill only: the detail panel and the status line show \
              every figure.",
       ),
-      group: Some(Group::PillWeek),
+      group: Some(Group::Days),
       needs: None,
+   },
+   // The day count: Behaviour keys in the file, but on the form they stand
+   // on the card of the figure they count, under its switch.
+   Setting {
+      key: "days_by",
+      section: Section::Behaviour,
+      kind: Kind::Choice(&[
+         ch("calendar", "по календарю", "by calendar"),
+         ch("time", "по времени", "by time"),
+      ]),
+      label: w("Счёт дней", "Day count"),
+      tip: w(
+         "Как считать дни до недельного сброса. По календарю — целые дни, а какие \
+             из них входят, решают два переключателя ниже. По времени — точное \
+             время до сброса, 4д7ч, и дневная норма делится на него; переключатели \
+             ниже тогда не действуют.",
+         "How the days to the weekly reset are counted. By calendar, whole days, \
+             and the two switches below decide which of them count. By time, the \
+             exact time to the reset, 4d7h, and the daily allowance divides by it; \
+             the switches below do nothing then.",
+      ),
+      group: Some(Group::Days),
+      needs: None,
+   },
+   Setting {
+      key: "days_form",
+      section: Section::Display,
+      // Shown as themselves, as the pace forms are.
+      kind: Kind::Choice(&[ch("units", "3д16ч", "3d16h"), ch("colon", "3:16", "3:16")]),
+      label: w("Вид счётчика", "Count reads as"),
+      tip: w(
+         "Как выглядит время до недельного сброса на пилюле. 3:16 — дни и часы \
+             через двоеточие: короче, но читается так же, как часы и минуты \
+             пятичасового окна рядом. Только при счёте по времени.",
+         "How the time to the weekly reset reads on the pill. 3:16 is days and \
+             hours around a colon: shorter, but it reads like the hours and minutes \
+             of the five-hour window beside it. Only when days are counted by time.",
+      ),
+      group: Some(Group::Days),
+      needs: needs("days_by", "time", Otherwise::Hide),
+   },
+   Setting {
+      key: "count_today",
+      section: Section::Behaviour,
+      kind: Kind::Bool,
+      label: w("Считать сегодня", "Count today"),
+      tip: w(
+         "Входит ли текущий день в счётчик дней и в дневную норму. Сегодня \
+             обычно уже наполовину прожито, поэтому по умолчанию не считается. \
+             Только при счёте по календарю.",
+         "Whether the current day counts towards the day figure and the daily \
+             allowance. Today is usually half spent by the time you look, so it \
+             does not by default. Only when days are counted by calendar.",
+      ),
+      group: Some(Group::Days),
+      needs: needs("days_by", "calendar", Otherwise::Hide),
+   },
+   Setting {
+      key: "count_reset_day",
+      section: Section::Behaviour,
+      kind: Kind::Bool,
+      label: w("Считать день сброса", "Count reset day"),
+      tip: w(
+         "Входит ли день, в который квота обновляется. Он стоит только тех \
+             часов, что до сброса: если сброс в 7 утра, этот день лучше выключить. \
+             Только при счёте по календарю.",
+         "Whether the day the quota resets counts. It is worth only the hours \
+             before the reset: with a reset at 07:00 that day is better left out. \
+             Only when days are counted by calendar.",
+      ),
+      group: Some(Group::Days),
+      needs: needs("days_by", "calendar", Otherwise::Hide),
    },
    Setting {
       key: "detail_mode",
@@ -967,14 +967,14 @@ pub const ALL: &[Setting] = &[
          ch("hover", "при наведении", "on hover"),
          ch("never", "никогда", "never"),
       ]),
-      label: w("Панель подробностей", "Detail panel"),
+      label: w("Когда показывать", "Shown"),
       tip: w(
          "Когда показывать панель под пилюлей: пока открыто окно настроек, при \
              наведении мыши на пилюлю, или никогда.",
          "When the panel under the pill appears: while the settings window is \
              open, on hovering the pill, or never.",
       ),
-      group: Some(Group::QuotaPanel),
+      group: Some(Group::Panel),
       needs: None,
    },
    Setting {
@@ -989,7 +989,7 @@ pub const ALL: &[Setting] = &[
          "In the panel: how many percent an hour are going now, and when that \
              runs into the ceiling. Read from the log of readings the widget keeps.",
       ),
-      group: Some(Group::QuotaPanel),
+      group: Some(Group::Panel),
       needs: None,
    },
    Setting {
@@ -1003,7 +1003,7 @@ pub const ALL: &[Setting] = &[
          "Adds a line per enabled source to the panel — the same thing \
              `ccd-usage-monitor --sources` prints.",
       ),
-      group: Some(Group::QuotaPanel),
+      group: Some(Group::Panel),
       needs: None,
    },
    Setting {
@@ -1080,7 +1080,7 @@ pub const ALL: &[Setting] = &[
          "The figure at which a reading starts moving from green to amber. Read \
              off spending always, even when the pill is showing what is left.",
       ),
-      group: Some(Group::Colours),
+      group: Some(Group::Pct),
       needs: None,
    },
    Setting {
@@ -1100,7 +1100,7 @@ pub const ALL: &[Setting] = &[
          "The figure at which a reading moves from amber to red, reaching full \
              red at a hundred.",
       ),
-      group: Some(Group::Colours),
+      group: Some(Group::Pct),
       needs: None,
    },
    Setting {
@@ -1113,7 +1113,7 @@ pub const ALL: &[Setting] = &[
          big: 5.0,
          show: Show::Points,
       },
-      label: w("Допуск темпа", "Pace tolerance"),
+      label: w("Допуск", "Tolerance"),
       tip: w(
          "Насколько можно отставать от часов и всё ещё считаться идущим по \
              графику. Работает только ниже линии: перерасход есть перерасход, и \

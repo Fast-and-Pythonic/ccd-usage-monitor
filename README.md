@@ -128,11 +128,13 @@ position (`window.json`) sit beside it and move with it.
 ## Settings
 
 Right-click the pill, or use the tray icon, and the settings open in a window
-of their own: six pages down its left side — **Sources**, **Quotas**,
-**Context**, **Pace and thresholds**, **Appearance**, **System** — each a
-column of cards, so that a source's switch, its expiry and its polling sit on
-one card rather than three sections apart. Under every setting's name stands
-the first sentence of what it does; the rest is in a tooltip on hover.
+of their own: five pages down its left side — **Limits**, **Context**,
+**Appearance**, **Sources**, **System** — each a column of cards. A card is one
+thing on the pill or one source, and it holds everything about that thing:
+the pace card has whether each limit shows its pace, the form it takes and the
+tolerance, and a source's card its switch, its expiry and its polling. Under
+every setting's name stands the first sentence of what it does; the rest is in
+a tooltip on hover.
 
 The control follows the kind of value: a switch; a row of buttons for up to
 three choices and a menu for more; a slider for percentages and plain counts;
@@ -147,6 +149,53 @@ Every change is written to `config.toml` at once, and the file is re-read
 while the widget runs, so editing it by hand works just as well — comments and
 key order survive a click in the window. The keys, page by page:
 
+**Limits** — cards for the percentages, the pace, the five-hour reset, the
+days to the weekly reset with the daily allowance, and the bars
+
+| Key | Default | What it does |
+|---|---|---|
+| `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left`; the colour is keyed on spending either way |
+| `warn_pct` | `60.0` | the spending at which a figure starts moving from green to amber |
+| `danger_pct` | `85.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
+| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
+| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `colon` (`▲3:02`, days and hours, shorter but easy to take for the five-hour `h:mm`); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
+| `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
+| `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
+| `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
+| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
+| `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
+| `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
+| `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
+
+**Context**
+
+| Key | Default | What it does |
+|---|---|---|
+| `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
+| `ctx_dir_linked` | `true` | whether the `ctx` percentage and token count share one direction, or are set separately below |
+| `ctx_pct_dir` | `spent` | the direction of the `ctx` percentage: `spent` or `left`. Independent of `pct_mode` — a window fills, it does not drain like the two quotas |
+| `ctx_tokens_dir` | `spent` | the direction of the `ctx` token count; only read when `ctx_dir_linked = false` |
+| `session_pick` | `live` | which session the context figure is about: `live`, `freshest`, or `pinned` |
+| `session_id` | `""` | the conversation pinned, when `session_pick = "pinned"` — chosen from the list of conversations on this page, not typed |
+| `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
+| `ctx_limit` | `learned` | how the context percentage gets its denominator: `learned` (the size the status line stated for that model, the table underneath), `table` (by model name only), `fixed` |
+| `ctx_limit_tokens` | `200000` | the denominator when `ctx_limit = "fixed"`, clamped to 8 192 … 1 000 000 |
+
+**Appearance**
+
+| Key | Default | What it does |
+|---|---|---|
+| `scale` | `1.0` | multiplies every size the theme sets — fonts, height, paddings — from 0.6 to 3.0. The knob to reach for when the widget moves to another monitor |
+| `opacity` | `0.82` | how solid the background of the pill and the panel is, from 0.3 to 1.0; the text stays as it is |
+| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
+| `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
+| `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
+| `detail_all_sources` | `false` | a line per enabled source in the detail panel — what `--sources` prints |
+
+The rows under `anchor` are the detail panel's card. The same page shows where
+the theme file is and opens it.
+
 **Sources**
 
 | Key | Default | What it does |
@@ -156,57 +205,7 @@ key order survive a click in the window. The keys, page by page:
 | `desktop_stale_secs` | `1800` | the same for the desktop app's history, allowed twice as long because it is only written every quarter of an hour |
 | `api_interval_secs` | `180` | how often the endpoint is polled in the background |
 | `api_budget_per_min` | `4` | requests per rolling minute the widget allows itself; past it a request waits a few seconds rather than being dropped |
-
-**Quotas**
-
-| Key | Default | What it does |
-|---|---|---|
-| `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left`; the colour is keyed on spending either way |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
-| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `colon` (`▲3:02`, days and hours, shorter but easy to take for the five-hour `h:mm`); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
-| `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
-| `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
-| `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
-| `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
-| `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
-| `detail_all_sources` | `false` | a line per enabled source in the detail panel — what `--sources` prints |
-
-**Context**
-
-| Key | Default | What it does |
-|---|---|---|
-| `session_pick` | `live` | which session the context figure is about: `live`, `freshest`, or `pinned` |
-| `session_id` | `""` | the conversation pinned, when `session_pick = "pinned"` — chosen from the list of conversations on this page, not typed |
-| `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
-| `ctx_limit` | `learned` | how the context percentage gets its denominator: `learned` (the size the status line stated for that model, the table underneath), `table` (by model name only), `fixed` |
-| `ctx_limit_tokens` | `200000` | the denominator when `ctx_limit = "fixed"`, clamped to 8 192 … 1 000 000 |
-| `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
-| `ctx_dir_linked` | `true` | whether the `ctx` percentage and token count share one direction, or are set separately below |
-| `ctx_pct_dir` | `spent` | the direction of the `ctx` percentage: `spent` or `left`. Independent of `pct_mode` — a window fills, it does not drain like the two quotas |
-| `ctx_tokens_dir` | `spent` | the direction of the `ctx` token count; only read when `ctx_dir_linked = false` |
-
-**Pace and thresholds**
-
-| Key | Default | What it does |
-|---|---|---|
-| `warn_pct` | `60.0` | the spending at which a figure starts moving from green to amber |
-| `danger_pct` | `85.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
-| `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
-| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
-| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
-| `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
-| `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
 | `drop_after_secs` | `3600` | after this a reading is not shown at all rather than merely greyed: a five-hour figure from an hour ago is a different window |
-
-**Appearance**
-
-| Key | Default | What it does |
-|---|---|---|
-| `scale` | `1.0` | multiplies every size the theme sets — fonts, height, paddings — from 0.6 to 3.0. The knob to reach for when the widget moves to another monitor |
-| `opacity` | `0.82` | how solid the background of the pill and the panel is, from 0.3 to 1.0; the text stays as it is |
-| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
-
-The same page shows where the theme file is and opens it.
 
 **System**
 

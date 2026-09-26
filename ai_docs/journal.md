@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-27** — the settings window gets a card per figure of the pill
 - **2026-09-27** — the pill's cells lose their reserved width, and one edge holds
 - **2026-09-25** — the settings window becomes pages of cards, chosen from three mockups
 - **2026-09-23** — a setting's tip floats over the form instead of opening a line in it
@@ -13,6 +14,28 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-09-27 — the settings window gets a card per figure of the pill
+
+Done: [[A33]] revised — the **Limits** page has a card per figure, and the
+"Pace and thresholds" page is gone.
+
+The user found the window awkward: a figure's settings were spread across
+categories. The day figure's switch was on one page and how the days are
+counted on another; the pace had its form in one card, its switches in another
+and its tolerance on a third page. Three ways to regroup were put to the user —
+by figure, by limit with the shared settings shown on both limits' pages, and
+by limit with every shared setting split in two — and by figure was chosen,
+since it moves nothing in the file and duplicates nothing on screen.
+
+Checked by opening the settings window on `--demo` through posted window
+messages and capturing each page: every card in place, the dependent rows
+indented under the setting they follow.
+
+Decisions: [[A33]]
+Status: Working
 
 ---
 
