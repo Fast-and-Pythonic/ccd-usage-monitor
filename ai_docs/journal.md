@@ -40,8 +40,8 @@ Checked on `--demo` with the live theme: screenshots of the default, `split`
 and `piped` forms, and the window's rectangle read before and after a figure
 was switched on and off through the config — the right edge held at `right`,
 the left at `left`, switching between them moved nothing, and a restart came
-back with the right edge where it was. A drag by hand, which writes the new
-`width` into `window.json`, is still owed.
+back with the right edge where it was. A drag by hand, done by the user, wrote
+the new `width` into `window.json`.
 
 Decisions: [[A34]] · Gotchas: [[G30]]
 Status: Working
