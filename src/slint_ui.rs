@@ -458,6 +458,9 @@ pub fn run(demo: bool) -> Result<(), String> {
       .map_err(|e| format!("cannot build the panel: {e}"))?;
    let palette = Palette::read(&pill);
 
+   // Before our own icon exists: ghosts of earlier instances killed by force
+   // go first, so a restart after a `taskkill /F` does not show two (G25).
+   crate::win::sweep_tray();
    let tray = Tray::build(cfg.is_ru());
    let app = Rc::new(RefCell::new(App {
       cfg,
@@ -531,6 +534,23 @@ pub fn run(demo: bool) -> Result<(), String> {
       });
    }
 
+   // A close request on either of the widget's own windows — Alt+F4, or
+   // `taskkill` without `/F`, which posts `WM_CLOSE` — closes the widget, the
+   // way the tray's Quit does. Slint's default answer is to hide the window,
+   // which under `run_event_loop_until_quit` (G20) leaves a process with no
+   // pill and a tray icon still in place (G31). The settings window answers
+   // for itself and only ever closes itself.
+   for window in [pill.window(), panel.window()] {
+      let app = app.clone();
+      window.on_close_requested(move || {
+         if let Ok(mut a) = app.try_borrow_mut() {
+            a.tray = None;
+         }
+         let _ = slint::quit_event_loop();
+         slint::CloseRequestResponse::KeepWindowShown
+      });
+   }
+
    pill
       .show()
       .map_err(|e| format!("cannot show the window: {e}"))?;
@@ -546,7 +566,12 @@ pub fn run(demo: bool) -> Result<(), String> {
       ticker.start(slint::TimerMode::Repeated, TICK, move || tick(&app));
    }
 
-   slint::run_event_loop_until_quit().map_err(|e| e.to_string())
+   let result = slint::run_event_loop_until_quit().map_err(|e| e.to_string());
+   // Whatever ended the loop, the icon goes now (G25). `App` sits in a cycle
+   // with the callbacks the pill holds, so its `Drop` is not something to
+   // wait for.
+   app.borrow_mut().tray = None;
+   result
 }
 
 fn tick(app: &Rc<RefCell<App>>) {
