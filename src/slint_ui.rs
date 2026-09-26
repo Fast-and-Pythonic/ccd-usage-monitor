@@ -610,7 +610,7 @@ fn tick(app: &Rc<RefCell<App>>) {
    read_hover(&mut a);
    if a.settings.as_ref().is_some_and(|f| f.is_open()) {
       let state = view::api_state_text(&a.cfg, &a.rt, state::now());
-      if let Some(form) = &a.settings {
+      if let Some(form) = a.settings.as_mut() {
          form.set_api_state(state);
       }
    }
@@ -833,7 +833,12 @@ fn open_settings(app: &Rc<RefCell<App>>) {
       // Where it was left, if it has ever been moved.
       let a = app.borrow();
       if let Some(form) = &a.settings {
-         if let Some([w, h]) = a.geom.settings_size {
+         // A size saved by the old one-column window is narrower than the
+         // pages of cards can be laid out in; that one is not restored.
+         if let Some([w, h]) = a.geom.settings_size
+            && w >= SETTINGS_MIN[0]
+            && h >= SETTINGS_MIN[1]
+         {
             form.window().set_size(slint::LogicalSize::new(w, h));
          }
          if let Some([x, y]) = a.geom.settings_pos {
@@ -847,8 +852,9 @@ fn open_settings(app: &Rc<RefCell<App>>) {
       let mut a = app.borrow_mut();
       let (title, rows) = sessions_for(&mut a);
       let state = view::api_state_text(&a.cfg, &a.rt, state::now());
-      if let Some(form) = &a.settings {
-         form.set_sessions(&title, rows);
+      let cfg = a.cfg.clone();
+      if let Some(form) = a.settings.as_mut() {
+         form.set_sessions(&cfg, &title, rows);
          form.set_api_state(state);
       }
    }
@@ -856,6 +862,10 @@ fn open_settings(app: &Rc<RefCell<App>>) {
       form.show();
    }
 }
+
+/// The smallest the settings window is laid out for, in logical pixels — the
+/// `min-width` and `min-height` of `ui/settings.slint`.
+const SETTINGS_MIN: [f32; 2] = [760.0, 480.0];
 
 /// At most this many conversations are offered. The tree can hold hundreds;
 /// past a couple of dozen a list stops being a list and becomes a search
@@ -952,15 +962,31 @@ fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change
       a.rt.session_scan = None;
       a.shown = None;
       let (title, rows) = sessions_for(&mut a);
-      if let Some(form) = &a.settings {
-         form.set_sessions(&title, rows);
+      let cfg = a.cfg.clone();
+      if let Some(form) = a.settings.as_mut() {
+         form.set_sessions(&cfg, &title, rows);
       }
       return;
    }
    // Read before `apply` overwrites it, and only for this one key: every
    // other setting's old value is of no interest once the new one lands.
    let data_dir_before = (key == "data_dir").then(|| a.cfg.data_dir.trim().to_string());
-   if !crate::settings_ui::apply(&mut a.cfg, key, &change) {
+   let moved = crate::settings_ui::apply(&mut a.cfg, key, &change);
+   // The release of a drag usually lands on the value the drag already put
+   // in memory, so it moves nothing — and is still the moment to save.
+   let released = matches!(change, Change::Set { commit: true, .. });
+   if !moved && !released {
+      return;
+   }
+   // A slider still being dragged: the pill follows and the row reads the
+   // new figure, but the file waits for the release rather than being
+   // rewritten a few dozen times a second.
+   if let Change::Set { commit: false, .. } = change {
+      a.shown = None;
+      let cfg = a.cfg.clone();
+      if let Some(form) = a.settings.as_mut() {
+         form.refresh(&cfg);
+      }
       return;
    }
    // The one setting whose *first* value matters, not just its new one: only
@@ -987,9 +1013,8 @@ fn changed(app: &Rc<RefCell<App>>, key: &str, change: crate::settings_ui::Change
    a.shown = None;
    let cfg = a.cfg.clone();
    let (title, rows) = sessions_for(&mut a);
-   if let Some(form) = &a.settings {
-      form.refresh(&cfg);
-      form.set_sessions(&title, rows);
+   if let Some(form) = a.settings.as_mut() {
+      form.set_sessions(&cfg, &title, rows);
    }
    let (visible, click_through, ru) = (a.visible, cfg.click_through, cfg.is_ru());
    if let Some(tray) = &mut a.tray {

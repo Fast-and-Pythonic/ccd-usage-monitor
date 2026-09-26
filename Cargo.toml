@@ -53,3 +53,15 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# For running the widget while working on it: optimised like `release`, but
+# without whole-program LTO on one codegen unit, which is what makes a release
+# build take the better part of ten minutes on a two-core machine. Builds into
+# `target/quick/`, so it never touches the `release` binary the status line
+# runs. `release` stays for what is published.
+[profile.quick]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+strip = false

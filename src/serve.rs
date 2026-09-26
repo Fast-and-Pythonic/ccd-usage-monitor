@@ -22,7 +22,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 
-use crate::config::{BarColour, Config, CtxView, DaysBy, DetailMode, PaceView, PctMode};
+use crate::config::{BarColour, Config, CtxView, DaysBy, DaysForm, DetailMode, PaceView, PctMode};
 use crate::model::{ContextInfo, Snapshot, Window};
 use crate::pace;
 use crate::runtime::Runtime;
@@ -165,7 +165,9 @@ struct Display {
    lang: String,
    pct_mode: PctMode,
    days_by: DaysBy,
+   days_form: DaysForm,
    pace_view: PaceView,
+   pace_form: DaysForm,
    ctx_view: CtxView,
    ctx_pct_dir: PctMode,
    ctx_tokens_dir: PctMode,
@@ -217,7 +219,13 @@ fn quota(cfg: &Config, rt: &Runtime, w: Window, span: i64, now: i64, weekly: boo
          _ => None,
       },
       days_text: match (weekly, w.resets_at) {
-         (true, Some(r)) => Some(pace::fmt_days_until(r, now, &cfg.lang, cfg.day_count())),
+         (true, Some(r)) => Some(pace::fmt_days_figure(
+            r,
+            now,
+            &cfg.lang,
+            cfg.day_count(),
+            cfg.days_form,
+         )),
          _ => None,
       },
       daily_allowance_pct: match (weekly, w.resets_at) {
@@ -276,7 +284,9 @@ fn render(cfg: &Config, rt: &Runtime, snap: &Snapshot, stale: (bool, bool), now:
          lang: cfg.lang.clone(),
          pct_mode: cfg.pct_mode,
          days_by: cfg.days_by,
+         days_form: cfg.days_form,
          pace_view: cfg.pace_view,
+         pace_form: cfg.pace_form,
          ctx_view: cfg.ctx_view,
          ctx_pct_dir: cfg.ctx_pct_dir,
          ctx_tokens_dir: cfg.ctx_tokens_dir(),
@@ -530,6 +540,8 @@ mod tests {
       );
       assert_eq!(v["seven_day"]["days_text"], "3д");
       assert_eq!(v["display"]["days_by"], "calendar");
+      assert_eq!(v["display"]["days_form"], "units");
+      assert_eq!(v["display"]["pace_form"], "units");
       assert!(
          v["five_hour"]["days_left"].is_null(),
          "a five-hour window has no days"

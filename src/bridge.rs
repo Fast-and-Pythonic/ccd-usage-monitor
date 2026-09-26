@@ -64,7 +64,15 @@ fn pace_cell(w: crate::model::Window, span: i64, now: i64, cfg: &Config) -> Stri
    let sep = format!("{RESET}{DIM}{}{RESET}{tint}", cfg.pace_view.joiner());
    format!(
       " {tint}{}{RESET}",
-      pace::pace_parts(cfg.pace_view, w.used_pct, target, span, &cfg.lang).join(&sep)
+      pace::pace_parts(
+         cfg.pace_view,
+         w.used_pct,
+         target,
+         span,
+         &cfg.lang,
+         cfg.pace_form
+      )
+      .join(&sep)
    )
 }
 
@@ -115,7 +123,7 @@ pub fn render(snap: &crate::model::Snapshot, cfg: &Config, now: i64) -> String {
          pace_cell(w, pace::SEVEN_DAY_SECS, now, cfg),
          DIM,
          w.resets_at
-            .map(|r| pace::fmt_days_until(r, now, &cfg.lang, cfg.day_count()))
+            .map(|r| pace::fmt_days_figure(r, now, &cfg.lang, cfg.day_count(), cfg.days_form))
             .unwrap_or_else(|| "--".into()),
          RESET,
          w.resets_at

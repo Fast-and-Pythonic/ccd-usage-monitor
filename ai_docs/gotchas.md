@@ -33,6 +33,9 @@ non-obvious cause.
 - **G24** · the last cell of the pill draws a trailing gap nobody asked for
 - **G25** · a restart left a ghost tray icon until the pointer crossed it
 - **G26** · a Slint `Tooltip` with its own content comes out as wide as its text on one line
+- **G27** · a row whose content sits only in `if` blocks has no height, and a scroll view squeezes it
+- **G28** · a repeater cannot hold an `if`, and the wrappers it needs take spacing
+- **G29** · a Slint `ScrollView` scrolls by the wheel in pulses over its content, and in jumps over its bar
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -567,3 +570,65 @@ they are is this. Rendering it without a mouse works: load the `.slint` file
 with `slint-interpreter`, `dispatch_event` a `PointerMoved` every 100 ms for a
 while so the real cursor's events cannot cancel the hover, then
 `take_snapshot` — the popup is part of the snapshot.
+
+---
+
+## G27: a row whose content sits only in `if` blocks has no height, and a scroll view squeezes it
+**Symptom:** on the settings window's first page the rows of one card were
+drawn on top of each other — labels, leads and steppers overlapping — while
+the cards above and below looked right. No warning at build time or at run time.
+**Root cause:** the row is a `Rectangle` whose content is one of several
+`if … : HorizontalLayout { … }` blocks, picked by the kind of control. A
+`Rectangle` takes no height from conditional children like these, so the row
+told the card it could be any height at all. The page is longer than the window
+and sits in a `ScrollView`; the layout fitted it into the height it had by
+shrinking the rows that had no minimum, and one card absorbed all of it.
+**Fix:** put the alternatives inside one layout with an id and give the row
+that layout's height — `height: lay.preferred-height;` with
+`lay := VerticalLayout { if …: …; if …: … }` — which is also what the one-column
+form had, before the row grew alternatives.
+**How to spot it:** rows that overlap only on a page longer than the window,
+and only on some cards, are rows with no height of their own.
+
+---
+
+## G28: a repeater cannot hold an `if`, and the wrappers it needs take spacing
+**Symptom:** `for g in groups: if g.page == page: Card { … }` fails to compile
+("expected '{'"). Wrapped in a layout to make it compile, the page grew a gap
+of the layout's `spacing` for every card of every *other* page, and a short page
+spread its few cards over the whole window.
+**Root cause:** a repeated element has to be one element, so the condition needs
+a wrapper; a wrapper whose condition is false is an empty layout, and the
+enclosing layout still puts its spacing on both sides of it. Separately, a
+vertical layout taller than its content hands the difference to its children,
+and the card titles took it.
+**Fix:** `for g in groups: VerticalLayout { if …: Card { … } }` with no spacing
+in the enclosing layout — each card carries its own `padding-bottom` instead —
+and `alignment: start` on the layouts that hold the page and the card.
+**How to spot it:** gaps whose size is a multiple of the spacing, or cards that
+drift apart as the window grows taller.
+
+---
+
+## G29: a Slint `ScrollView` scrolls by the wheel in pulses over its content, and in jumps over its bar
+**Symptom:** in the settings window the wheel moved the page smoothly but in
+jerks while the pointer was over the cards, and in abrupt steps while it was
+over the scroll bar. Rendering was not the cause: with the window redrawn
+continuously it held the 60 frames a second the display allows.
+**Root cause:** Slint 1.17's `Flickable` turns each notch of a mouse wheel into
+its own 180 ms animation that starts fast and brakes to a stop; the next notch
+adds what was left of the last one and starts braking again. At an ordinary
+pace of turning the wheel that is a pulse per notch. The fluent scroll bar
+takes the wheel itself and moves the viewport by the whole delta at once.
+**Fix:** take the wheel before the `Flickable` does — a `TouchArea` round the
+page whose `scroll-event` moves a target, and a 16 ms `Timer` that brings
+`viewport-y` a third of the way to it per tick. The `Flickable` hands a plain
+wheel event to its children first, so this is possible. The wrapper then needs
+`viewport-height: Math.max(self.visible-height, body.min-height)` on the scroll
+view: Slint sizes the viewport only from *layouts* directly inside it, and a
+`TouchArea` is not one, so without the binding there is nothing to scroll.
+The stock bar cannot be told a smaller step, and a touch area laid over it takes
+its drag as well; so its `vertical-scrollbar-policy` is `always-off` and the
+window draws its own bar, whose wheel glides the same way at 0.6 of a notch.
+**How to spot it:** smooth but uneven motion that tracks the rhythm of the
+wheel's notches, at a frame rate that is not low.

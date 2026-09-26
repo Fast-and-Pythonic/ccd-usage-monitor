@@ -28,8 +28,12 @@ app, which shows none of this itself and does not run the status line (G06).
    colour *meaning* and the pill's composition (`cells`, `bars`) live
 - **Changing how a source is read or merged** → `src/runtime.rs` (A19)
 - **Adding or changing a setting** → `src/schema.rs` (A22). One entry there is
-   its section in the file, its bounds and its wording; four tests refuse a
-   field that is described in only one of the two places
+   its section in the file, its bounds, its wording, its card in the settings
+   window and what it depends on (A33); four tests refuse a field that is
+   described in only one of the two places, and more refuse a card or a
+   dependency that points nowhere
+- **Changing how the settings window looks** → `ui/settings.slint` (A33), and
+   G27–G29 before touching its layouts or its scrolling
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
 - **Changing how the pill looks** → `settings/theme.slint` first: in this

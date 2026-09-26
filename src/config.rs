@@ -288,6 +288,19 @@ pub enum DaysBy {
    Time,
 }
 
+/// How a span of days and hours reads on the pill: the day count by time
+/// (`days_form`) and the weekly pace gap in time form (`pace_form`) each have
+/// their own choice of the two.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DaysForm {
+   /// `3д16ч` — says what it is, at the cost of two letters.
+   Units,
+   /// `3:16` — days and hours, as short as it gets. Reads like the five-hour
+   /// `h:mm` beside it, which is the price of the two letters it saves.
+   Colon,
+}
+
 /// Which session's context the widget reports.
 ///
 /// Not a guess the widget can make well on its own: eighty-odd transcripts sit
@@ -370,6 +383,9 @@ pub struct Config {
    /// How the days the weekly allowance is spread over are counted: whole
    /// calendar days, or the exact time to the reset (A29).
    pub days_by: DaysBy,
+   /// How the count reads by time: `3д16ч` or `3:16`. Ignored by calendar,
+   /// where the count is whole days and has nothing to shorten.
+   pub days_form: DaysForm,
    /// Which calendar days count, when `days_by` is the calendar; ignored by
    /// time. Today is usually half spent already; the reset day is worth only
    /// the hours before the reset, which with a morning reset is next to nothing.
@@ -380,6 +396,17 @@ pub struct Config {
    pub pct_mode: PctMode,
    /// The form of the pace figure on the pill, `Off` for none.
    pub pace_view: PaceView,
+   /// How the weekly gap reads in the time form: `3д2ч` or `3:02`. The
+   /// five-hour gap is `h:mm` either way.
+   pub pace_form: DaysForm,
+   /// Which cells the pill carries for each window, besides its percentage.
+   /// The pill only: the detail panel and the status line keep every figure.
+   pub show_5h_pace: bool,
+   pub show_5h_left: bool,
+   pub show_5h_clock: bool,
+   pub show_week_pace: bool,
+   pub show_week_days: bool,
+   pub show_week_allowance: bool,
    /// Whether a bar is coloured by how full it is or by how fast it filled.
    pub bar_colour: BarColour,
    /// The observed rate and what it means for the reset, in the detail panel.
@@ -475,10 +502,18 @@ impl Default for Config {
          opacity: 0.82,
          scale: 1.0,
          days_by: DaysBy::Calendar,
+         days_form: DaysForm::Units,
          count_today: false,
          count_reset_day: true,
          pct_mode: PctMode::Spent,
          pace_view: PaceView::Ratio,
+         pace_form: DaysForm::Units,
+         show_5h_pace: true,
+         show_5h_left: true,
+         show_5h_clock: true,
+         show_week_pace: true,
+         show_week_days: true,
+         show_week_allowance: true,
          bar_colour: BarColour::Fill,
          pace_rate: true,
          detail_mode: DetailMode::WithSettings,

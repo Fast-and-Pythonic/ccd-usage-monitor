@@ -6,7 +6,7 @@
 //! That is deliberate — this module is the contract a different front end
 //! would consume, and a front end that speaks CSS cannot use `Color32`.
 
-use crate::config::{BarColour, Config, CtxView, PaceView, PctMode, SourceKind};
+use crate::config::{BarColour, Config, CtxView, DaysForm, PaceView, PctMode, SourceKind};
 use crate::history;
 use crate::model::{ContextInfo, Snapshot, Window};
 use crate::pace;
@@ -95,19 +95,20 @@ pub fn pace_tone(delta: f64, cfg: &Config) -> Tone {
 
 /// The widest each form of the pace cell gets, so the pill keeps its width as
 /// the figures move. Only the time form depends on the window: `h:mm` on a
-/// short one, days and hours on the week.
+/// short one, days and hours on the week — or `d:hh` there, which takes the
+/// same room as `h:mm`.
 ///
 /// Always written with a leading `▲`, whichever way the figure actually
 /// points: `split_arrow` peels that glyph off into its own smaller cell and
 /// reserves the rest for the number, so the literal arrow here is only ever
 /// a placeholder for "there is room for one" — the sign it carries is never
 /// read.
-pub fn pace_template(view: PaceView, span: i64) -> &'static str {
+pub fn pace_template(view: PaceView, span: i64, form: DaysForm) -> &'static str {
    match view {
       PaceView::Off => "",
       PaceView::Ratio => "▲10.0×",
       PaceView::Points => "▲99%",
-      PaceView::Time if span <= 86400 => "▲5:00",
+      PaceView::Time if span <= 86400 || form == DaysForm::Colon => "▲5:00",
       // Only for the dashes while the week is unknown: a real figure reserves
       // for its own shape (`pace_time_template`).
       PaceView::Time => "▲23ч",
@@ -334,30 +335,44 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
          // Second, against the figure it qualifies: how much is left and
          // how fast it is going are one reading, and the two clocks after
          // them are a different one.
-         cells.extend(pace_cells(
-            cfg,
-            w,
-            pace::FIVE_HOUR_SECS,
-            Field::FiveHourPace,
-            stale,
-            now,
-         ));
+         if cfg.show_5h_pace {
+            cells.extend(pace_cells(
+               cfg,
+               w,
+               pace::FIVE_HOUR_SECS,
+               Field::FiveHourPace,
+               stale,
+               now,
+            ));
+         }
          let (left, clock) = match w.resets_at {
             Some(r) => (pace::fmt_remaining(r - now), pace::fmt_clock(r)),
             None => ("--:--".to_string(), "--:--".to_string()),
          };
-         cells.push(Cell::new(left, "00:00", Role::Time, plain).named(Field::FiveHourLeft));
-         cells.push(Cell::new(clock, "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock));
+         if cfg.show_5h_left {
+            cells.push(Cell::new(left, "00:00", Role::Time, plain).named(Field::FiveHourLeft));
+         }
+         if cfg.show_5h_clock {
+            cells
+               .push(Cell::new(clock, "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock));
+         }
       }
       None => {
          cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::FiveHourPct));
-         if cfg.pace_view != PaceView::Off {
-            let t = pace_template(cfg.pace_view, pace::FIVE_HOUR_SECS);
+         if cfg.pace_view != PaceView::Off && cfg.show_5h_pace {
+            let t = pace_template(cfg.pace_view, pace::FIVE_HOUR_SECS, cfg.pace_form);
             cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::FiveHourPace));
          }
-         cells.push(Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourLeft));
-         cells
-            .push(Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock));
+         if cfg.show_5h_left {
+            cells.push(
+               Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourLeft),
+            );
+         }
+         if cfg.show_5h_clock {
+            cells.push(
+               Cell::new("--:--", "00:00", Role::Time, Paint::Dim).named(Field::FiveHourClock),
+            );
+         }
       }
    }
    end_group(&mut cells);
@@ -374,20 +389,22 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
             )
             .named(Field::SevenDayPct),
          );
-         cells.extend(pace_cells(
-            cfg,
-            w,
-            pace::SEVEN_DAY_SECS,
-            Field::SevenDayPace,
-            stale,
-            now,
-         ));
+         if cfg.show_week_pace {
+            cells.extend(pace_cells(
+               cfg,
+               w,
+               pace::SEVEN_DAY_SECS,
+               Field::SevenDayPace,
+               stale,
+               now,
+            ));
+         }
          // Days left, not the name of the reset day: the weekly figure is
          // only actionable next to the number of days it has to cover, and
          // counting from "Tue" to that number is work for the reader.
          let (day, allowance) = match w.resets_at {
             Some(r) => (
-               pace::fmt_days_until(r, now, &lang, cfg.day_count()),
+               pace::fmt_days_figure(r, now, &lang, cfg.day_count(), cfg.days_form),
                format!(
                   "{:.0}%",
                   pace::daily_allowance(w.used_pct, pace::days_until(r, now, cfg.day_count()))
@@ -396,19 +413,30 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
             None => ("--".to_string(), "--%".to_string()),
          };
          let day_width = days_template(cfg.day_count(), &day);
-         cells.push(Cell::new(day, &day_width, Role::Time, Paint::Dim).named(Field::SevenDayDays));
-         cells
-            .push(Cell::new(allowance, "100%", Role::Time, plain).named(Field::SevenDayAllowance));
+         if cfg.show_week_days {
+            cells
+               .push(Cell::new(day, &day_width, Role::Time, Paint::Dim).named(Field::SevenDayDays));
+         }
+         if cfg.show_week_allowance {
+            cells.push(
+               Cell::new(allowance, "100%", Role::Time, plain).named(Field::SevenDayAllowance),
+            );
+         }
       }
       None => {
          cells.push(Cell::new("--%", "100%", Role::Pct, Paint::Dim).named(Field::SevenDayPct));
-         if cfg.pace_view != PaceView::Off {
-            let t = pace_template(cfg.pace_view, pace::SEVEN_DAY_SECS);
+         if cfg.pace_view != PaceView::Off && cfg.show_week_pace {
+            let t = pace_template(cfg.pace_view, pace::SEVEN_DAY_SECS, cfg.pace_form);
             cells.push(Cell::new("--", t, Role::Time, Paint::Dim).named(Field::SevenDayPace));
          }
-         cells.push(Cell::new("--", "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
-         cells
-            .push(Cell::new("--%", "100%", Role::Time, Paint::Dim).named(Field::SevenDayAllowance));
+         if cfg.show_week_days {
+            cells.push(Cell::new("--", "00д", Role::Time, Paint::Dim).named(Field::SevenDayDays));
+         }
+         if cfg.show_week_allowance {
+            cells.push(
+               Cell::new("--%", "100%", Role::Time, Paint::Dim).named(Field::SevenDayAllowance),
+            );
+         }
       }
    }
    for c in &mut cells[weekly_from..] {
@@ -539,7 +567,12 @@ fn pace_cells(
       return Vec::new();
    }
    let Some(delta) = pace_delta(w, span, now) else {
-      let (arrow, rest) = split_arrow("--", pace_template(view, span), Paint::Dim, field);
+      let (arrow, rest) = split_arrow(
+         "--",
+         pace_template(view, span, cfg.pace_form),
+         Paint::Dim,
+         field,
+      );
       return vec![arrow, rest];
    };
    let target = w.used_pct - delta;
@@ -548,7 +581,7 @@ fn pace_cells(
    } else {
       Paint::Tone(pace_tone(delta, cfg))
    };
-   let parts = pace::pace_parts(view, w.used_pct, target, span, &cfg.lang);
+   let parts = pace::pace_parts(view, w.used_pct, target, span, &cfg.lang, cfg.pace_form);
    // The second half of a pair never carries an arrow (only the first piece
    // ever does), so it stays one plain cell answering to the same name.
    let half =
@@ -581,7 +614,12 @@ fn pace_cells(
       }
       _ => {
          let text = parts.join(view.joiner());
-         let (arrow, rest) = split_arrow(&text, pace_template(view, span), paint, field);
+         let (arrow, rest) = split_arrow(
+            &text,
+            pace_template(view, span, cfg.pace_form),
+            paint,
+            field,
+         );
          vec![arrow, rest]
       }
    }
@@ -1377,6 +1415,23 @@ pub fn detail_lines(
 #[cfg(test)]
 mod tests {
    use super::*;
+
+   #[test]
+   fn a_short_weekly_pace_reserves_the_room_of_a_short_one() {
+      // Before the week is known the cell reserves by form; after, by the
+      // text on show. Both have to agree, or the pill jumps when data comes.
+      let week = pace::SEVEN_DAY_SECS;
+      assert_eq!(
+         pace_template(PaceView::Time, week, DaysForm::Colon),
+         "▲5:00"
+      );
+      assert_eq!(pace_template(PaceView::Time, week, DaysForm::Units), "▲23ч");
+      assert_eq!(pace_time_template("▲3:02"), "▲0:00");
+      assert_eq!(
+         pace_template(PaceView::Time, pace::FIVE_HOUR_SECS, DaysForm::Units),
+         "▲5:00"
+      );
+   }
    use crate::config::PctMode;
    use crate::model::{ContextInfo, Source};
    use chrono::{Local, TimeZone};
@@ -1463,6 +1518,43 @@ mod tests {
       (snap, rt)
    }
 
+   #[test]
+   fn each_pill_switch_takes_out_its_own_cell_and_nothing_else() {
+      let now = 1_770_000_000;
+      let (snap, _) = fixture(now);
+      let fields = |cfg: &Config, snap: &Snapshot| -> Vec<Field> {
+         super::cells(cfg, snap, false, false, now)
+            .iter()
+            .filter_map(|c| c.field)
+            .collect()
+      };
+      type Off = fn(&mut Config);
+      let switches: [(Off, Field); 6] = [
+         (|c| c.show_5h_pace = false, Field::FiveHourPace),
+         (|c| c.show_5h_left = false, Field::FiveHourLeft),
+         (|c| c.show_5h_clock = false, Field::FiveHourClock),
+         (|c| c.show_week_pace = false, Field::SevenDayPace),
+         (|c| c.show_week_days = false, Field::SevenDayDays),
+         (|c| c.show_week_allowance = false, Field::SevenDayAllowance),
+      ];
+      // With figures and without: the placeholders obey the switches too, or
+      // the pill would change width the moment the data arrived.
+      for snap in [snap, Snapshot::default()] {
+         let all = fields(&en(), &snap);
+         for (off, gone) in switches {
+            assert!(
+               all.contains(&gone),
+               "{gone:?} is not on the pill to begin with"
+            );
+            let mut cfg = en();
+            off(&mut cfg);
+            let left = fields(&cfg, &snap);
+            let expected: Vec<Field> = all.iter().copied().filter(|f| *f != gone).collect();
+            assert_eq!(left, expected, "switching off {gone:?}");
+         }
+      }
+   }
+
    fn line<'a>(lines: &'a [(String, String)], label: &str) -> &'a str {
       lines
          .iter()
@@ -1540,6 +1632,18 @@ g2 Time Group Centre plain \"38%\" ContextPct
       let days = get(Field::SevenDayDays);
       assert_eq!(days.text, "3d5h");
       assert_eq!(days.template, "0d0h");
+      assert_eq!(get(Field::SevenDayAllowance).text, "14%");
+
+      // The short form changes the figure and its reserve, nothing else.
+      let colon = Config {
+         days_form: crate::config::DaysForm::Colon,
+         ..cfg
+      };
+      let short = super::cells(&colon, &snap, false, false, now);
+      let get = |f| short.iter().find(|c| c.field == Some(f)).unwrap();
+      let days = get(Field::SevenDayDays);
+      assert_eq!(days.text, "3:05");
+      assert_eq!(days.template, "0:00");
       assert_eq!(get(Field::SevenDayAllowance).text, "14%");
    }
 

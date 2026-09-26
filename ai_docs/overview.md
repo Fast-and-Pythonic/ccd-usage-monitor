@@ -5,13 +5,21 @@
 - `slint` + `slint-interpreter` + `slint-build` 1.17.1, pinned exactly, with
    the winit backend and the femtovg renderer named rather than left to
    `default` — G05 was a renderer changing underneath and taking transparency
-   with it, and every figure in these docs was measured on femtovg
+   with it (wanted, not required: A20), and every figure in these docs was
+   measured on femtovg
 - `ureq` 3 (rustls) for the one HTTP call, `serde`/`serde_json`, `toml` and
    `toml_edit` (the config is edited in place, not rewritten — A22),
    `chrono`, `dirs`, `tray-icon` 0.24, `windows-sys` and `raw-window-handle`
    for the window itself (A10, A24)
 - Release profile is LTO + strip; the result is a single `.exe` with no runtime
    dependencies beyond the OS.
+- Three build profiles, measured on the development machine (a 2014 laptop,
+   two cores, four threads), time to rebuild after touching one file:
+   `release` 8–10 min; `dev` 32 s for a `.rs` file, 21 s for `.slint`; `quick`
+   (release without LTO, sixteen codegen units, incremental — `Cargo.toml`)
+   10 s and 12 s, after a first build from scratch of 21 min. `quick` is for
+   running the widget while working on it, `release` for installing; the
+   commands are in README
 
 ## Source layout
 The file layout follows the three layers of A19: what the widget knows
@@ -34,13 +42,13 @@ the theme it reads).
 | `tray.rs` | the tray icon and its menu, as a source of commands rather than a handler |
 | `serve.rs` | `--serve`: the snapshot as JSON on loopback, for a widget in somebody else's panel (A21). No drawing |
 | `config.rs` | `%APPDATA%\ccd-usage-monitor\config.toml` — sectioned, edited in place so comments survive (A22) |
-| `schema.rs` | every setting described once: its kind, its bounds, its section, its words (A22) |
+| `schema.rs` | every setting described once: its kind, its bounds, its section, its words, its card in the settings window and what it depends on (A22, A33) |
 | `geometry.rs` | `window.json` — where the windows were left; the widget's own memory, not a setting (A22) |
 | `slint_ui.rs` | the front end: the pill and panel windows, the theme contract, the window policy over the HWND, the tray (A20, A24, A25) |
-| `settings_ui.rs` | the settings window, walked out of `schema.rs` — rows in, values back out (A22) |
+| `settings_ui.rs` | the settings window, walked out of `schema.rs` — pages of cards in, values back out, rows rewritten in place (A22, A33) |
 | `themes/pill.slint` | the default appearance, compiled in; written to `%APPDATA%` (or `data_dir`) on first run so it can be edited (A24) |
 | `settings/` | this repository's `data_dir` (A28). Machine state, ignored by git — except `theme.slint`, the live, hand-tuned theme the widget loads here |
-| `ui/settings.slint` | the form, compiled in through `build.rs`; four kinds of row and no knowledge of any setting |
+| `ui/settings.slint` | the form, compiled in through `build.rs`; a side list of pages, cards of rows drawn by the control each asks for, and no knowledge of any setting (A33) |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
 
 ## Data flow

@@ -6,155 +6,600 @@
 // — its appearance is not a setting, and it needs `std-widgets`, which the
 // interpreter would have to find on disk.
 //
-// **Every row here is generated.** The program walks `schema.rs`, which
-// describes all forty-five settings once — kind, bounds, step sizes, label and
-// tooltip in both languages — and hands over a list. Nothing in this file
-// knows what any particular setting is. The window it replaces was thirteen
-// hundred lines of hand-written egui in which each setting was spelled out
-// four times over.
+// **Every page, card and row here is generated.** The program walks
+// `schema.rs`, which describes every setting once — kind, bounds, step sizes,
+// label, tooltip, the card it sits on and what it depends on — and hands over
+// a list of cards. Nothing in this file knows what any particular setting is:
+// a row says which control it wants, and that is all this file reads (A33).
+//
+// The controls that show a value are drawn here rather than taken from
+// `std-widgets`, and they hold no state of their own. The form rewrites its
+// rows in place after every click, and a stock `Switch` or `Slider` writes
+// its own value when clicked, which cuts the binding to the row: from then on
+// it would show what was clicked, not what was saved.
 
-import {
-   AboutSlint,
-   Button,
-   CheckBox,
-   ComboBox,
-   LineEdit,
-   Palette,
-   ScrollView,
-   VerticalBox,
-} from "std-widgets.slint";
+import { AboutSlint, Button, ComboBox, LineEdit, Palette, ScrollView } from "std-widgets.slint";
 
-// 0 a switch, 1 a number with a stepper, 2 a choice, 3 free text.
+// One row of a card. Most are a setting; a few (`control` 6 to 9) are a
+// button, a line of status, the conversation list or the licence block.
 export struct SettingRow {
    key: string,
    label: string,
+   // The first sentence of the tip, printed under the label.
+   lead: string,
    tip: string,
-   kind: int,
+   // Whether the tip says more than the lead, and so earns a tooltip.
+   more: bool,
+   // 0 switch, 1 slider, 2 stepper, 3 segmented, 4 menu, 5 text,
+   // 6 button, 7 note, 8 conversation list, 9 licence.
+   control: int,
    on: bool,
-   // The number already written the way it should read — `15:00`, `200k`,
-   // `85%`. The formatting belongs with the setting's description, not here.
+   value: float,
+   min: float,
+   max: float,
+   step: float,
+   big: float,
+   // The value written the way it should read — `15:00`, `200k`, `85%` —
+   // or the caption of a button. The formatting belongs with the setting's
+   // description, not here.
    text: string,
    choices: [string],
    choice: int,
-   // The title of a section, on the first row that belongs to it. Empty
-   // otherwise: a header is a property of a row, so that one list can carry
-   // the whole form without a second model to keep in step with it.
-   section: string,
+   // Depends on the row above: drawn indented.
+   sub: bool,
+   // Has no effect at the moment and stays in view greyed out…
+   dim: bool,
+   // …or leaves the card altogether.
+   hidden: bool,
+   // The first row of a card with no title, which is the card's heading.
+   headed: bool,
+   // What a button asks for.
+   action: string,
 }
 
-// One conversation the context figure could be about. The only part of this
-// window that is not walked out of the schema: the list is whatever is on disk
-// at the moment, so it has a model of its own (A18).
+export struct GroupRow {
+   page: int,
+   title: string,
+   rows: [SettingRow],
+}
+
+export struct PageRow {
+   title: string,
+   // SVG path data on an 18 × 18 grid.
+   icon: string,
+}
+
+// One conversation the context figure could be about. The list is whatever
+// is on disk at the moment, so it has a model of its own (A18).
 export struct SessionRow {
    id: string,
    label: string,
    chosen: bool,
 }
 
-// One row of the form: a label, then whichever control this setting's
-// `kind` calls for. The tip explaining it pops up over the form on hover.
+// On and off, drawn after the Fluent switch.
+component Toggle inherits Rectangle {
+   in property <bool> on;
+   in property <bool> enabled: true;
+   callback toggled(bool);
+
+   width: 40px;
+   height: 20px;
+   border-radius: 10px;
+   border-width: root.on ? 0px : 1px;
+   border-color: Palette.foreground.with-alpha(0.6);
+   background: root.on ? Palette.accent-background
+      : touch.has-hover ? Palette.foreground.with-alpha(0.06) : transparent;
+
+   Rectangle {
+      width: 12px;
+      height: 12px;
+      y: 4px;
+      x: root.on ? parent.width - 16px : 4px;
+      border-radius: 6px;
+      background: root.on ? Palette.accent-foreground : Palette.foreground.with-alpha(0.8);
+      animate x { duration: 100ms; }
+   }
+
+   touch := TouchArea {
+      enabled: root.enabled;
+      clicked => { root.toggled(!root.on); }
+   }
+}
+
+// Two or three choices side by side, the chosen one filled.
+component Segmented inherits Rectangle {
+   in property <[string]> choices;
+   in property <int> current;
+   in property <bool> enabled: true;
+   callback chose(int);
+
+   height: 30px;
+   border-radius: 6px;
+   border-width: 1px;
+   border-color: Palette.border;
+   background: Palette.control-background;
+
+   HorizontalLayout {
+      padding: 2px;
+      spacing: 2px;
+      for choice[i] in root.choices: Rectangle {
+         border-radius: 4px;
+         background: i == root.current ? Palette.accent-background
+            : pick.has-hover ? Palette.foreground.with-alpha(0.08) : transparent;
+         HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            Text {
+               text: choice;
+               font-size: 12px;
+               font-weight: i == root.current ? 600 : 400;
+               vertical-alignment: center;
+               color: i == root.current ? Palette.accent-foreground : Palette.foreground;
+            }
+         }
+
+         pick := TouchArea {
+            enabled: root.enabled;
+            clicked => { root.chose(i); }
+         }
+      }
+   }
+}
+
+// A number on a track. Dragging reports as it goes with `commit` false, so
+// the pill can follow, and once more with it true on release, which is when
+// the file is written. The wheel and the arrow keys move by the small step,
+// Page Up and Page Down by the big one — the wheel only once the slider has
+// been clicked, so scrolling the page past it cannot change a value.
+component NumSlider inherits Rectangle {
+   in property <float> value;
+   in property <float> min;
+   in property <float> max;
+   in property <float> step;
+   in property <float> big;
+   in property <string> text;
+   in property <bool> enabled: true;
+   callback slid(float, bool);
+   callback reset();
+
+   property <float> drag: root.value;
+   // Where on the thumb it was taken hold of, so taking hold does not by
+   // itself move the value to the pixel under the pointer.
+   property <length> grab: 0;
+   property <float> shown: touch.pressed ? root.drag : root.value;
+   property <float> frac: root.max > root.min
+      ? Math.clamp((root.shown - root.min) / (root.max - root.min), 0, 1) : 0;
+
+   function at(x: length) -> float {
+      let f = Math.clamp((x - 10px) / Math.max(track.width - 20px, 1px), 0, 1);
+      let v = root.min + f * (root.max - root.min);
+      return root.step > 0 ? Math.round(v / root.step) * root.step : v;
+   }
+
+   function nudge(by: float) {
+      root.slid(Math.clamp(root.value + by, root.min, root.max), true);
+   }
+
+   height: 30px;
+
+   HorizontalLayout {
+      spacing: 12px;
+
+      track := Rectangle {
+         min-width: 140px;
+         horizontal-stretch: 1;
+
+         Rectangle {
+            x: 10px;
+            width: parent.width - 20px;
+            y: (parent.height - 4px) / 2;
+            height: 4px;
+            border-radius: 2px;
+            background: Palette.foreground.with-alpha(0.28);
+         }
+
+         Rectangle {
+            x: 10px;
+            width: (parent.width - 20px) * root.frac;
+            y: (parent.height - 4px) / 2;
+            height: 4px;
+            border-radius: 2px;
+            background: Palette.accent-background;
+         }
+
+         Rectangle {
+            width: 20px;
+            height: 20px;
+            x: (parent.width - 20px) * root.frac;
+            y: (parent.height - 20px) / 2;
+            border-radius: 10px;
+            background: Palette.color-scheme == ColorScheme.dark ? #454545 : #ffffff;
+            border-width: 1px;
+            border-color: Palette.border;
+            Rectangle {
+               width: touch.pressed ? 8px : touch.has-hover || keys.has-focus ? 12px : 10px;
+               height: self.width;
+               border-radius: self.width / 2;
+               background: Palette.accent-background;
+               animate width { duration: 80ms; }
+            }
+         }
+
+         keys := FocusScope {
+            enabled: root.enabled;
+            key-pressed(event) => {
+               if (event.text == Key.LeftArrow || event.text == Key.DownArrow) {
+                  root.nudge(-root.step);
+                  return accept;
+               }
+               if (event.text == Key.RightArrow || event.text == Key.UpArrow) {
+                  root.nudge(root.step);
+                  return accept;
+               }
+               if (event.text == Key.PageDown) {
+                  root.nudge(-root.big);
+                  return accept;
+               }
+               if (event.text == Key.PageUp) {
+                  root.nudge(root.big);
+                  return accept;
+               }
+               reject
+            }
+
+            touch := TouchArea {
+               enabled: root.enabled;
+               pointer-event(event) => {
+                  if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                     keys.focus();
+                     let centre = 10px + (track.width - 20px) * root.frac;
+                     if (Math.abs(self.mouse-x - centre) <= 10px) {
+                        root.grab = self.mouse-x - centre;
+                        root.drag = root.value;
+                     } else {
+                        root.grab = 0;
+                        root.drag = root.at(self.mouse-x);
+                        root.slid(root.drag, false);
+                     }
+                  }
+                  if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                     root.slid(root.drag, true);
+                  }
+               }
+               moved => {
+                  if (self.pressed) {
+                     let v = root.at(self.mouse-x - root.grab);
+                     if (v != root.drag) {
+                        root.drag = v;
+                        root.slid(v, false);
+                     }
+                  }
+               }
+               double-clicked => { root.reset(); }
+               scroll-event(event) => {
+                  if (!keys.has-focus || event.delta-y == 0) {
+                     return reject;
+                  }
+                  root.nudge(event.delta-y > 0 ? root.step : -root.step);
+                  accept
+               }
+            }
+         }
+      }
+
+      Text {
+         text: root.text;
+         min-width: 48px;
+         horizontal-alignment: right;
+         vertical-alignment: center;
+         opacity: 0.8;
+      }
+   }
+}
+
+// A − or a + on a stepper. Shift makes it the big step.
+component StepButton inherits Rectangle {
+   in property <string> label;
+   in property <bool> enabled: true;
+   callback go(bool);
+
+   width: 30px;
+   border-radius: 3px;
+   background: touch.pressed ? Palette.foreground.with-alpha(0.12)
+      : touch.has-hover ? Palette.foreground.with-alpha(0.07) : transparent;
+
+   Text {
+      text: root.label;
+      font-size: 15px;
+      horizontal-alignment: center;
+      vertical-alignment: center;
+      opacity: 0.85;
+   }
+
+   touch := TouchArea {
+      enabled: root.enabled;
+      pointer-event(event) => {
+         if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up && self.has-hover) {
+            root.go(event.modifiers.shift);
+         }
+      }
+   }
+}
+
+// A number too wide-ranging for a track — durations, token counts — moved by
+// its steps. A double click on the figure puts the default back.
+component Stepper inherits Rectangle {
+   in property <string> text;
+   in property <bool> enabled: true;
+   callback stepped(int);
+   callback reset();
+
+   height: 30px;
+   border-radius: 4px;
+   border-width: 1px;
+   border-color: Palette.border;
+   background: Palette.control-background;
+
+   HorizontalLayout {
+      padding: 1px;
+      StepButton {
+         label: "−";
+         enabled: root.enabled;
+         go(shift) => { root.stepped(shift ? -2 : -1); }
+      }
+
+      Rectangle {
+         min-width: 76px;
+         Text {
+            text: root.text;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+         }
+
+         TouchArea {
+            enabled: root.enabled;
+            double-clicked => { root.reset(); }
+         }
+      }
+
+      StepButton {
+         label: "+";
+         enabled: root.enabled;
+         go(shift) => { root.stepped(shift ? 2 : 1); }
+      }
+   }
+}
+
+// One row of a card: the label and its lead on the left, the control on the
+// right. The whole tip pops up over the form on hover when the lead is only
+// part of it.
 component Row inherits Rectangle {
    in property <SettingRow> entry;
+   in property <bool> first;
    in property <bool> ru;
+   in property <[SessionRow]> sessions;
+   in property <string> sessions-title;
    callback toggled(bool);
-   // -2 a big step down, -1 a small one, 1 and 2 the same upwards.
    callback stepped(int);
+   callback slid(float, bool);
+   callback reset();
    callback chose(int);
    callback edited(string);
+   callback pin(string);
+   callback action(string);
 
-   height: layout.preferred-height;
-   background: touch.has-hover ? #ffffff08 : transparent;
-   border-radius: 4px;
+   property <bool> live: !root.entry.dim;
 
-   // Covers the whole row, so the highlight works between the label and
-   // the control too, not just over whichever one the pointer sits on.
-   touch := TouchArea { }
+   height: lay.preferred-height;
 
-   layout := VerticalLayout {
-      padding: 4px;
-      spacing: 2px;
+   background: root.entry.sub ? Palette.foreground.with-alpha(0.015) : transparent;
+   opacity: root.entry.dim ? 0.4 : 1;
 
-      // Label on the left, control on the right.
-      HorizontalLayout {
+   // Covers the whole row, so the tip shows between the label and the
+   // control too, not just over whichever one the pointer sits on.
+   TouchArea { }
+
+   if !root.first: Rectangle {
+      y: 0;
+      height: 1px;
+      background: Palette.color-scheme == ColorScheme.dark ? #00000059 : #0000000f;
+   }
+
+   // One layout round whichever form the row takes, so the row can be as
+   // tall as its content: a card is laid out inside a scroll view, and a
+   // row with no height of its own is squeezed there until rows overlap.
+   lay := VerticalLayout {
+      // A line of status, or the licence block: the whole width, no label.
+      if root.entry.control == 7: HorizontalLayout {
+         padding-left: 36px;
+         padding-right: 16px;
+         padding-top: 9px;
+         padding-bottom: 9px;
          spacing: 8px;
-         alignment: space-between;
+         Rectangle {
+            width: 8px;
+            Rectangle {
+               width: 8px;
+               height: 8px;
+               y: (parent.height - 8px) / 2;
+               border-radius: 4px;
+               background: #5fbf87;
+            }
+         }
 
          Text {
-            text: entry.label;
-            vertical-alignment: center;
-            horizontal-alignment: left;
+            text: root.entry.label;
+            font-size: 12px;
             wrap: word-wrap;
+            opacity: 0.7;
             horizontal-stretch: 1;
          }
+      }
 
-         // kind 0: a switch.
-         if entry.kind == 0: CheckBox {
-            checked: entry.on;
-            toggled => { root.toggled(self.checked); }
+      if root.entry.control == 9: HorizontalLayout {
+         padding: 12px;
+         // Tall enough for the version and the link under the logo, which
+         // 72 px cut off; left to itself the logo fills the card.
+         AboutSlint {
+            height: 120px;
+         }
+      }
+
+      // The conversations the context figure could be pinned to; the filled
+      // dot marks the one followed now.
+      if root.entry.control == 8: VerticalLayout {
+         padding-left: 28px;
+         padding-right: 16px;
+         padding-top: 8px;
+         padding-bottom: 10px;
+         spacing: 2px;
+         Text {
+            text: root.sessions-title;
+            font-size: 12px;
+            opacity: 0.6;
          }
 
-         // kind 1: a number, stepped by four buttons — a small step
-         // (‹›) and a big one (« »), both defined by the setting itself.
-         if entry.kind == 1: HorizontalLayout {
+         for s in root.sessions: Rectangle {
+            height: 30px;
+            border-radius: 4px;
+            background: pick.has-hover ? Palette.foreground.with-alpha(0.07)
+               : s.chosen ? Palette.foreground.with-alpha(0.05) : transparent;
+            pick := TouchArea {
+               clicked => { root.pin(s.id); }
+            }
+
+            HorizontalLayout {
+               padding-left: 8px;
+               padding-right: 8px;
+               spacing: 8px;
+               Rectangle {
+                  width: 10px;
+                  Rectangle {
+                     width: 10px;
+                     height: 10px;
+                     y: (parent.height - 10px) / 2;
+                     border-radius: 5px;
+                     border-width: 1.5px;
+                     border-color: s.chosen ? Palette.accent-background : Palette.foreground.with-alpha(0.5);
+                     background: s.chosen ? Palette.accent-background : transparent;
+                  }
+               }
+
+               Text {
+                  text: s.label;
+                  vertical-alignment: center;
+                  overflow: elide;
+                  horizontal-stretch: 1;
+               }
+            }
+         }
+      }
+
+      if root.entry.control <= 6: HorizontalLayout {
+         padding-left: root.entry.sub ? 36px : 16px;
+         padding-right: 16px;
+         padding-top: root.entry.sub ? 8px : 11px;
+         padding-bottom: root.entry.sub ? 8px : 11px;
+         spacing: 20px;
+
+         VerticalLayout {
+            alignment: center;
             spacing: 2px;
-            Button {
-               text: "«";
-               clicked => { root.stepped(-2); }
-            }
-
-            Button {
-               text: "‹";
-               clicked => { root.stepped(-1); }
-            }
-
+            horizontal-stretch: 1;
             Text {
-               text: entry.text;
-               vertical-alignment: center;
-               horizontal-alignment: center;
-               min-width: 58px;
+               text: root.entry.label;
+               font-size: root.entry.headed ? 14px : 13px;
+               font-weight: root.entry.headed ? 600 : 400;
+               wrap: word-wrap;
             }
 
-            Button {
-               text: "›";
-               clicked => { root.stepped(1); }
-            }
-
-            Button {
-               text: "»";
-               clicked => { root.stepped(2); }
+            if root.entry.lead != "": Text {
+               text: root.entry.lead;
+               font-size: 12px;
+               wrap: word-wrap;
+               opacity: 0.62;
             }
          }
 
-         // kind 2: a choice from a fixed list.
-         if entry.kind == 2: ComboBox {
-            model: entry.choices;
-            current-index: entry.choice;
-            selected => { root.chose(self.current-index); }
-         }
+         VerticalLayout {
+            alignment: center;
+            if root.entry.control == 0: HorizontalLayout {
+               alignment: end;
+               Toggle {
+                  on: root.entry.on;
+                  enabled: root.live;
+                  toggled(on) => { root.toggled(on); }
+               }
+            }
 
-         // kind 3: free text.
-         if entry.kind == 3: LineEdit {
-            text: entry.text;
-            min-width: 150px;
-            edited => { root.edited(self.text); }
+            if root.entry.control == 1: NumSlider {
+               width: 260px;
+               value: root.entry.value;
+               min: root.entry.min;
+               max: root.entry.max;
+               step: root.entry.step;
+               big: root.entry.big;
+               text: root.entry.text;
+               enabled: root.live;
+               slid(v, commit) => { root.slid(v, commit); }
+               reset => { root.reset(); }
+            }
+
+            if root.entry.control == 2: HorizontalLayout {
+               alignment: end;
+               Stepper {
+                  text: root.entry.text;
+                  enabled: root.live;
+                  stepped(d) => { root.stepped(d); }
+                  reset => { root.reset(); }
+               }
+            }
+
+            if root.entry.control == 3: HorizontalLayout {
+               alignment: end;
+               Segmented {
+                  choices: root.entry.choices;
+                  current: root.entry.choice;
+                  enabled: root.live;
+                  chose(i) => { root.chose(i); }
+               }
+            }
+
+            if root.entry.control == 4: ComboBox {
+               min-width: 180px;
+               model: root.entry.choices;
+               current-index: root.entry.choice;
+               enabled: root.live;
+               selected => { root.chose(self.current-index); }
+            }
+
+            // Applied on Enter rather than on every key: a path half typed
+            // is not a place to move files to.
+            if root.entry.control == 5: LineEdit {
+               width: 300px;
+               text: root.entry.text;
+               placeholder-text: root.ru ? "пусто — %APPDATA%; Enter — применить"
+                  : "empty — %APPDATA%; Enter to apply";
+               enabled: root.live;
+               accepted(text) => { root.edited(text); }
+            }
+
+            if root.entry.control == 6: HorizontalLayout {
+               alignment: end;
+               Button {
+                  text: root.entry.text;
+                  clicked => { root.action(root.entry.action); }
+               }
+            }
          }
       }
    }
 
-   // The explanation floats over the form next to the pointer. Forty-five
-   // settings each carrying two permanent lines would be a wall, and a line
-   // that appears inside the row on hover pushes every row below it down —
-   // the form jumps under the cursor. A popup takes no room in the layout.
-   //
    // Custom content rather than `text:`, because the built-in tooltip does
-   // not wrap and some tips run to a few hundred characters. The content is
-   // dropped inside the style's `ToolTipImpl`, which draws the background and
-   // the border, and the popup is sized to that element's preferred size. So
-   // the root here must be a layout, and the width is capped on the text
-   // itself: a `Rectangle` of fixed width passes the text's one-line length
-   // up regardless, and the popup came out a thousand pixels wide with this
-   // block centred far off to its right.
-   if entry.tip != "": Tooltip {
+   // not wrap; the root must be a layout and the width capped on the text
+   // itself, or the popup comes out as wide as the tip on one line (G26).
+   if root.entry.more: Tooltip {
       VerticalLayout {
          padding-left: 9px;
          padding-right: 9px;
@@ -162,7 +607,7 @@ component Row inherits Rectangle {
          padding-bottom: 6px;
 
          Text {
-            text: entry.tip;
+            text: root.entry.tip;
             wrap: word-wrap;
             max-width: 320px;
             font-size: 11px;
@@ -172,174 +617,366 @@ component Row inherits Rectangle {
    }
 }
 
+// A card: an optional title over a rounded panel of rows.
+component Card inherits VerticalLayout {
+   in property <GroupRow> group;
+   in property <bool> ru;
+   in property <[SessionRow]> sessions;
+   in property <string> sessions-title;
+   callback toggled(string, bool);
+   callback stepped(string, int);
+   callback slid(string, float, bool);
+   callback reset(string);
+   callback chose(string, int);
+   callback edited(string, string);
+   callback pin(string);
+   callback action(string);
+
+   alignment: start;
+   spacing: 8px;
+   padding-bottom: 22px;
+
+   if root.group.title != "": Text {
+      text: root.group.title;
+      font-size: 14px;
+      font-weight: 600;
+   }
+
+   Rectangle {
+      background: Palette.alternate-background;
+      border-radius: 8px;
+      border-width: 1px;
+      border-color: Palette.border;
+      clip: true;
+
+      VerticalLayout {
+         // A layout of its own round each row, because a repeater cannot
+         // hold an `if` directly; a hidden row leaves it empty and zero high.
+         for r[i] in root.group.rows: VerticalLayout {
+            if !r.hidden: Row {
+               entry: r;
+               first: i == 0;
+               ru: root.ru;
+               sessions: root.sessions;
+               sessions-title: root.sessions-title;
+               toggled(on) => { root.toggled(r.key, on); }
+               stepped(d) => { root.stepped(r.key, d); }
+               slid(v, commit) => { root.slid(r.key, v, commit); }
+               reset => { root.reset(r.key); }
+               chose(at) => { root.chose(r.key, at); }
+               edited(text) => { root.edited(r.key, text); }
+               pin(id) => { root.pin(id); }
+               action(what) => { root.action(what); }
+            }
+         }
+      }
+   }
+}
+
+// An entry in the list down the left side.
+component NavItem inherits Rectangle {
+   in property <PageRow> item;
+   in property <bool> selected;
+   callback clicked();
+
+   height: 38px;
+   border-radius: 5px;
+   background: root.selected ? Palette.foreground.with-alpha(0.08)
+      : touch.has-hover ? Palette.foreground.with-alpha(0.05) : transparent;
+
+   Rectangle {
+      x: 0;
+      y: (parent.height - 16px) / 2;
+      width: 3px;
+      height: 16px;
+      border-radius: 2px;
+      background: Palette.accent-background;
+      visible: root.selected;
+   }
+
+   HorizontalLayout {
+      padding-left: 12px;
+      padding-right: 8px;
+      spacing: 12px;
+      Rectangle {
+         width: 18px;
+         Path {
+            width: 18px;
+            height: 18px;
+            y: (parent.height - 18px) / 2;
+            viewbox-width: 18;
+            viewbox-height: 18;
+            commands: root.item.icon;
+            fill: transparent;
+            stroke: Palette.foreground;
+            stroke-width: 1.4px;
+            stroke-line-cap: round;
+            stroke-line-join: round;
+            opacity: root.selected ? 1 : 0.8;
+         }
+      }
+
+      Text {
+         text: root.item.title;
+         vertical-alignment: center;
+         opacity: root.selected ? 1 : 0.85;
+      }
+   }
+
+   touch := TouchArea {
+      clicked => { root.clicked(); }
+   }
+}
+
 export component Settings inherits Window {
-   in property <[SettingRow]> rows: [];
+   in property <[PageRow]> pages: [];
+   in property <[GroupRow]> groups: [];
    /// Empty unless the context figure is pinned to one conversation, which is
    /// the only setting for which a list of what exists is the answer.
    in property <[SessionRow]> sessions: [];
    in property <string> sessions_title: "";
    in property <bool> ru: true;
-   /// Where the theme file is, so the button that opens it can say so.
-   in property <string> theme_path: "";
    /// Set when the theme on disk was refused and the built-in one is drawing.
    in property <string> theme_trouble: "";
-   /// How the usage endpoint is doing — polling, rate limited until such a
-   /// time, or silent and why. The age of a reading cannot say any of that,
-   /// and a switch that looks on while nothing arrives is the question this
-   /// answers before it is asked.
-   in property <string> api_state: "";
+   /// Kept while the window is hidden, so it reopens where it was left.
+   in-out property <int> page: 0;
+
+   // Where the wheel is taking the page, and whether it is still on its way.
+   property <length> target-y;
+   property <bool> gliding;
+
+   // Move the page's destination by `by`, within the page; the timer below
+   // does the moving.
+   function glide(by: length) {
+      if (!root.gliding) {
+         root.target-y = scroll.viewport-y;
+      }
+      root.target-y = Math.clamp(root.target-y + by,
+         -Math.max(0px, scroll.viewport-height - scroll.visible-height), 0px);
+      root.gliding = true;
+   }
 
    callback toggled(string, bool);
    callback stepped(string, int);
+   callback slid(string, float, bool);
+   callback reset(string);
    callback chose(string, int);
    callback edited(string, string);
    callback pin(string);
-   callback restart();
-   callback open_config();
-   callback open_theme();
+   callback action(string);
 
-   title: ru ? "ccd-usage-monitor — настройки" : "ccd-usage-monitor settings";
-   preferred-width: 460px;
-   preferred-height: 680px;
+   title: root.ru ? "ccd-usage-monitor — настройки" : "ccd-usage-monitor settings";
+   preferred-width: 920px;
+   preferred-height: 660px;
+   min-width: 760px;
+   min-height: 480px;
+   background: Palette.background;
 
-   // Top to bottom: an optional status line, an optional warning banner,
-   // the scrollable rows and pinned-session list, the action buttons, the
-   // theme path, and the licence footer.
-   VerticalBox {
-      padding: 8px;
-      spacing: 6px;
+   // A third of the remaining way per frame: quick to answer a notch, and
+   // a run of notches blends into one movement instead of a pulse each.
+   Timer {
+      interval: 16ms;
+      running: root.gliding;
+      triggered => {
+         let left = root.target-y - scroll.viewport-y;
+         if (Math.abs(left) < 1px) {
+            scroll.viewport-y = root.target-y;
+            root.gliding = false;
+         } else {
+            scroll.viewport-y += left / 3;
+         }
+      }
+   }
 
-      // Quiet status line for the usage endpoint — only present while
-      // there's something to say about it.
-      if api_state != "": Rectangle {
-         background: #ffffff08;
-         border-radius: 4px;
-         VerticalLayout {
-            padding: 6px;
-            Text {
-               text: api_state;
-               wrap: word-wrap;
-               font-size: 11px;
-               opacity: 0.8;
+   HorizontalLayout {
+      VerticalLayout {
+         width: 216px;
+         padding-left: 8px;
+         padding-right: 8px;
+         padding-top: 10px;
+         padding-bottom: 12px;
+         spacing: 3px;
+
+         for p[i] in root.pages: NavItem {
+            item: p;
+            selected: i == root.page;
+            clicked => {
+               root.page = i;
+               root.gliding = false;
+               scroll.viewport-y = 0;
             }
+         }
+
+         Rectangle {
+            vertical-stretch: 1;
+         }
+
+         Text {
+            text: root.ru
+               ? "Ползунок: клик, затем колесо или ←/→ — шаг, PgUp/PgDn — крупный. Shift+± — крупный шаг. Двойной клик — по умолчанию."
+               : "Slider: click, then the wheel or ←/→ for a step, PgUp/PgDn for a big one. Shift+± for a big step. Double click for the default.";
+            font-size: 11px;
+            wrap: word-wrap;
+            opacity: 0.5;
          }
       }
 
-      // Amber warning: the theme on disk was refused, so the built-in
-      // fallback is what's actually drawing right now.
-      if theme_trouble != "": Rectangle {
-         background: #e8994c20;
-         border-radius: 4px;
-         border-width: 1px;
-         border-color: #e8994c60;
-         VerticalLayout {
-            padding: 6px;
-            Text {
-               text: theme_trouble;
-               wrap: word-wrap;
-               font-size: 11px;
-            }
-         }
-      }
+      VerticalLayout {
+         horizontal-stretch: 1;
 
-      // Everything that might not fit: all forty-five settings, plus the
-      // pinned-session list when there's a conversation to choose from.
-      ScrollView {
-         vertical-stretch: 1;
-         VerticalLayout {
-            padding-right: 12px;
-            spacing: 1px;
-            // One row per setting; a section header appears above the
-            // first row of each section, per `SettingRow.section`.
-            for r in root.rows: VerticalLayout {
-               spacing: 1px;
-               if r.section != "": Text {
-                  text: r.section;
-                  font-size: 13px;
-                  font-weight: 700;
-                  opacity: 0.75;
-               }
-               Row {
-                  entry: r;
-                  ru: root.ru;
-                  toggled(on) => { root.toggled(r.key, on); }
-                  stepped(d) => { root.stepped(r.key, d); }
-                  chose(i) => { root.chose(r.key, i); }
-                  edited(t) => { root.edited(r.key, t); }
-               }
-            }
-
-            if sessions_title != "": Text {
-               text: sessions_title;
-               font-size: 13px;
-               font-weight: 700;
-               opacity: 0.75;
-            }
-            // One line per conversation the context figure could be
-            // pinned to; the filled dot marks the one currently chosen.
-            for s in root.sessions: Rectangle {
-               height: line.preferred-height;
-               background: pick.has-hover ? #ffffff08
-                  : s.chosen ? #6fcf9720 : transparent;
-               border-radius: 4px;
-               pick := TouchArea {
-                  clicked => { root.pin(s.id); }
-               }
-
-               line := HorizontalLayout {
-                  padding: 4px;
-                  spacing: 6px;
+         // Amber warning: the theme on disk was refused, so the built-in
+         // fallback is what's actually drawing right now.
+         if root.theme_trouble != "": HorizontalLayout {
+            padding-left: 28px;
+            padding-right: 28px;
+            padding-top: 14px;
+            Rectangle {
+               background: #e8994c20;
+               border-radius: 6px;
+               border-width: 1px;
+               border-color: #e8994c60;
+               VerticalLayout {
+                  padding: 8px;
                   Text {
-                     text: s.chosen ? "●" : "○";
-                     vertical-alignment: center;
-                  }
-
-                  Text {
-                     text: s.label;
-                     vertical-alignment: center;
+                     text: root.theme_trouble;
                      wrap: word-wrap;
-                     horizontal-stretch: 1;
+                     font-size: 12px;
                   }
                }
             }
          }
-      }
 
-      // The actions that don't belong to any single setting.
-      HorizontalLayout {
-         spacing: 6px;
-         Button {
-            text: ru ? "Открыть config.toml" : "Open config.toml";
-            clicked => { root.open_config(); }
+         Rectangle {
+            vertical-stretch: 1;
+
+            scroll := ScrollView {
+               width: parent.width;
+               height: parent.height;
+               // The bar is drawn below instead, so the wheel over it can be
+               // taken as well (G29).
+               vertical-scrollbar-policy: always-off;
+               // Slint sizes a scroll view's content from the layouts directly
+               // inside it, and the wheel handler below is not one: left to
+               // itself the page would be exactly as tall as the window, with
+               // nothing to scroll.
+               viewport-height: Math.max(self.visible-height, body.min-height);
+               // The wheel over the page is taken here rather than left to the
+               // scroll view, whose own wheel scrolling starts a short braking
+               // animation per notch and so moves in pulses. This one glides
+               // towards a target that each notch moves further (G29).
+               wheel := TouchArea {
+                  scroll-event(event) => {
+                     if (event.delta-y == 0) {
+                        return reject;
+                     }
+                     root.glide(event.delta-y);
+                     accept
+                  }
+
+                  // No spacing here: the cards of the other pages stand in this
+                  // layout too, as empty wrappers, and spacing would open a gap for
+                  // each of them. A card carries its own gap below it instead.
+                  body := VerticalLayout {
+                     padding-left: 28px;
+                     padding-right: 28px;
+                     padding-top: 22px;
+                     padding-bottom: 6px;
+                     // A short page stays at the top instead of spreading its cards
+                     // over the window.
+                     alignment: start;
+
+                     Text {
+                        text: root.pages[root.page].title;
+                        font-size: 26px;
+                        font-weight: 600;
+                     }
+
+                     Rectangle {
+                        height: 18px;
+                     }
+
+                     for g in root.groups: VerticalLayout {
+                        if g.page == root.page: Card {
+                           group: g;
+                           ru: root.ru;
+                           sessions: root.sessions;
+                           sessions-title: root.sessions_title;
+                           toggled(key, on) => { root.toggled(key, on); }
+                           stepped(key, d) => { root.stepped(key, d); }
+                           slid(key, v, commit) => { root.slid(key, v, commit); }
+                           reset(key) => { root.reset(key); }
+                           chose(key, at) => { root.chose(key, at); }
+                           edited(key, text) => { root.edited(key, text); }
+                           pin(id) => { root.pin(id); }
+                           action(what) => { root.action(what); }
+                        }
+                     }
+                  }
+               }
+            }
+
+            // The page's own scroll bar, after the Fluent one: a hairline that
+            // widens under the pointer. Drawn here rather than left to the
+            // scroll view because that one moves the page by a whole notch at
+            // once when the wheel turns over it; this one glides like the page
+            // does, a notch at a little over half the distance (G29).
+            Rectangle {
+               property <length> range: scroll.viewport-height - scroll.visible-height;
+               property <length> track: self.height - 8px;
+               property <length> thumb-h: Math.max(32px,
+                  self.track * (scroll.visible-height / Math.max(scroll.viewport-height, 1px)));
+               property <length> thumb-y: 4px + (self.range > 0
+                  ? (-scroll.viewport-y / self.range) * (self.track - self.thumb-h) : 0px);
+               property <bool> on-thumb;
+               property <length> press-y;
+               property <length> press-view;
+
+               x: parent.width - self.width;
+               width: 14px;
+               visible: self.range > 1px;
+
+               Rectangle {
+                  x: parent.width - self.width - 3px;
+                  y: parent.thumb-y;
+                  width: grip.has-hover || grip.pressed ? 6px : 2px;
+                  height: parent.thumb-h;
+                  border-radius: self.width / 2;
+                  background: Palette.foreground.with-alpha(grip.has-hover || grip.pressed ? 0.55 : 0.35);
+                  animate width { duration: 100ms; }
+               }
+
+               grip := TouchArea {
+                  pointer-event(event) => {
+                     if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                        root.gliding = false;
+                        if (self.mouse-y >= parent.thumb-y && self.mouse-y <= parent.thumb-y + parent.thumb-h) {
+                           parent.on-thumb = true;
+                           parent.press-y = self.mouse-y;
+                           parent.press-view = scroll.viewport-y;
+                        } else {
+                           // A click on the track turns the page towards it.
+                           parent.on-thumb = false;
+                           root.glide(self.mouse-y < parent.thumb-y ? scroll.visible-height : -scroll.visible-height);
+                        }
+                     }
+                  }
+                  moved => {
+                     if (self.pressed && parent.on-thumb && parent.track > parent.thumb-h) {
+                        scroll.viewport-y = Math.clamp(
+                           parent.press-view - (self.mouse-y - parent.press-y) * (parent.range / (parent.track - parent.thumb-h)),
+                           -parent.range, 0px);
+                     }
+                  }
+                  scroll-event(event) => {
+                     if (event.delta-y == 0) {
+                        return reject;
+                     }
+                     root.glide(event.delta-y * 0.6);
+                     accept
+                  }
+               }
+            }
          }
-
-         Button {
-            text: ru ? "Открыть тему" : "Open theme";
-            clicked => { root.open_theme(); }
-         }
-
-         Button {
-            text: ru ? "Перезапустить" : "Restart";
-            clicked => { root.restart(); }
-         }
-      }
-
-      // A button that opens a file should say which file. The path is long
-      // and dull, so it sits small and dim under the buttons rather than on
-      // one of them.
-      if theme_path != "": Text {
-         text: theme_path;
-         font-size: 10px;
-         opacity: 0.5;
-         wrap: word-wrap;
-         horizontal-alignment: center;
-      }
-
-      // The acknowledgement the royalty-free licence asks for. It is here
-      // rather than in the tray because this is the one surface with room
-      // for it: the pill is thirty-four pixels tall.
-      AboutSlint {
-         height: 72px;
       }
    }
 }

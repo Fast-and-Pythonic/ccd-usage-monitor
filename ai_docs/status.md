@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-09-23. State only — why anything is the way it is lives in
+Snapshot of 2026-09-26. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 ## Works
@@ -21,7 +21,8 @@ Snapshot of 2026-09-23. State only — why anything is the way it is lives in
    bring it back (A10).
 - **Pace** beside each limit in whichever of eight forms `pace_view` names (A16);
    green at or under the clock, orange to red above, keyed on spending (A15).
-   Weekly days by calendar or clock (A29); time-derived figures step on the minute (A30).
+   Weekly days by calendar or clock, by clock as `3д16ч` or `3:16` (A29), and a weekly pace in time as `▲3д2ч` or `▲3:02` (A16); time-derived figures step on the minute (A30).
+   Every cell but a window's percentage can be switched off, on the pill only.
 - **Settings** in a second native window (A11), described once in `schema.rs`
    (A22) — kind, bounds, section, label and tooltip, in both languages.
 - **The config is hand-editable, in sections, and re-read while running** (A22,
@@ -37,10 +38,10 @@ Snapshot of 2026-09-23. State only — why anything is the way it is lives in
 - **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `slint_ui.rs`
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
-- **The settings window is generated from `schema.rs`** (A22): thirty-eight
-   settings, four kinds of row, and the `.slint` file knows what none of them
-   are. It carries the `AboutSlint` acknowledgement the licence asks for.
-- **Tests**: 189 in all; 36 of them over `view.rs`, including golden tests of the
+- **The settings window is generated from `schema.rs`** (A22, A33): six pages
+   of cards, forty-four settings, and the `.slint` file knows none of them. It
+   carries the `AboutSlint` acknowledgement the licence asks for.
+- **Tests**: 203 in all; 38 of them over `view.rs`, including golden tests of the
    whole panel and the whole pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
@@ -53,10 +54,10 @@ Snapshot of 2026-09-23. State only — why anything is the way it is lives in
    with nothing on disk to reveal it: a 5-series model held to 200K by
    `CLAUDE_CODE_DISABLE_1M_CONTEXT`, and a model newer than this build.
    `ctx_limit = "fixed"` is the escape, manual on purpose.
-- **Nobody has clicked the generated form yet.** Dragging, the right click, the
-   tray and the hover were confirmed by hand; a checkbox, a stepper and a session
-   row have not been. The arithmetic is covered — every numeric setting is walked
-   to both its bounds in a test — the wiring from click to saved file is not.
+- **Nobody has clicked the new settings window by hand yet.** Every page was
+   rendered in both languages and a slider drag driven by synthetic events; a
+   real mouse on the steppers, the menu, the text field and the conversation
+   list, and the file each one writes, is still unchecked.
 - **The desktop app does not appear to run the status line** (G06). The figures
    are covered without it, but it is still the only source that *states* a window
    size. One check remains: whether a newly started desktop session picks the

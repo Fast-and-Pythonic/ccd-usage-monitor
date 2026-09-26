@@ -8,23 +8,19 @@
 //! order a struct happens to declare them. Nothing else knows that mapping;
 //! `config::save` and `config::load` ask here.
 //!
-//! **It will generate the settings form.** The window that exists today is
-//! 1300 lines of egui in which the label, the tooltip, the step size and the
-//! layout are braided together, and every one of those settings is described
-//! four times over. When the GUI moves to Slint (A20) that window is rebuilt
-//! from nothing, and rebuilding it by hand would reproduce the same 1300 lines
-//! in a second language. A form walked out of this list is a repeater over
-//! three kinds of row.
+//! **It generates the settings form.** Each setting names the card it is shown
+//! on (`Group`, and through it the `Page`) and, where it only matters while
+//! another setting has some value, what it `Needs`. The window is walked out of
+//! this list; `ui/settings.slint` knows what kind of row it is drawing and
+//! never which setting (A22, A33).
 //!
 //! **The bounds here must agree with the accessors in `config.rs`**, which are
 //! what actually enforce them — a hand-edited file is clamped when it is read,
 //! not when it is written. A test checks that every bound in this list
 //! survives its own accessor, so the two cannot drift apart silently.
 
-// The form that reads the labels, tips and steps below arrives with the Slint
-// settings window; the file layout already uses `key` and `section`. Harvesting
-// the rest now is deliberate: these strings exist only inside `settings_body`,
-// which that same stage deletes.
+// Not every consumer of this list reads every field of it: the file layout
+// needs `key` and `section`, the form everything else.
 #![allow(dead_code)]
 
 use crate::config::Config;
@@ -65,21 +61,6 @@ impl Section {
          Section::Sources => "sources",
          Section::Thresholds => "thresholds",
          Section::Behaviour => "behaviour",
-      }
-   }
-
-   pub fn title(self, ru: bool) -> &'static str {
-      match (self, ru) {
-         (Section::Style, true) => "Вид",
-         (Section::Style, false) => "Appearance",
-         (Section::Display, true) => "Что показывать",
-         (Section::Display, false) => "What to show",
-         (Section::Sources, true) => "Источники",
-         (Section::Sources, false) => "Sources",
-         (Section::Thresholds, true) => "Пороги",
-         (Section::Thresholds, false) => "Thresholds",
-         (Section::Behaviour, true) => "Поведение",
-         (Section::Behaviour, false) => "Behaviour",
       }
    }
 }
@@ -160,6 +141,217 @@ impl Words {
    }
 }
 
+/// A page of the settings window: one entry in the list down its left side.
+///
+/// A different division from `Section` on purpose. The file is grouped by what
+/// kind of thing a key is, so a person editing it finds all the thresholds
+/// together; the window is grouped by what someone opening it is trying to do,
+/// so a source's switch, its expiry and its polling sit on one card. The two
+/// orders disagree, and neither is wrong.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Page {
+   Sources,
+   Quotas,
+   Context,
+   Pace,
+   Look,
+   System,
+}
+
+impl Page {
+   /// The order down the side of the window.
+   pub const ALL: [Page; 6] = [
+      Page::Sources,
+      Page::Quotas,
+      Page::Context,
+      Page::Pace,
+      Page::Look,
+      Page::System,
+   ];
+
+   pub fn title(self, ru: bool) -> &'static str {
+      let words = match self {
+         Page::Sources => w("Источники", "Sources"),
+         Page::Quotas => w("Квоты", "Quotas"),
+         Page::Context => w("Контекст", "Context"),
+         Page::Pace => w("Темп и пороги", "Pace and thresholds"),
+         Page::Look => w("Вид", "Appearance"),
+         Page::System => w("Система", "System"),
+      };
+      words.get(ru)
+   }
+
+   /// The page's icon as SVG path data on an 18 × 18 grid, stroked rather
+   /// than filled. Data rather than drawing, so the window can show it without
+   /// knowing which page it belongs to.
+   pub fn icon(self) -> &'static str {
+      match self {
+         // A stack of discs: where the figures come from.
+         Page::Sources => {
+            "M3 4.5a6 2.5 0 1 0 12 0a6 2.5 0 1 0 -12 0M3 4.5v9c0 1.4 2.7 2.5 6 2.5s6 -1.1 6 -2.5v-9\
+             M3 9c0 1.4 2.7 2.5 6 2.5s6 -1.1 6 -2.5"
+         }
+         // A gauge.
+         Page::Quotas => "M2.5 13.5a6.5 6.5 0 1 1 13 0M9 13.5l3.2 -4.2",
+         // A window with a line of text in it.
+         Page::Context => {
+            "M4.5 3.5h9a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-9a2 2 0 0 1 -2 -2v-7a2 2 0 0 1 2 -2z\
+             M2.5 7h13M5.5 10.5h4"
+         }
+         // A pulse.
+         Page::Pace => "M1.5 9h3l2 -5l4 10l2 -5h4",
+         // A sun.
+         Page::Look => {
+            "M6 9a3 3 0 1 0 6 0a3 3 0 1 0 -6 0M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2\
+             M3.7 3.7l1.4 1.4M12.9 12.9l1.4 1.4M3.7 14.3l1.4 -1.4M12.9 5.1l1.4 -1.4"
+         }
+         // Two sliders.
+         Page::System => {
+            "M2.5 5h8M14 5h1.5M2.5 13h1.5M7.5 13h8M10.7 5a1.6 1.6 0 1 0 3.2 0\
+             a1.6 1.6 0 1 0 -3.2 0M4.1 13a1.6 1.6 0 1 0 3.2 0a1.6 1.6 0 1 0 -3.2 0"
+         }
+      }
+   }
+}
+
+/// A card on a page. The settings in it are the ones that name it, in the
+/// order they stand in `ALL`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Group {
+   SrcBridge,
+   SrcApi,
+   SrcDesktop,
+   SrcSession,
+   QuotaPill,
+   Pill5h,
+   PillWeek,
+   QuotaPanel,
+   Session,
+   Window,
+   CtxShow,
+   Colours,
+   Pace,
+   Days,
+   Stale,
+   Pill,
+   Theme,
+   General,
+   Files,
+   About,
+}
+
+impl Group {
+   /// The order the cards stand in, page by page.
+   pub const ALL: [Group; 20] = [
+      Group::SrcBridge,
+      Group::SrcApi,
+      Group::SrcDesktop,
+      Group::SrcSession,
+      Group::QuotaPill,
+      Group::Pill5h,
+      Group::PillWeek,
+      Group::QuotaPanel,
+      Group::Session,
+      Group::Window,
+      Group::CtxShow,
+      Group::Colours,
+      Group::Pace,
+      Group::Days,
+      Group::Stale,
+      Group::Pill,
+      Group::Theme,
+      Group::General,
+      Group::Files,
+      Group::About,
+   ];
+
+   pub fn page(self) -> Page {
+      match self {
+         Group::SrcBridge | Group::SrcApi | Group::SrcDesktop | Group::SrcSession => Page::Sources,
+         Group::QuotaPill | Group::Pill5h | Group::PillWeek | Group::QuotaPanel => Page::Quotas,
+         Group::Session | Group::Window | Group::CtxShow => Page::Context,
+         Group::Colours | Group::Pace | Group::Days | Group::Stale => Page::Pace,
+         Group::Pill | Group::Theme => Page::Look,
+         Group::General | Group::Files | Group::About => Page::System,
+      }
+   }
+
+   /// `None` for a source's card: its first row, the source's own switch,
+   /// is the heading, and a title over it would say the same word twice.
+   pub fn title(self, ru: bool) -> Option<&'static str> {
+      let words = match self {
+         Group::SrcBridge | Group::SrcApi | Group::SrcDesktop | Group::SrcSession => return None,
+         Group::QuotaPill => w("На пилюле", "On the pill"),
+         Group::Pill5h => w("Пятичасовой лимит на пилюле", "Five-hour limit on the pill"),
+         Group::PillWeek => w("Недельный лимит на пилюле", "Weekly limit on the pill"),
+         Group::QuotaPanel => w("Подробности", "Details"),
+         Group::Session => w("Сессия", "Session"),
+         Group::Window => w("Окно контекста", "Context window"),
+         Group::CtxShow => w("Что показывать", "What to show"),
+         Group::Colours => w("Цвет по расходу", "Colour by spending"),
+         Group::Pace => w("Темп", "Pace"),
+         Group::Days => w("Дни до недельного сброса", "Days to the weekly reset"),
+         Group::Stale => w("Старые показания", "Old readings"),
+         Group::Pill => w("Пилюля", "The pill"),
+         Group::Theme => w("Тема", "Theme"),
+         Group::General => w("Общее", "General"),
+         Group::Files => w("Файлы", "Files"),
+         Group::About => w("О программе", "About"),
+      };
+      Some(words.get(ru))
+   }
+}
+
+/// What a form does with a setting whose `Needs` is not met.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Otherwise {
+   /// Stays in view, greyed out: a source that is switched off still has an
+   /// expiry, and seeing it greyed says the source is off rather than gone.
+   Dim,
+   /// Leaves the form: a manual window size means nothing until "manual" is
+   /// chosen, and a row that means nothing is noise.
+   Hide,
+}
+
+/// A setting that only takes effect while another one has a given value.
+#[derive(Clone, Copy, Debug)]
+pub struct Needs {
+   pub key: &'static str,
+   /// `"true"`/`"false"` for a switch, the spelling in the file for a choice.
+   pub value: &'static str,
+   pub otherwise: Otherwise,
+}
+
+impl Needs {
+   pub fn met(self, cfg: &Config) -> bool {
+      match read(cfg, self.key) {
+         Some(toml::Value::Boolean(on)) => (if on { "true" } else { "false" }) == self.value,
+         Some(toml::Value::String(s)) => s == self.value,
+         _ => true,
+      }
+   }
+}
+
+const fn needs(key: &'static str, value: &'static str, otherwise: Otherwise) -> Option<Needs> {
+   Some(Needs {
+      key,
+      value,
+      otherwise,
+   })
+}
+
+/// The first sentence of a tip: what the form prints under a setting's name.
+/// The whole tip stays for the tooltip.
+pub fn lead(tip: &str) -> &str {
+   let mut chars = tip.char_indices().peekable();
+   while let Some((at, c)) = chars.next() {
+      if matches!(c, '.' | '!' | '?') && chars.peek().is_none_or(|(_, n)| n.is_whitespace()) {
+         return &tip[..at + c.len_utf8()];
+      }
+   }
+   tip
+}
+
 pub struct Setting {
    /// The key as it is spelled in the file and in `Config`. The two are the
    /// same on purpose: moving a key into a table is a change of position, not
@@ -171,10 +363,13 @@ pub struct Setting {
    /// What it actually does. The rows are as short as a stepper leaves them,
    /// so the label can only name a setting.
    pub tip: Words,
-   /// Whether a generated form should carry a row for it. `false` for the two
-   /// that something else owns: the session id belongs to the picker, and the
-   /// demo switch is a flag for working on the layout.
-   pub form: bool,
+   /// The card the settings window shows it on. `None` for the two that
+   /// something else owns: the session id belongs to the picker, and the demo
+   /// switch is a flag for working on the layout.
+   pub group: Option<Group>,
+   /// When it has any effect at all. A form hides or greys it out otherwise,
+   /// and draws it indented under the setting it depends on.
+   pub needs: Option<Needs>,
 }
 
 const fn w(ru: &'static str, en: &'static str) -> Words {
@@ -201,7 +396,8 @@ pub const ALL: &[Setting] = &[
              terminal session is running — but it is the only source that states \
              the size of the context window.",
       ),
-      form: true,
+      group: Some(Group::SrcBridge),
+      needs: None,
    },
    Setting {
       key: "api_enabled",
@@ -214,7 +410,8 @@ pub const ALL: &[Setting] = &[
          "A direct request to Anthropic with Claude Code's token. The only \
              source that knows the reset times.",
       ),
-      form: true,
+      group: Some(Group::SrcApi),
+      needs: None,
    },
    Setting {
       key: "desktop_enabled",
@@ -227,7 +424,8 @@ pub const ALL: &[Setting] = &[
          "The history file the Claude desktop app keeps. Asks for nothing, but \
              is written every ~15 min and carries no reset times.",
       ),
-      form: true,
+      group: Some(Group::SrcDesktop),
+      needs: None,
    },
    Setting {
       key: "session_enabled",
@@ -244,7 +442,8 @@ pub const ALL: &[Setting] = &[
              never runs. The token count is exact; the window size has to be \
              inferred from the model.",
       ),
-      form: true,
+      group: Some(Group::SrcSession),
+      needs: None,
    },
    Setting {
       key: "bridge_stale_secs",
@@ -258,7 +457,8 @@ pub const ALL: &[Setting] = &[
       },
       label: w("statusLine устаревает через", "statusLine stale after"),
       tip: STALE_TIP,
-      form: true,
+      group: Some(Group::SrcBridge),
+      needs: needs("bridge_enabled", "true", Otherwise::Dim),
    },
    Setting {
       key: "api_stale_secs",
@@ -272,7 +472,8 @@ pub const ALL: &[Setting] = &[
       },
       label: w("usage API устаревает через", "usage API stale after"),
       tip: STALE_TIP,
-      form: true,
+      group: Some(Group::SrcApi),
+      needs: needs("api_enabled", "true", Otherwise::Dim),
    },
    Setting {
       key: "desktop_stale_secs",
@@ -286,7 +487,8 @@ pub const ALL: &[Setting] = &[
       },
       label: w("Приложение устаревает через", "Desktop app stale after"),
       tip: STALE_TIP,
-      form: true,
+      group: Some(Group::SrcDesktop),
+      needs: needs("desktop_enabled", "true", Otherwise::Dim),
    },
    Setting {
       key: "session_stale_secs",
@@ -300,7 +502,8 @@ pub const ALL: &[Setting] = &[
       },
       label: w("Транскрипт устаревает через", "Transcript stale after"),
       tip: STALE_TIP,
-      form: true,
+      group: Some(Group::SrcSession),
+      needs: needs("session_enabled", "true", Otherwise::Dim),
    },
    Setting {
       key: "api_interval_secs",
@@ -319,7 +522,8 @@ pub const ALL: &[Setting] = &[
          "How often the widget fetches in the background. Rarer means fewer \
              requests but older figures.",
       ),
-      form: true,
+      group: Some(Group::SrcApi),
+      needs: needs("api_enabled", "true", Otherwise::Dim),
    },
    Setting {
       key: "api_budget_per_min",
@@ -338,7 +542,8 @@ pub const ALL: &[Setting] = &[
          "A cap the widget keeps for itself so the server never has to refuse. \
              Past it a request is delayed by a few seconds, not dropped.",
       ),
-      form: true,
+      group: Some(Group::SrcApi),
+      needs: needs("api_enabled", "true", Otherwise::Dim),
    },
    // ----------------------------------------------------------- behaviour ---
    Setting {
@@ -360,7 +565,8 @@ pub const ALL: &[Setting] = &[
              whichever transcript was written to last, wherever it is. Pinned — \
              the one chosen below.",
       ),
-      form: true,
+      group: Some(Group::Session),
+      needs: None,
    },
    Setting {
       key: "session_id",
@@ -375,7 +581,8 @@ pub const ALL: &[Setting] = &[
       ),
       // The picker owns this one: eighty-odd transcripts is a list to choose
       // from, not a uuid to type.
-      form: false,
+      group: None,
+      needs: None,
    },
    Setting {
       key: "session_scan_secs",
@@ -395,7 +602,8 @@ pub const ALL: &[Setting] = &[
          "How often the widget enumerates the transcripts again. Between scans \
              it stats one chosen file, so this costs next to nothing either way.",
       ),
-      form: true,
+      group: Some(Group::Session),
+      needs: None,
    },
    Setting {
       key: "ctx_limit",
@@ -417,7 +625,8 @@ pub const ALL: &[Setting] = &[
              status line states the size itself: run Claude Code in a terminal once \
              and it is remembered.",
       ),
-      form: true,
+      group: Some(Group::Window),
+      needs: None,
    },
    Setting {
       key: "ctx_limit_tokens",
@@ -436,7 +645,8 @@ pub const ALL: &[Setting] = &[
          "The denominator by hand. Needed when a model is held to a smaller \
              window by an environment variable: nothing on disk says so.",
       ),
-      form: true,
+      group: Some(Group::Window),
+      needs: needs("ctx_limit", "fixed", Otherwise::Hide),
    },
    Setting {
       key: "days_by",
@@ -456,7 +666,25 @@ pub const ALL: &[Setting] = &[
              exact time to the reset, 4d7h, and the daily allowance divides by it; \
              the switches below do nothing then.",
       ),
-      form: true,
+      group: Some(Group::Days),
+      needs: None,
+   },
+   Setting {
+      key: "days_form",
+      section: Section::Display,
+      // Shown as themselves, as the pace forms are.
+      kind: Kind::Choice(&[ch("units", "3д16ч", "3d16h"), ch("colon", "3:16", "3:16")]),
+      label: w("Вид счётчика", "Count reads as"),
+      tip: w(
+         "Как выглядит время до недельного сброса на пилюле. 3:16 — дни и часы \
+             через двоеточие: короче, но читается так же, как часы и минуты \
+             пятичасового окна рядом. Только при счёте по времени.",
+         "How the time to the weekly reset reads on the pill. 3:16 is days and \
+             hours around a colon: shorter, but it reads like the hours and minutes \
+             of the five-hour window beside it. Only when days are counted by time.",
+      ),
+      group: Some(Group::Days),
+      needs: needs("days_by", "time", Otherwise::Hide),
    },
    Setting {
       key: "count_today",
@@ -471,7 +699,8 @@ pub const ALL: &[Setting] = &[
              allowance. Today is usually half spent by the time you look, so it \
              does not by default. Only when days are counted by calendar.",
       ),
-      form: true,
+      group: Some(Group::Days),
+      needs: needs("days_by", "calendar", Otherwise::Hide),
    },
    Setting {
       key: "count_reset_day",
@@ -486,7 +715,8 @@ pub const ALL: &[Setting] = &[
              before the reset: with a reset at 07:00 that day is better left out. \
              Only when days are counted by calendar.",
       ),
-      form: true,
+      group: Some(Group::Days),
+      needs: needs("days_by", "calendar", Otherwise::Hide),
    },
    Setting {
       key: "click_through",
@@ -499,7 +729,8 @@ pub const ALL: &[Setting] = &[
          "The pill stops taking the mouse; clicks go to whatever is underneath. \
              Turn it back from the tray menu.",
       ),
-      form: true,
+      group: Some(Group::General),
+      needs: None,
    },
    Setting {
       key: "lang",
@@ -513,7 +744,8 @@ pub const ALL: &[Setting] = &[
          "Язык подписей и панели подробностей: русский или английский.",
          "Language of the labels and the detail panel: Russian or English.",
       ),
-      form: true,
+      group: Some(Group::General),
+      needs: None,
    },
    Setting {
       key: "demo",
@@ -527,7 +759,8 @@ pub const ALL: &[Setting] = &[
              as starting with `--demo`.",
       ),
       // A flag for working on the widget, not a setting for using it.
-      form: false,
+      group: None,
+      needs: None,
    },
    Setting {
       key: "data_dir",
@@ -550,7 +783,8 @@ pub const ALL: &[Setting] = &[
              files a second time — a further move has to be set from the file \
              now sitting wherever everything already moved to.",
       ),
-      form: true,
+      group: Some(Group::Files),
+      needs: None,
    },
    // ------------------------------------------------------------- display ---
    Setting {
@@ -566,7 +800,8 @@ pub const ALL: &[Setting] = &[
              quota is spent, or how much is left. The colour is keyed on spending \
              either way, so 10% left shows red.",
       ),
-      form: true,
+      group: Some(Group::QuotaPill),
+      needs: None,
    },
    Setting {
       key: "pace_view",
@@ -593,7 +828,25 @@ pub const ALL: &[Setting] = &[
              rest has to go; time is the same points in the window's own time: \
              hours and minutes for five hours, days and hours for the week.",
       ),
-      form: true,
+      group: Some(Group::QuotaPill),
+      needs: None,
+   },
+   Setting {
+      key: "pace_form",
+      section: Section::Display,
+      // Shown as themselves, as the pace forms are.
+      kind: Kind::Choice(&[ch("units", "▲3д2ч", "▲3d2h"), ch("colon", "▲3:02", "▲3:02")]),
+      label: w("Недельный темп", "Weekly pace reads as"),
+      tip: w(
+         "Как выглядит недельный темп во времени. 3:02 — дни и часы через \
+             двоеточие: короче, но читается так же, как часы и минуты \
+             пятичасового темпа рядом. В панели подробностей всегда словами.",
+         "How the weekly pace reads in time. 3:02 is days and hours around a \
+             colon: shorter, but it reads like the hours and minutes of the \
+             five-hour pace beside it. The detail panel always spells it out.",
+      ),
+      group: Some(Group::QuotaPill),
+      needs: needs("pace_view", "time", Otherwise::Hide),
    },
    Setting {
       key: "bar_colour",
@@ -611,21 +864,100 @@ pub const ALL: &[Setting] = &[
              spending outruns the clock, however little is gone. A short red bar \
              means quota left and no time to use it.",
       ),
-      form: true,
+      group: Some(Group::QuotaPill),
+      needs: None,
    },
    Setting {
-      key: "pace_rate",
+      key: "show_5h_pace",
       section: Section::Display,
       kind: Kind::Bool,
-      label: w("Скорость и прогноз", "Rate and forecast"),
+      label: w("Темп", "Pace"),
       tip: w(
-         "В панели: сколько процентов в час уходит сейчас и когда при таком темпе \
-             упрёмся в потолок. Считается по журналу замеров, который виджет ведёт \
-             сам.",
-         "In the panel: how many percent an hour are going now, and when that \
-             runs into the ceiling. Read from the log of readings the widget keeps.",
+         "Темп пятичасового лимита на пилюле. Только для пилюли: панель \
+             подробностей и строка статуса показывают всё, а при «Темп = выкл» \
+             его нет нигде.",
+         "The five-hour pace on the pill. The pill only: the detail panel and \
+             the status line show every figure, and with Pace off it is shown \
+             nowhere.",
       ),
-      form: true,
+      group: Some(Group::Pill5h),
+      needs: None,
+   },
+   Setting {
+      key: "show_5h_left",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Осталось до сброса", "Time to reset"),
+      tip: w(
+         "Сколько осталось до сброса пятичасового лимита, 3:19. Только для \
+             пилюли: панель подробностей и строка статуса показывают всё.",
+         "How long until the five-hour limit resets, 3:19. The pill only: the \
+             detail panel and the status line show every figure.",
+      ),
+      group: Some(Group::Pill5h),
+      needs: None,
+   },
+   Setting {
+      key: "show_5h_clock",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Время сброса", "Reset time"),
+      tip: w(
+         "Когда сбросится пятичасовой лимит, по местным часам, 20:49. Только \
+             для пилюли: панель подробностей и строка статуса показывают всё.",
+         "When the five-hour limit resets, by the local clock, 20:49. The pill \
+             only: the detail panel and the status line show every figure.",
+      ),
+      group: Some(Group::Pill5h),
+      needs: None,
+   },
+   Setting {
+      key: "show_week_pace",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Темп", "Pace"),
+      tip: w(
+         "Темп недельного лимита на пилюле. Только для пилюли: панель \
+             подробностей и строка статуса показывают всё, а при «Темп = выкл» \
+             его нет нигде.",
+         "The weekly pace on the pill. The pill only: the detail panel and the \
+             status line show every figure, and with Pace off it is shown \
+             nowhere.",
+      ),
+      group: Some(Group::PillWeek),
+      needs: None,
+   },
+   Setting {
+      key: "show_week_days",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Дни до сброса", "Days to reset"),
+      tip: w(
+         "Сколько осталось до сброса недельного лимита: 5д, или дни и часы при \
+             счёте по времени. Только для пилюли: панель подробностей и строка \
+             статуса показывают всё.",
+         "How long until the weekly limit resets: 5d, or days and hours when \
+             counted by time. The pill only: the detail panel and the status \
+             line show every figure.",
+      ),
+      group: Some(Group::PillWeek),
+      needs: None,
+   },
+   Setting {
+      key: "show_week_allowance",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Дневная норма", "Daily allowance"),
+      tip: w(
+         "Сколько процентов недельного лимита можно тратить в день, чтобы \
+             уложиться ровно к сбросу. Только для пилюли: панель подробностей и \
+             строка статуса показывают всё.",
+         "How much of the weekly limit may go per day to finish exactly at the \
+             reset. The pill only: the detail panel and the status line show \
+             every figure.",
+      ),
+      group: Some(Group::PillWeek),
+      needs: None,
    },
    Setting {
       key: "detail_mode",
@@ -642,7 +974,23 @@ pub const ALL: &[Setting] = &[
          "When the panel under the pill appears: while the settings window is \
              open, on hovering the pill, or never.",
       ),
-      form: true,
+      group: Some(Group::QuotaPanel),
+      needs: None,
+   },
+   Setting {
+      key: "pace_rate",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Скорость и прогноз", "Rate and forecast"),
+      tip: w(
+         "В панели: сколько процентов в час уходит сейчас и когда при таком темпе \
+             упрёмся в потолок. Считается по журналу замеров, который виджет ведёт \
+             сам.",
+         "In the panel: how many percent an hour are going now, and when that \
+             runs into the ceiling. Read from the log of readings the widget keeps.",
+      ),
+      group: Some(Group::QuotaPanel),
+      needs: None,
    },
    Setting {
       key: "detail_all_sources",
@@ -655,7 +1003,8 @@ pub const ALL: &[Setting] = &[
          "Adds a line per enabled source to the panel — the same thing \
              `ccd-usage-monitor --sources` prints.",
       ),
-      form: true,
+      group: Some(Group::QuotaPanel),
+      needs: None,
    },
    Setting {
       key: "ctx_view",
@@ -676,7 +1025,8 @@ pub const ALL: &[Setting] = &[
              both. The count owes nothing to a guessed window size, so it is worth \
              keeping beside the percentage until the denominator is trusted.",
       ),
-      form: true,
+      group: Some(Group::CtxShow),
+      needs: None,
    },
    Setting {
       key: "ctx_dir_linked",
@@ -691,7 +1041,8 @@ pub const ALL: &[Setting] = &[
              each gets its own: e.g. a remaining percentage alongside a spent token \
              count.",
       ),
-      form: true,
+      group: Some(Group::CtxShow),
+      needs: None,
    },
    Setting {
       key: "ctx_pct_dir",
@@ -699,7 +1050,8 @@ pub const ALL: &[Setting] = &[
       kind: Kind::Choice(SPENT_LEFT),
       label: w("Ctx проценты", "Ctx percent"),
       tip: CTX_DIR_TIP,
-      form: true,
+      group: Some(Group::CtxShow),
+      needs: None,
    },
    Setting {
       key: "ctx_tokens_dir",
@@ -707,7 +1059,8 @@ pub const ALL: &[Setting] = &[
       kind: Kind::Choice(SPENT_LEFT),
       label: w("Ctx токены", "Ctx tokens"),
       tip: CTX_DIR_TIP,
-      form: true,
+      group: Some(Group::CtxShow),
+      needs: needs("ctx_dir_linked", "false", Otherwise::Hide),
    },
    // ---------------------------------------------------------- thresholds ---
    Setting {
@@ -727,7 +1080,8 @@ pub const ALL: &[Setting] = &[
          "The figure at which a reading starts moving from green to amber. Read \
              off spending always, even when the pill is showing what is left.",
       ),
-      form: true,
+      group: Some(Group::Colours),
+      needs: None,
    },
    Setting {
       key: "danger_pct",
@@ -746,7 +1100,8 @@ pub const ALL: &[Setting] = &[
          "The figure at which a reading moves from amber to red, reaching full \
              red at a hundred.",
       ),
-      form: true,
+      group: Some(Group::Colours),
+      needs: None,
    },
    Setting {
       key: "pace_tolerance",
@@ -767,7 +1122,8 @@ pub const ALL: &[Setting] = &[
              line only: over is over, and the colour past the line starts at orange \
              rather than at green.",
       ),
-      form: true,
+      group: Some(Group::Pace),
+      needs: None,
    },
    Setting {
       key: "drop_after_secs",
@@ -788,7 +1144,8 @@ pub const ALL: &[Setting] = &[
              five-hour percentage from an hour ago is not an approximation of the \
              present, it is a different window.",
       ),
-      form: true,
+      group: Some(Group::Stale),
+      needs: None,
    },
    // --------------------------------------------------------------- style ---
    Setting {
@@ -808,7 +1165,8 @@ pub const ALL: &[Setting] = &[
          "One multiplier for the fonts, the height and the paddings alike. The \
              knob to reach for on a different monitor.",
       ),
-      form: true,
+      group: Some(Group::Pill),
+      needs: None,
    },
    Setting {
       key: "opacity",
@@ -826,7 +1184,8 @@ pub const ALL: &[Setting] = &[
          "How solid the background of the pill and the panel is. The text and \
              the figures stay as they are.",
       ),
-      form: true,
+      group: Some(Group::Pill),
+      needs: None,
    },
 ];
 
@@ -1038,5 +1397,99 @@ mod tests {
             );
          }
       }
+   }
+
+   #[test]
+   fn every_page_has_a_card_and_every_card_a_page() {
+      // A page with nothing on it is an entry in the side list that opens
+      // onto a blank pane; a card on no page is never seen.
+      for page in Page::ALL {
+         assert!(
+            Group::ALL.iter().any(|g| g.page() == page),
+            "{page:?} has no card"
+         );
+      }
+      for group in Group::ALL {
+         assert!(Page::ALL.contains(&group.page()));
+      }
+   }
+
+   #[test]
+   fn what_a_setting_needs_is_a_setting_beside_it() {
+      // Checked against the schema rather than trusted: a misspelt key or
+      // value would hide a row for good, and nobody would notice a row that
+      // is not there.
+      for (at, s) in ALL.iter().enumerate() {
+         let Some(n) = s.needs else {
+            continue;
+         };
+         let Some(by) = ALL.iter().position(|o| o.key == n.key) else {
+            panic!("{} needs {}, which does not exist", s.key, n.key);
+         };
+         let other = &ALL[by];
+         // Drawn indented under it, so it has to be on the same card and
+         // come after it.
+         assert_eq!(
+            other.group, s.group,
+            "{} needs {} from another card",
+            s.key, n.key
+         );
+         assert!(by < at, "{} stands before {}, which it needs", s.key, n.key);
+         // One level only: a chain would need the form to work out which
+         // link hid the row.
+         assert!(
+            other.needs.is_none(),
+            "{} needs {}, which needs something too",
+            s.key,
+            n.key
+         );
+         let spelled = match other.kind {
+            Kind::Bool => n.value == "true" || n.value == "false",
+            Kind::Choice(options) => options.iter().any(|o| o.value == n.value),
+            _ => false,
+         };
+         assert!(
+            spelled,
+            "{}: `{}` is not a value {} can take",
+            s.key, n.value, n.key
+         );
+      }
+   }
+
+   #[test]
+   fn a_need_is_met_or_not_by_the_config() {
+      let mut cfg = Config::default();
+      let tokens = get("ctx_limit_tokens").and_then(|s| s.needs).unwrap();
+      cfg.ctx_limit = crate::config::CtxLimit::Learned;
+      assert!(!tokens.met(&cfg));
+      cfg.ctx_limit = crate::config::CtxLimit::Fixed;
+      assert!(tokens.met(&cfg));
+
+      let stale = get("api_stale_secs").and_then(|s| s.needs).unwrap();
+      cfg.api_enabled = false;
+      assert!(!stale.met(&cfg));
+      cfg.api_enabled = true;
+      assert!(stale.met(&cfg));
+   }
+
+   #[test]
+   fn every_tip_opens_with_a_sentence_short_of_the_whole() {
+      // The lead is what stands under a setting's name; a tip whose first
+      // sentence cannot be found would print whole there, several lines of it.
+      for s in ALL {
+         for ru in [true, false] {
+            let tip = s.tip.get(ru);
+            let first = lead(tip);
+            assert!(!first.is_empty(), "{}: no lead", s.key);
+            assert!(
+               first.ends_with(['.', '!', '?']),
+               "{}: the lead does not end a sentence: {first}",
+               s.key
+            );
+         }
+      }
+      assert_eq!(lead("One. Two."), "One.");
+      assert_eq!(lead("A 2.5 thing. Next."), "A 2.5 thing.");
+      assert_eq!(lead("No full stop"), "No full stop");
    }
 }

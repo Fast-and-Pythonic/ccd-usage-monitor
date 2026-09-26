@@ -5,12 +5,47 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-25** — the settings window becomes pages of cards, chosen from three mockups
 - **2026-09-23** — a setting's tip floats over the form instead of opening a line in it
 - **2026-09-13** — egui is gone, and the settings window is a list
 - **2026-09-12** — the Slint front end lands beside the egui one, not instead of it
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-09-25 — the settings window becomes pages of cards, chosen from three mockups
+
+Done: [[A33]] — a list of pages down the left, cards of settings on each, the
+first sentence of a tip under every name; `schema.rs` says where each setting
+sits and what it depends on.
+
+The user found the one-column list unpleasant and pointed at another utility's
+two-column settings screen as the bar. Before any Slint was written, three
+layouts were mocked up in HTML on a design canvas, on the real settings with
+their real wording and values: pages with cards, two columns on one screen, and
+tabs. The two-column one, closest to the example, did not fit its own window as
+a mockup, and would have needed rebalancing by hand for every new setting; the
+user chose the pages, with one idea taken from the tabs — a setting that does
+nothing at the moment leaves the form, and only a switched-off source's settings
+stay, greyed.
+
+Two things in the existing window turned up on the way. Text was applied on every
+keystroke, so the first letter typed into `data_dir` was a folder to move the
+files to, followed by a restart; it is applied on Enter now. And the usage
+endpoint's status was pushed to the form on every tick; with rows rewritten in
+place that would have repainted the whole page every second, so it now touches
+its one row, and only when its words change.
+
+The window was checked without a mouse by rendering it from the binary with a
+throwaway flag, removed before the commit: every page in both languages, a
+switch and two choices through the callbacks a click reaches, and a slider drag
+through synthetic pointer events. That is how [[G27]] and [[G28]] were found —
+rows overlapping on the first page, and a short page spreading its cards over
+the window. A real mouse on the form is still owed; `status.md` says what.
+
+Status: Working
 
 ---
 

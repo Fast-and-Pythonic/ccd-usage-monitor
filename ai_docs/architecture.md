@@ -32,6 +32,7 @@
 - **A30** · figures worked out from the time step on the minute
 - **A31** · a hint names the figure, then says what it is now
 - **A32** · a commit has to pass the checks, and a hook says so
+- **A33** · the settings window is pages of cards, and the schema says where each setting sits
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -372,7 +373,12 @@ into a share of the window's length — 1% of five hours is three minutes, so ni
 points ahead is `▲0:27`; 1% of a week is 100.8 minutes. The grain follows the
 window rather than the value: `h:mm` for five hours, like the countdown beside
 it, and days with whole hours for the week (`▲3д2ч`), because `73:55` is a sum to
-do and minutes are noise at that scale. It is one form on its own, not paired:
+do and minutes are noise at that scale. `pace_form = "colon"` writes the week
+as `▲3:02` instead, the way `days_form` shortens the day count (A29): on the
+pill and the status line only, never in the panel, and with the same price —
+it reads like the five-hour `h:mm`. A setting of its own rather than a
+follower of `days_form`, because that one only exists when days are counted by
+time and a pace in time form does not care how they are counted. It is one form on its own, not paired:
 pairs with it would double a list of seven for no reading the panel does not
 already give. The cell's reserved width depends on the window too, and on the
 shape of the text on show (`pace_time_template`): that text with every digit
@@ -681,6 +687,13 @@ surgery, with and without an explicit `DefaultBackgroundColor`, and with DWM's
 blur-behind trick — all painted an opaque backdrop; the same page under Tauri
 let the desktop through. So what was missing was configuration rather than
 capability, and the transparency risk against a future web front end is closed.
+
+**How much transparency weighs.** It is wanted, not required — the owner, asked
+on 2026-09-25, rarely runs the pill translucent. A renderer or a front end that
+lost it would cost the `opacity` setting and the see-through corners round the
+pill's rounded ends, which would show as a dark rectangle behind them (G05's
+symptom); that is a price to state when choosing, not a reason on its own to
+rule the option out.
 
 **What the drawing layer costs today**, for scale: `draw` 411 lines,
 `build_cells` 141, `pace_cells` 47, `ctx_cells` 39, `draw_details` 28,
@@ -1108,9 +1121,21 @@ the zero case are the old behaviour.
 `12h`, for the same reason a weekly pace gap does (`view::pace_time_template`):
 a fixed `0d00h` leaves the short forms floating in a hole.
 
+**By time the count has a second, shorter form**, `days_form = "colon"`:
+`3:16` for `3d16h`, the hours padded as minutes are in `h:mm`, so the cell
+reserves `0:00` and holds its width. It is a separate setting rather than a
+third `days_by`, because it changes how the figure reads and nothing it
+divides by; the settings window hides it unless `days_by` is `time`. The
+price is that `3:16` reads like the five-hour `h:mm` beside it, which is why
+the letters stay the default. It applies to the figure only — the pill, the
+status line and `days_text` — and the hover hint keeps words. The weekly
+pace gap in time form has the same choice as a setting of its own,
+`pace_form` (A16), since it does not depend on how the days are counted.
+
 **`days_left` in the JSON stays an integer.** A21 makes the type part of the
 contract; by time it carries the whole days, and the pill's text travels
-beside it as `days_text`, with `display.days_by` saying which count is on.
+beside it as `days_text`, with `display.days_by` saying which count is on
+and `display.days_form` which form it is written in.
 The exact seconds were already there in `resets_in_secs`.
 
 ## A30: figures worked out from the time step on the minute
@@ -1189,3 +1214,66 @@ slow enough to be skipped is worse than one that is not. The checks read the
 working tree rather than the staged snapshot, so a half-staged file is judged by
 its other half. And `core.hooksPath` is local to a clone: a fresh checkout does
 nothing until it is set, which README says.
+
+---
+
+## A33: the settings window is pages of cards, and the schema says where each setting sits
+The window has a list of pages down its left side and, on each page, cards of
+settings; under each setting's name stands the first sentence of its tip. A
+setting names its card (`Group`, which belongs to a `Page`) in `schema.rs`, and,
+where it only matters while another setting has some value, what it `Needs` —
+with whether it is greyed out or hidden when that is not met. `settings_ui.rs`
+walks that into a model; `ui/settings.slint` draws a row by the control it asks
+for and never knows which setting it is.
+
+**Why not a list.** The window before this was every setting in one scrolling
+column, in the order of the file, with four arrow buttons on every number. It
+read as a dump of the file, not as a place to change something: a source's
+switch, its expiry and its polling were three sections apart, and nothing said
+what a row did without hovering over it.
+
+**Why not two columns.** Three layouts were mocked up on the real settings and
+their real wording before any Slint was written: pages with cards, two columns
+with everything on one screen, and tabs over a narrow window. Two columns did
+not fit even as a mockup — the last card of one column ran under the footer —
+and every setting added later would have meant balancing the columns again by
+hand, which is layout work for a form that is supposed to be generated. Tabs
+kept the bare list inside each tab. Pages of cards grow by a card or a row, and
+a page longer than the window simply scrolls.
+
+**Why a page is not a `Section`.** `Section` groups the file by what kind of
+thing a key is, so someone editing it finds the thresholds together. A page
+groups by what someone opening the window is trying to do. The two orders
+disagree — a source's expiry is a `Sources` key and sits on the source's card,
+but the days count is `Behaviour` and sits with the pace — and neither is wrong,
+so both exist. Within a card the order is the order of `ALL`, which does not
+reach the file: `config.rs` writes keys in the order `Config` serialises them.
+
+**What `Needs` is for.** A setting that does nothing at the moment is noise, but
+the two cases differ. A switched-off source still has an expiry, and seeing it
+greyed says "the source is off" rather than "the setting is gone": `Dim`. A
+manual window size means nothing until "manual" is chosen: `Hide`. A tested rule
+keeps a need on the same card, above the setting that has it, and one level deep,
+so the form can indent the dependent row without being told to.
+
+**The control follows from the kind.** A switch for a bool; buttons side by side
+for a choice of up to three and a menu past that; a stepper for a duration or a
+token count, whose range runs from half a minute to a day and would put every
+value anyone uses in the first pixels of a track; a slider for everything else.
+Nothing about drawing is written against a setting.
+
+**Rows are rewritten where they stand.** Every click rewrites the rows in place
+rather than handing the window a new model: a new model rebuilds the page under
+the pointer, losing the scroll position and ending a drag. For that the number
+of rows on a card never changes — a setting that does not apply is marked
+hidden, not left out — and the value controls are drawn in the `.slint` file with
+no state of their own. A stock `Switch` or `Slider` writes its own value when
+used, which cuts its binding to the row, so from then on it shows what was
+clicked rather than what was saved. The status line of the usage endpoint changes
+every second and is rewritten on its own, and only when its words change (G23).
+
+**A slider writes the file once.** While it is dragged the change goes to the
+config in memory and the pill follows; the file is written on release, not a few
+dozen times a second. Text is applied on Enter: applied per keystroke, the first
+letter of a path typed into `data_dir` was already a folder to move every file
+to, and a restart.

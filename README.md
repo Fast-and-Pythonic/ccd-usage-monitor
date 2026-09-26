@@ -19,7 +19,7 @@ edit without a compiler.
 | `20:49` | local clock time of the reset |
 | `41%` | share of the weekly limit spent, under the same setting |
 | `▲1.4×` | the same pace figure for the weekly window |
-| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`) |
+| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`, or `4:07` with `days_form = colon`) |
 | `20%` | how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it, so by time half a day and 40% left reads `80%` |
 | `ctx 38%` | how full the session's context window is — the share, the token count (`309k`), or both, per `ctx_view` |
 
@@ -82,6 +82,22 @@ slightly-old number, it is a different window.
 cargo build --release
 ```
 
+That is the build to install and to point the status line at. It is also the
+slowest by far — whole-program LTO on one codegen unit — so while working on
+the code there are two others:
+
+| Command | What for | Binary |
+|---|---|---|
+| `cargo check` | type-check only, nothing to run | — |
+| `cargo run -- --demo` | debug build, quick to rebuild | `target/debug/` |
+| `cargo run --profile quick -- --demo` | optimised, no LTO; the one to try the widget in | `target/quick/` |
+| `cargo build --release` | what is installed and what the status line runs | `target/release/` |
+| `cargo test` | the tests | — |
+
+`--demo` shows synthetic figures that hold still; leave it out to see the real
+ones. Only one copy of the widget should run at a time, and a running copy
+locks its own `.exe`, so close it before rebuilding that profile.
+
 Working on the code, enable the checks a commit has to pass — `cargo fmt`,
 `cargo clippy` with no findings, and the docs linter where it is available:
 
@@ -125,11 +141,15 @@ side, one small step and one large one each. What they set:
 | `corner_radius` | `10.0` | how round the pill, the panel and the hints are — `0` for square corners, half the pill's height for the original lozenge |
 | `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left` |
 | `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
-| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, the two settings below decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `colon` (`▲3:02`, days and hours, shorter but easy to take for the five-hour `h:mm`); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
+| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
 | `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
 | `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
+| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
 | `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
+| `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
+| `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
 | `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
 | `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
 | `ctx_limit` | `learned` | how the context percentage gets its denominator: `learned` (the size the status line stated for that model, the table underneath), `table` (by model name only), `fixed` |
