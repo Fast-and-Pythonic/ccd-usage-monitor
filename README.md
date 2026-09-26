@@ -52,18 +52,19 @@ readings, how fast the quota is actually going and where that ends:
 7d  58% left · 42% spent · resets Tue 10:00 · ▼1.3× 8% under pace · 17%/day · lasts to the reset · usage API · 19%/day allowed
 ```
 
-That log lives in `%LOCALAPPDATA%\ccd-usage-monitor\samples.json`, holds eight days, and is
+That log lives in `samples.json` beside `config.toml`, holds eight days, and is
 seeded at startup from the Claude desktop app's own `plan-usage-history.json`,
 so the rate is answerable on the first minute rather than after an hour of
 watching. The seeding is not tied to the **Desktop app** source switch: that
 switch decides whose figures are shown now, while this is a one-off read of a
 file already on disk.
 
-Right-clicking the pill opens the settings in a window of their own — sources,
-sizes, opacity, language, click-through — and the tray icon opens the same
-window, which is the way in when clicks fall through the pill. Every row there
-carries a hover hint saying what it actually does; the labels are only as long
-as a row with four stepper buttons allows.
+Right-clicking the pill opens the settings in a window of their own — pages of
+cards for the sources, the quotas, the context figure, pace and thresholds,
+appearance and the system (see *Settings*) — and the tray icon opens the same
+window, which is the way in when clicks fall through the pill. Under every
+setting stands the first sentence of what it actually does, and the whole of
+it floats up on hover.
 
 The detail panel under the pill is sized to its longest line and appears
 according to `detail_mode`: with the settings window (the default), on hover, or
@@ -119,53 +120,125 @@ Forward slashes are required: on Windows Claude Code runs the status-line
 command through Git Bash, which eats unescaped backslashes and then fails
 silently.
 
-Run `ccd-usage-monitor.exe` to show the widget. Position, opacity, sizes, language and the
-source setting live in `%APPDATA%\ccd-usage-monitor\config.toml`.
+Run `ccd-usage-monitor.exe` to show the widget. Its settings live in
+`config.toml`, in `%APPDATA%\ccd-usage-monitor\` unless `data_dir` names
+another folder (below); the theme, the state file and the pill's remembered
+position (`window.json`) sit beside it and move with it.
 
-## Sizes
+## Settings
 
-Right-click → **Sizes** opens a set of rows with `−− −` and `+ ++` on either
-side, one small step and one large one each. What they set:
+Right-click the pill, or use the tray icon, and the settings open in a window
+of their own: six pages down its left side — **Sources**, **Quotas**,
+**Context**, **Pace and thresholds**, **Appearance**, **System** — each a
+column of cards, so that a source's switch, its expiry and its polling sit on
+one card rather than three sections apart. Under every setting's name stands
+the first sentence of what it does; the rest is in a tooltip on hover.
+
+The control follows the kind of value: a switch; a row of buttons for up to
+three choices and a menu for more; a slider for percentages and plain counts;
+a stepper for durations and token counts, whose ranges are too wide for a
+track. Once clicked, a slider takes a small step from the wheel or `←`/`→`
+and a big one from `PgUp`/`PgDn`; Shift makes a stepper's `−`/`+` the big
+step. A double click on either puts the default back. A setting that only
+matters while another one has some value stands indented under it, and greys
+out or leaves the page when it has no effect.
+
+Every change is written to `config.toml` at once, and the file is re-read
+while the widget runs, so editing it by hand works just as well — comments and
+key order survive a click in the window. The keys, page by page:
+
+**Sources**
 
 | Key | Default | What it does |
 |---|---|---|
-| `scale` | `1.0` | multiplies everything below, and the paddings with them |
-| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
-| `font_pct` | `14.0` | the large percentages |
-| `font_time` | `14.0` | countdown, day count, daily allowance |
-| `pill_height` | `34.0` | height of the pill; text and bar positions follow it |
-| `track_height` | `3.0` | thickness of the bars — `0` hides them; the pill grows to keep them inside |
-| `pad_top` | `4.5` | clear space above the figures |
-| `gap_text_bars` | `3.0` | between the figures and the bars |
-| `pad_bottom` | `4.5` | below the bars |
-| `gaps_x` | `1.0` | one multiplier for every horizontal gap: between the figures, either side of a group divider, and from the edge of the pill |
-| `corner_radius` | `10.0` | how round the pill, the panel and the hints are — `0` for square corners, half the pill's height for the original lozenge |
-| `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left` |
-| `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
-| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `bridge_enabled`, `api_enabled`, `desktop_enabled`, `session_enabled` | `true` | the four sources, each an independent switch: the status line, the usage endpoint, the desktop app's history and the conversation transcripts (see *Where the numbers come from*) |
+| `bridge_stale_secs`, `api_stale_secs`, `session_stale_secs` | `900` | how long a source's figures stay current; past it they go grey and the pill shows an amber dot |
+| `desktop_stale_secs` | `1800` | the same for the desktop app's history, allowed twice as long because it is only written every quarter of an hour |
+| `api_interval_secs` | `180` | how often the endpoint is polled in the background |
+| `api_budget_per_min` | `4` | requests per rolling minute the widget allows itself; past it a request waits a few seconds rather than being dropped |
+
+**Quotas**
+
+| Key | Default | What it does |
+|---|---|---|
+| `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left`; the colour is keyed on spending either way |
+| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
 | `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `colon` (`▲3:02`, days and hours, shorter but easy to take for the five-hour `h:mm`); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
-| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
-| `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
-| `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%|2.0×`, run together with a grey pipe) or `off` |
 | `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |
 | `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
 | `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
+| `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
 | `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
-| `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
+| `detail_all_sources` | `false` | a line per enabled source in the detail panel — what `--sources` prints |
+
+**Context**
+
+| Key | Default | What it does |
+|---|---|---|
+| `session_pick` | `live` | which session the context figure is about: `live`, `freshest`, or `pinned` |
+| `session_id` | `""` | the conversation pinned, when `session_pick = "pinned"` — chosen from the list of conversations on this page, not typed |
+| `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
 | `ctx_limit` | `learned` | how the context percentage gets its denominator: `learned` (the size the status line stated for that model, the table underneath), `table` (by model name only), `fixed` |
 | `ctx_limit_tokens` | `200000` | the denominator when `ctx_limit = "fixed"`, clamped to 8 192 … 1 000 000 |
+| `ctx_view` | `pct` | the form of the `ctx` group: `pct` (`14%`), `tokens` (`142k`), `pct_tokens`, `tokens_pct`, or `off` |
 | `ctx_dir_linked` | `true` | whether the `ctx` percentage and token count share one direction, or are set separately below |
 | `ctx_pct_dir` | `spent` | the direction of the `ctx` percentage: `spent` or `left`. Independent of `pct_mode` — a window fills, it does not drain like the two quotas |
 | `ctx_tokens_dir` | `spent` | the direction of the `ctx` token count; only read when `ctx_dir_linked = false` |
-| `session_pick` | `live` | which session the context figure is about: `live`, `freshest`, or `pinned` |
-| `session_id` | `""` | the conversation pinned by hand, when `session_pick = "pinned"` |
-| `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
+
+**Pace and thresholds**
+
+| Key | Default | What it does |
+|---|---|---|
+| `warn_pct` | `60.0` | the spending at which a figure starts moving from green to amber |
+| `danger_pct` | `85.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
+| `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
+| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
+| `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
+| `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
+| `drop_after_secs` | `3600` | after this a reading is not shown at all rather than merely greyed: a five-hour figure from an hour ago is a different window |
+
+**Appearance**
+
+| Key | Default | What it does |
+|---|---|---|
+| `scale` | `1.0` | multiplies every size the theme sets — fonts, height, paddings — from 0.6 to 3.0. The knob to reach for when the widget moves to another monitor |
+| `opacity` | `0.82` | how solid the background of the pill and the panel is, from 0.3 to 1.0; the text stays as it is |
+| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
+
+The same page shows where the theme file is and opens it.
+
+**System**
+
+| Key | Default | What it does |
+|---|---|---|
+| `click_through` | `false` | the pill stops taking the mouse and clicks go to whatever is underneath; turn it back from the tray menu |
+| `lang` | `ru` | the language of the labels and the detail panel: `ru` or `en` |
 | `data_dir` | `""` | empty is the usual place; naming a folder moves `config.toml`, `theme.slint` and everything else this program keeps for itself there, and restarts the widget. Useful when the usual place is not directly editable (A28) |
 
-`scale` is the knob to reach for when the widget moves to another monitor;
-the rest are for taste. **Reset sizes** puts them all back. Opacity has the same
-pair of steps, 1% and 5%.
+The same page opens `config.toml` and restarts the widget. One key has no row
+anywhere: `demo` (`false`), the synthetic figures `--demo` also gives, which
+is a switch for working on the layout rather than a setting for using it.
+
+### Sizes are the theme's
+
+`scale` and `opacity` are all that is left of the look in the config. Every
+other size — the pill's height, the thickness of the bars, the paddings above
+and below the figures, the gaps between them, the corner radius, the font
+sizes — is a named property near the top of `theme.slint`, in the same folder
+as `config.toml`: `pill_height`, `corner`, `track_height`, `pad_x`,
+`cell_gap`, `rule_gap`, `group_gap`, `pad_top`, `gap_text_bars`,
+`pad_bottom`, `font_pct`, `font_time`, `font_small`, `font_arrow`, and the
+detail panel's own `corner`, `font` and `gutter` further down. Each is written
+as a multiple of `scale`, so the one knob still moves them all. The file is
+written from the built-in default, `themes/pill.slint` in this repository, the
+first time the widget runs; see *The look is a file* for what editing it
+involves.
+
+The keys that once held these sizes in the config — `font_pct`, `font_time`,
+`pill_height`, `track_height`, `pad_top`, `gap_text_bars`, `pad_bottom`,
+`gaps_x`, `corner_radius` — are ignored now, and dropped from the file the
+next time the widget writes it.
 
 ## Modes
 
@@ -193,7 +266,7 @@ the countdowns read `--:--`.
 
 **The bridge** — Claude Code passes its status-line command a JSON payload with
 `rate_limits.five_hour`, `rate_limits.seven_day`, `context_window` and the
-model's id. `--bridge` folds each payload into `%LOCALAPPDATA%\ccd-usage-monitor\state.json`,
+model's id. `--bridge` folds each payload into `state.json` beside `config.toml`,
 and the widget watches that file. This is the documented path, and the only one
 that states the *size* of the context window outright — which is why one
 terminal session is worth running even if you work in the desktop app: the size
@@ -287,9 +360,9 @@ a real 429 costs.
 
 The pill's whole appearance — palette, type, paddings, corner radius, the
 thickness of the bars — is `theme.slint`, written to
-`%APPDATA%\ccd-usage-monitor\` the first time the widget runs. Edit it and use
-"Перезапустить" / "Restart" in the tray or the settings window; no Rust
-toolchain is involved.
+`%APPDATA%\ccd-usage-monitor\`, or into `data_dir`, the first time the widget
+runs. Edit it and use "Перезапустить" / "Restart" in the tray or the settings
+window; no Rust toolchain is involved.
 
 What the theme does **not** decide is deliberate: the wording and the figures
 arrive already worked out, which colour a figure gets is decided by what it
