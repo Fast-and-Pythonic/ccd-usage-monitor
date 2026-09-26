@@ -28,8 +28,12 @@ fi
 if printf '%s\n' "$staged" | grep -qE '^ai_docs/|^CLAUDE\.md$'; then
    # The documentation standard lives outside this repository. Where it is not
    # checked out beside it, say so and let the commit through: a contributor
-   # without it has nothing to run.
-   std="${AI_DOCS_STANDARD:-../ai-docs-method-pub}"
+   # without it has nothing to run. "Beside it" means beside the main checkout:
+   # a linked worktree sits deeper, under .claude/worktrees/<name>/, and its
+   # own parent holds no standard. The common git dir is the main checkout's
+   # .git, whichever tree commits.
+   main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
+   std="${AI_DOCS_STANDARD:-$main/../ai-docs-method-pub}"
    if [ -f "$std/tools/lint_docs.py" ]; then
       echo "pre-commit: ai_docs lint and index check"
       python "$std/tools/lint_docs.py" --root . --docs ai_docs --profile engineering --tier M
