@@ -56,6 +56,7 @@ app, which shows none of this itself and does not run the status line (G06).
    wipes the extended styles with it)
 - **The widget quits when it is hidden, or a window steals the focus** → G20
    and G21
+- **The widget will not quit, or leaves a tray icon behind** → G31 and G25
 - **Upgrading Slint** → G18–G23 and G26, and re-read A24 before changing a struct the theme receives
 
 ## Five facts first

@@ -155,6 +155,97 @@ pub fn cursor() -> (i32, i32) {
    (p.x, p.y)
 }
 
+/// Clear the notification area of icons left by processes that are gone.
+///
+/// A process ended by force (`taskkill /F`, Task Manager, a crash) never runs
+/// the `NIM_DELETE` that removes its icon, and Windows keeps drawing the last
+/// image until the pointer crosses it (G25): the notification toolbar checks
+/// an icon's owner only on a mouse move over it. So the pointer's crossing is
+/// played to it — `WM_MOUSEMOVE` over every button slot, then
+/// `WM_MOUSELEAVE` so no tooltip is left hanging.
+///
+/// Two toolbars: the one on the taskbar and the one in the overflow flyout.
+/// The flyout's toolbar has a zero client rectangle while it is closed, so a
+/// grid as many buttons wide and tall as it holds is swept instead — enough
+/// for any way the toolbar could lay them out. Where the notification area
+/// is built some other way (Windows 11) the windows are not found and
+/// nothing happens. Every message has a short timeout, so a hung Explorer
+/// costs the start-up a moment and no more.
+pub fn sweep_tray() {
+   use windows_sys::Win32::Foundation::RECT;
+   use windows_sys::Win32::UI::WindowsAndMessaging::{
+      FindWindowExW, FindWindowW, GetClientRect, SMTO_ABORTIFHUNG, SendMessageTimeoutW,
+      WM_MOUSEMOVE,
+   };
+   // commctrl.h; the Controls feature is not worth pulling in for three.
+   const TB_BUTTONCOUNT: u32 = 0x0418;
+   const TB_GETBUTTONSIZE: u32 = 0x043A;
+   const WM_MOUSELEAVE: u32 = 0x02A3;
+
+   let wide = |s: &str| -> Vec<u16> { s.encode_utf16().chain([0]).collect() };
+   let child = |parent: HWND, class: &str| -> HWND {
+      if parent.is_null() {
+         return std::ptr::null_mut();
+      }
+      unsafe {
+         FindWindowExW(
+            parent,
+            std::ptr::null_mut(),
+            wide(class).as_ptr(),
+            std::ptr::null(),
+         )
+      }
+   };
+   let send = |hwnd: HWND, msg: u32, lp: LPARAM| -> usize {
+      let mut out = 0usize;
+      let ok = unsafe { SendMessageTimeoutW(hwnd, msg, 0, lp, SMTO_ABORTIFHUNG, 50, &mut out) };
+      if ok == 0 { 0 } else { out }
+   };
+
+   let taskbar = unsafe { FindWindowW(wide("Shell_TrayWnd").as_ptr(), std::ptr::null()) };
+   let overflow =
+      unsafe { FindWindowW(wide("NotifyIconOverflowWindow").as_ptr(), std::ptr::null()) };
+   let toolbars = [
+      child(
+         child(child(taskbar, "TrayNotifyWnd"), "SysPager"),
+         "ToolbarWindow32",
+      ),
+      child(overflow, "ToolbarWindow32"),
+   ];
+
+   for toolbar in toolbars {
+      if toolbar.is_null() {
+         continue;
+      }
+      let count = send(toolbar, TB_BUTTONCOUNT, 0) as i32;
+      if count == 0 {
+         continue;
+      }
+      let size = send(toolbar, TB_GETBUTTONSIZE, 0);
+      let bw = ((size & 0xFFFF) as i32).max(8);
+      let bh = (((size >> 16) & 0xFFFF) as i32).max(8);
+      let mut rc = RECT {
+         left: 0,
+         top: 0,
+         right: 0,
+         bottom: 0,
+      };
+      unsafe { GetClientRect(toolbar, &mut rc) };
+      let (cols, rows) = if rc.right > 0 && rc.bottom > 0 {
+         ((rc.right + bw - 1) / bw, (rc.bottom + bh - 1) / bh)
+      } else {
+         (count, count)
+      };
+      for row in 0..rows {
+         for col in 0..cols {
+            let (x, y) = (col * bw + bw / 2, row * bh + bh / 2);
+            send(toolbar, WM_MOUSEMOVE, ((y << 16) | (x & 0xFFFF)) as LPARAM);
+         }
+      }
+      send(toolbar, WM_MOUSELEAVE, 0);
+   }
+}
+
 /// The widget's window, addressed the way Win32 wants it.
 #[derive(Clone, Copy)]
 pub struct Frame {

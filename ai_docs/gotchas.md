@@ -37,6 +37,7 @@ non-obvious cause.
 - **G28** · a repeater cannot hold an `if`, and the wrappers it needs take spacing
 - **G29** · a Slint `ScrollView` scrolls by the wheel in pulses over its content, and in jumps over its bar
 - **G30** · a `Text` placed by its own `y` gives its cell no height, and the pill folds to a sliver
+- **G31** · `taskkill` without `/F` hid the pill and left the widget running
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -545,7 +546,16 @@ is simply wrong, is always this shape of bug — the process behind it is
 already gone, and the taskbar just has not been told. Killing a process
 forcibly (`taskkill /F`, Task Manager "End task") skips every destructor
 regardless of this fix — that is an OS-level limitation on any tray app, not
-something to chase in this codebase.
+something to chase in this codebase. What can be done about the ghosts
+such a kill leaves is done at the next start: `win::sweep_tray` plays the
+pointer's crossing to the notification toolbars before this instance adds
+its own icon — `WM_MOUSEMOVE` over every button slot, then `WM_MOUSELEAVE` —
+and the toolbar drops every icon whose owner is gone. Checked with the icons
+counted by `TB_BUTTONCOUNT`: a ghost left by `taskkill /F` stayed for eight
+seconds with nothing launched, and was gone once the next instance was up.
+The overflow flyout's toolbar is swept too but was not exercised: it held no
+icons on the machine it was checked on. For the plain `taskkill` that used to
+leave the widget running, see G31.
 
 ---
 
@@ -655,3 +665,35 @@ to the height of a larger one and the `y` binding centres it there.
 **How to spot it:** a pill or row of the right width and almost no height,
 with a theme that loads cleanly. Same family as G27: a container whose content
 is not in a layout has no size of its own unless it is given one.
+
+---
+
+## G31: `taskkill` without `/F` hid the pill and left the widget running
+**Symptom:** `taskkill /PID <pid>` reported that it had sent the termination
+signal, and the process stayed, with its tray icon — the pill gone from the
+screen, the panel still parked. The only way to stop the widget from a script
+was `taskkill /F`, which skips every destructor and so leaves the ghost icon
+of G25.
+**Root cause:** without `/F`, `taskkill` posts `WM_CLOSE` to the process's
+windows. winit turns that into a close request, and a Slint window's default
+answer to one is to hide itself. Under `run_event_loop_until_quit` (G20) a
+hidden window ends nothing, so the program carried on with no pill, which is
+the same state the tray's "Hide" produces on purpose. Read back after the
+signal: one of the two Slint windows invisible, the `tray_icon_app` window
+still there, the process alive.
+**Fix:** `on_close_requested` on both the pill and the panel drops the tray
+(`a.tray = None`, as the tray's Quit does) and calls `quit_event_loop`,
+answering `KeepWindowShown` so neither window's styles are disturbed on the
+way out (G21). Alt+F4 on the pill now quits too, which is what a close means.
+The settings window keeps its own handler, which hides only itself. As a
+backstop, `run` drops the tray after the loop returns, whatever ended it:
+`App` sits in a cycle with the callbacks the pill holds, so its `Drop` never
+runs on its own. Checked on `--demo`: with the tray icons counted by
+`TB_BUTTONCOUNT` on the notification toolbar, `taskkill` without `/F` took the
+count back to where it was before the launch and the process exited with 0;
+a `WM_CLOSE` sent to the open settings window alone hid that window and left
+the widget running.
+**How to spot it:** a process that acknowledges a polite termination and
+keeps running, with no window on screen. List its top-level windows and read
+their visibility — a close that was answered by hiding looks exactly like
+this.

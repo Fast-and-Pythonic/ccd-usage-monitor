@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-27** — a polite `taskkill` ends the widget, and a start clears old ghosts
 - **2026-09-27** — the pill's cells lose their reserved width, and one edge holds
 - **2026-09-25** — the settings window becomes pages of cards, chosen from three mockups
 - **2026-09-23** — a setting's tip floats over the form instead of opening a line in it
@@ -13,6 +14,35 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-09-27 — a polite `taskkill` ends the widget, and a start clears old ghosts
+
+Done: [[G31]] — a close request on the pill or the panel quits, the tray
+dropped first; [[G25]] extended — a start sweeps the notification area of
+icons whose owners are gone.
+
+The user found that the widget could not be stopped from a script without
+`/F`, and that `/F` leaves a ghost icon. Both were proposed as one change: the
+close request as a real quit, and optionally a sweep at start-up for the ghosts
+earlier kills left. Both were taken. The sweep is the part that talks to
+another program's private window, so it is written to find nothing and do
+nothing where Explorer is built differently, and every message it sends has a
+short timeout.
+
+A backstop came with it: `run` drops the tray after the event loop returns,
+whatever ended it, since `App` is held in a cycle by the pill's own callbacks
+and would never be dropped otherwise.
+
+Checked on `--demo` by counting the taskbar toolbar's buttons before and after
+each step, and by listing the process's windows: the kill, the control run
+with no launch, and the settings window closed on its own are in G31 and G25.
+The overflow flyout held no icons on this machine, so its half of the sweep
+ran over an empty toolbar only.
+
+Gotchas: [[G31]], [[G25]]
+Status: Working
 
 ---
 

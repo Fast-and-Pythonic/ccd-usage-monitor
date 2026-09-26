@@ -24,8 +24,6 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
    green at or under the clock, orange to red above, keyed on spending (A15).
    Weekly days by calendar or clock, by clock as `3д16ч` or `3:16` (A29), and a weekly pace in time as `▲3д2ч` or `▲3:02` (A16); time-derived figures step on the minute (A30).
    Every cell but a window's percentage can be switched off, on the pill only.
-- **Settings** in a second native window (A11), described once in `schema.rs`
-   (A22) — kind, bounds, section, label and tooltip, in both languages.
 - **The config is hand-editable, in sections, and re-read while running** (A22,
    A23); `data_dir` (A28) can move it, the theme and every other file this
    program writes to a folder of choice, for when the usual place is not
@@ -39,9 +37,10 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
 - **Three layers** (A19): `runtime.rs` knows, `view.rs` says, `slint_ui.rs`
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
-- **The settings window is generated from `schema.rs`** (A22, A33): six pages
-   of cards, forty-seven settings, and the `.slint` file knows none of them. It
-   carries the `AboutSlint` acknowledgement the licence asks for.
+- **Settings in a second native window** (A11), generated from `schema.rs` (A22,
+   A33): six pages of cards, forty-seven settings in both languages, and the
+   `.slint` file knows none of them. It carries the `AboutSlint` acknowledgement.
+- **The tray icon goes with the process** (G31); a start sweeps older ghosts (G25).
 - **Tests**: 202 in all; 36 over `view.rs`, with golden tests of panel and pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
