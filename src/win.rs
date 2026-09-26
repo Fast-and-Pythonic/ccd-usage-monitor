@@ -320,6 +320,23 @@ impl Frame {
       }
    }
 
+   /// Move and resize the window in one call, in device pixels, without
+   /// activating it. One call rather than a size and then a move, so a pill
+   /// held by its right edge does not show a frame grown the wrong way (A34).
+   pub fn set_rect(self, x: i32, y: i32, w: i32, h: i32) {
+      unsafe {
+         SetWindowPos(
+            self.hwnd as HWND,
+            HWND_TOPMOST,
+            x,
+            y,
+            w,
+            h,
+            SWP_NOOWNERZORDER | SWP_NOACTIVATE,
+         );
+      }
+   }
+
    /// The usable area of the monitor this window is on: `(x, y, w, h)` in
    /// device pixels, with the taskbar already taken out of it.
    ///

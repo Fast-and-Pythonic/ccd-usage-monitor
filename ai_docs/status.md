@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-09-26. State only — why anything is the way it is lives in
+Snapshot of 2026-09-27. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 ## Works
@@ -14,11 +14,12 @@ Snapshot of 2026-09-26. State only — why anything is the way it is lives in
    (A18), so it works in the desktop app, where the status line never runs (G06).
    Which session it describes is `session_pick`; `ctx` has its own spent/left
    direction and a bar of its own.
-- **The pill**: figures, hairline tracks, drag with the position persisted,
-   panels that flip near the screen edge (A06), a detail panel sized to its text
-   (A12), pointing at a figure names it and says what it is now (A31, G16). No frame and no drop shadow —
-   the DWM one is stripped through Win32 and re-stripped after the commands that
-   bring it back (A10).
+- **The pill**: figures as wide as their text with fixed gaps, the `anchor` edge
+   held as the width changes (A34), hairline tracks, drag with the position
+   persisted, panels that flip near the screen edge (A06), a detail panel sized
+   to its text (A12), pointing at a figure names it and says what it is now (A31,
+   G16). No frame and no drop shadow — stripped through Win32 and re-stripped
+   after the commands that bring it back (A10).
 - **Pace** beside each limit in whichever of eight forms `pace_view` names (A16);
    green at or under the clock, orange to red above, keyed on spending (A15).
    Weekly days by calendar or clock, by clock as `3д16ч` or `3:16` (A29), and a weekly pace in time as `▲3д2ч` or `▲3:02` (A16); time-derived figures step on the minute (A30).
@@ -39,10 +40,9 @@ Snapshot of 2026-09-26. State only — why anything is the way it is lives in
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
 - **The settings window is generated from `schema.rs`** (A22, A33): six pages
-   of cards, forty-four settings, and the `.slint` file knows none of them. It
+   of cards, forty-seven settings, and the `.slint` file knows none of them. It
    carries the `AboutSlint` acknowledgement the licence asks for.
-- **Tests**: 203 in all; 38 of them over `view.rs`, including golden tests of the
-   whole panel and the whole pill.
+- **Tests**: 202 in all; 36 over `view.rs`, with golden tests of panel and pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 

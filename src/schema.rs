@@ -1187,6 +1187,22 @@ pub const ALL: &[Setting] = &[
       group: Some(Group::Pill),
       needs: None,
    },
+   Setting {
+      key: "anchor",
+      section: Section::Style,
+      kind: Kind::Choice(&[ch("left", "слева", "left"), ch("right", "справа", "right")]),
+      label: w("Начало пилюли", "Pill grows from"),
+      tip: w(
+         "Какой край пилюли стоит на месте, когда она меняет ширину — например, \
+             когда 9% становится 10%. Слева — растёт вправо; справа — растёт \
+             влево: для пилюли у правого края экрана.",
+         "Which edge of the pill stays put when its width changes — when 9% \
+             becomes 10%, say. Left grows it to the right; right grows it to \
+             the left, for a pill parked against the right of the screen.",
+      ),
+      group: Some(Group::Pill),
+      needs: None,
+   },
 ];
 
 const STALE_TIP: Words = w(

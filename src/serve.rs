@@ -31,7 +31,7 @@ use crate::view::{self, Tone};
 
 /// Bumped when a field changes meaning or leaves. Adding one does not count:
 /// a consumer that reads what it knows keeps working.
-const SCHEMA: u32 = 1;
+const SCHEMA: u32 = 2;
 
 /// Arbitrary, high, and out of the way of anything common. Overridable with
 /// `--port`.

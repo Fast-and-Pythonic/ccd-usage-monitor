@@ -33,6 +33,7 @@
 - **A31** · a hint names the figure, then says what it is now
 - **A32** · a commit has to pass the checks, and a hook says so
 - **A33** · the settings window is pages of cards, and the schema says where each setting sits
+- **A34** · a cell is as wide as its text, and one edge of the pill stays put
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -122,9 +123,10 @@ a window of its own — right-clicking the pill opens that, not a panel.
 and the hairline tracks matter. Laying that out with egui widgets would mean
 fighting the default spacing model for every pixel.
 
-**Consequence:** each figure is drawn in a fixed-width slot, sized to its widest
-possible value (`100%`, `00:00`, `00d`), so the pill does not jitter as digits
-change.
+**Consequence (until A34):** each figure was drawn in a fixed-width slot, sized
+to its widest possible value (`100%`, `00:00`, `00d`), so the pill did not
+jitter as digits changed. A34 dropped the slots: a cell is as wide as its text
+and the spaces between figures are fixed instead.
 
 **Sizes come from `Metrics`, not from constants.** Every distance and font size
 is resolved once per frame from the config, so the menu can offer them as
@@ -380,13 +382,9 @@ it reads like the five-hour `h:mm`. A setting of its own rather than a
 follower of `days_form`, because that one only exists when days are counted by
 time and a pace in time form does not care how they are counted. It is one form on its own, not paired:
 pairs with it would double a list of seven for no reading the panel does not
-already give. The cell's reserved width depends on the window too, and on the
-shape of the text on show (`pace_time_template`): that text with every digit
-written `0` and an arrow always counted, so `▼6ч` reserves `▲0ч` and `▲3д12ч`
-reserves `▲0д00ч`. Segoe UI's figures are one width, so this is exact for every
-value of the same shape. Reserving the widest week for every value left a
-centred `▼9ч` in a hole three glyphs wide, which read as broken spacing; the
-pill now changes width only when the gap gains a digit or a day count. The panel and `--serve`'s `text` always carry all
+already give. The cell is as wide as the text on show (A34); before that it
+reserved the widest week, and a centred `▼9ч` sat in a hole three glyphs wide
+that read as broken spacing. The panel and `--serve`'s `text` always carry all
 three units (`pace_detail`) and the JSON has `delta_secs` beside `delta_pct`.
 
 **The pace figure sits second, against the percentage.** It qualifies that
@@ -406,18 +404,14 @@ where taste is honoured, the panel is where things are spelled out.
 large next to the digits beside them, and Segoe UI's small-triangle variants
 (`▴`/`▾`) turned out to be missing from the font — tofu boxes on the live pill,
 found only once shipped, not in a screenshot taken from the source. `view.rs`'s
-`split_arrow` peels the leading arrow off the assembled text and its template
-and draws it as its own cell at `Role::Arrow` — its own theme variable
+`split_arrow` peels the leading arrow off the assembled text and draws it as
+its own cell at `Role::Arrow` — its own theme variable
 (`font_arrow`), apart from `Role::Small`'s (`font_small`, the `ctx` label's)
 even though both started at the same size, because the arrow now sits inline
 beside a number where `Small` never used to — ahead of the number at its usual
 size, same colour, joined with `Gap::Tight` so the pair still reads as one
-figure. The arrow cell is drawn even when this figure has none (an even burn),
-reserving the same sliver of width every time, so the pill does not shift as
-spending crosses the line. `pace_template` and `pace_time_template` keep
-writing a literal `▲` regardless of the real sign — it is only ever a
-placeholder for "there is room for one", and `split_arrow` is what strips it
-back off before either half is measured.
+figure. A figure with no arrow (an even burn) is one cell: nothing is held
+open for the arrow, and the pill narrows by its width (A34).
 
 **A cell centres on its own box only, not on a taller sibling's.** Mixing
 `Role::Arrow` inline with `Role::Time` exposed a `pill.slint` gap that had
@@ -443,7 +437,7 @@ underneath. A margin is worth having below the line; above it, over is over.
 **A cell asks for its own trailing gap.** What separates two figures is a
 `Gap` on the cell before it — a plain space, nothing at all, a faint rule, or
 the divider between two limits — rather than lists of indices the layout and the
-painter both have to consult. The width the pill reserves is then literally the
+painter both have to consult. The width of the pill is then literally the
 sum the painting walk adds up, which is what the two lists had stopped agreeing
 on: the rule inside a `split` figure was painted a gap and a half wide and
 budgeted one. It also made the `piped` form possible without a fourth list: it
@@ -595,8 +589,7 @@ toolkit named in it has already changed once; what it is checking has not.
 these layers is the thing that proves they are consumable (A21).
 
 **The pill's composition is what it says, not how it is drawn.** `view::cells`
-returns the figures in order — text, the widest string each will ever hold, a
-font *role*, a `Paint`, which group it belongs to and which field it is — and
+returns the figures in order — text, a font *role*, a `Paint`, which group it belongs to and which field it is — and
 `view::bars` the hairline under each group. No widths and no fonts: measuring
 text needs a font, and under Slint the process no longer owns one at all, since
 the theme lays out its own text. Moving this out of `ui.rs` *before* the front
@@ -795,7 +788,8 @@ cheap to fix them.
 people's widgets, so renaming a field in `model.rs` must not break somebody's
 Rainmeter skin. `serve.rs` owns the wire format and maps onto it; `schema` is
 bumped when a field changes meaning or leaves, and never for an addition,
-since a consumer that reads what it knows keeps working.
+since a consumer that reads what it knows keeps working. It is 2 since a cell
+lost `template` and `side` (A34).
 
 **`view::Ink` and `view::Tone` do serialise**, which is not an exception to the
 above but the point of them: a role name is exactly what travels. The server
@@ -963,8 +957,8 @@ which leaves the pill blank. So `theme_api` is checked before the theme is used
 at all — the theme states which contract it was written against, and a mismatch
 means the built-in copy draws instead, with the two version numbers on stderr.
 `THEME_API` is bumped whenever `PillCell`, `PillGroup` or `PanelLine` changes
-shape. Failures to set a property are reported once each rather than dropped
-(G22).
+shape; it is 3 since `PillCell` lost `template` and `side` (A34). Failures to
+set a property are reported once each rather than dropped (G22).
 
 **A broken theme is never a dead application.** It falls back to the built-in
 copy and says so. The file is not overwritten — it is somebody's work — so the
@@ -1117,13 +1111,13 @@ cell does not grow into four digits in the last minutes; one function,
 `pace::daily_allowance`, serves both modes, since for whole days the cap and
 the zero case are the old behaviour.
 
-**The cell reserves for the shape on show**, `0d0h` for `3d5h` and `00h` for
-`12h`, for the same reason a weekly pace gap does (`view::pace_time_template`):
-a fixed `0d00h` leaves the short forms floating in a hole.
+**The cell is as wide as the figure on show** (A34). Before that it reserved
+for the shape on show, `0d0h` for `3d5h`, because a fixed `0d00h` left the
+short forms floating in a hole.
 
 **By time the count has a second, shorter form**, `days_form = "colon"`:
-`3:16` for `3d16h`, the hours padded as minutes are in `h:mm`, so the cell
-reserves `0:00` and holds its width. It is a separate setting rather than a
+`3:16` for `3d16h`, the hours padded as minutes are in `h:mm`, so the figure
+keeps one width while the digits move. It is a separate setting rather than a
 third `days_by`, because it changes how the figure reads and nothing it
 divides by; the settings window hides it unless `days_by` is `time`. The
 price is that `3:16` reads like the five-hour `h:mm` beside it, which is why
@@ -1277,3 +1271,54 @@ config in memory and the pill follows; the file is written on release, not a few
 dozen times a second. Text is applied on Enter: applied per keystroke, the first
 letter of a path typed into `data_dir` was already a folder to move every file
 to, and a restart.
+
+## A34: a cell is as wide as its text, and one edge of the pill stays put
+Every cell of the pill is exactly as wide as the text it shows. The space
+between two figures is the gap the theme names for that kind of join —
+`cell_gap` between figures of one limit, `rule_gap` either side of the rule
+inside a split pace, `group_gap` either side of the divider between limits,
+nothing inside `Gap::Tight` — and nothing else. The pill changes width when a
+figure gains or loses a character, and `anchor` (`left` or `right`) says which
+of its edges stays where it was put.
+
+**Why the slots went.** Each cell used to reserve the width of the widest value
+it could ever hold (`template`) and centre its text in it. The visible space
+between two figures was then that slack plus `cell_gap`, so it changed with the
+value: `5%` in a `100%` slot had a hole on each side and `100%` had none, and
+the pill read as unevenly spaced however the gaps were tuned. Reserving by the
+shape on show (A16, A29) had already given up most of the stability the slots
+were for — the pill already moved when a gap gained a digit — and Segoe UI's
+figures are one width, so a cell as wide as its text holds its width while the
+digits move and changes only with their count. What changed width before still
+does; what it cost in spacing is gone.
+
+**The price is a moving edge, and `anchor` picks which.** A pill parked at the
+right of a screen that grows rightwards walks off it, and one that shrinks
+leaves its right edge wandering. With `anchor = "right"` the right edge holds and
+the pill grows leftwards. The default is `left`, which is what the pill always
+did.
+
+**The edge is held from a record, not from the window.** `window.json` keeps
+the pill's top-left and, since this, its `width` at the moment the position was
+written; the right edge is `x + width`. `resize` works out the new `x` from that
+record (`geometry::anchored_x`) and writes the record back, on every width
+change and at the end of every drag. Reading the window's rectangle back each
+time looks equivalent and is the trap A06 already recorded: the rectangle lags
+the command that moved it. The rectangle is asked once, for a file written
+before `width` existed. Because both anchors keep the record current, switching
+`anchor` moves nothing.
+
+**Moved and resized in one call.** For a right anchor the new position and size
+go to the window in one `SetWindowPos` (`Frame::set_rect`), then Slint is told
+the size it now has; a size and then a move would show one frame grown the
+wrong way. If Slint's own idea of the size nudges the width, the right edge is
+put back.
+
+**The arrow cell is gone when there is no arrow.** It used to be drawn empty at
+an even burn, holding its sliver open; with nothing reserved there is nothing to
+hold, and the figure is one cell.
+
+**Two contract versions moved with it.** `PillCell` lost `template` and `side`,
+so the theme contract is 3 (A24) and a theme written for 2 falls back to the
+built-in copy with the two numbers on stderr (G22). `view::Cell` travels in the
+`--serve` JSON as it is, so its `schema` is 2 (A21).

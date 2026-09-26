@@ -130,6 +130,7 @@ side, one small step and one large one each. What they set:
 | Key | Default | What it does |
 |---|---|---|
 | `scale` | `1.0` | multiplies everything below, and the paddings with them |
+| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
 | `font_pct` | `14.0` | the large percentages |
 | `font_time` | `14.0` | countdown, day count, daily allowance |
 | `pill_height` | `34.0` | height of the pill; text and bar positions follow it |

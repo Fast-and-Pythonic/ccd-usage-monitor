@@ -277,6 +277,19 @@ pub enum BarColour {
 
 impl BarColour {}
 
+/// Which edge of the pill stays where it was put when the pill changes width
+/// (A34). Its cells are as wide as their text, so a figure gaining a digit
+/// widens the pill; this says which way it grows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Anchor {
+   /// The left edge holds; the pill grows and shrinks on its right.
+   Left,
+   /// The right edge holds; the pill grows leftwards — for a pill parked
+   /// against the right of the screen.
+   Right,
+}
+
 /// How the weekly window's days left are counted (A29).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -380,6 +393,8 @@ pub struct Config {
    /// Multiplies every size below, and the paddings with them. The one knob
    /// worth reaching for when the widget moves to another monitor.
    pub scale: f32,
+   /// Which edge of the pill stays put as its width changes.
+   pub anchor: Anchor,
    /// How the days the weekly allowance is spread over are counted: whole
    /// calendar days, or the exact time to the reset (A29).
    pub days_by: DaysBy,
@@ -501,6 +516,7 @@ impl Default for Config {
       Config {
          opacity: 0.82,
          scale: 1.0,
+         anchor: Anchor::Left,
          days_by: DaysBy::Calendar,
          days_form: DaysForm::Units,
          count_today: false,
@@ -597,6 +613,7 @@ impl Config {
             position: old.0,
             settings_pos: old.1,
             settings_size: old.2,
+            ..Default::default()
          });
       }
       // Either way the keys leave the config: they are the reason it could

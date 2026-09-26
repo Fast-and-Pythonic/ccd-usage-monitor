@@ -40,7 +40,7 @@ const TICK: Duration = Duration::from_millis(250);
 /// struct is matched field by field, and one that no longer lines up is
 /// refused whole, which leaves the pill blank with nothing said about it
 /// (G22). So the version is checked before the theme is used at all.
-const THEME_API: i64 = 2;
+const THEME_API: i64 = 3;
 
 pub fn theme_path() -> std::path::PathBuf {
    crate::config::config_path().with_file_name("theme.slint")
@@ -250,17 +250,12 @@ fn groups_model(
                         .into(),
                   ),
                ),
-               (
-                  "template".to_string(),
-                  Value::String(c.template.as_str().into()),
-               ),
                ("role".to_string(), Value::Number(role_code(c.role) as f64)),
                (
                   "ink".to_string(),
                   Value::Brush(palette.paint(c.paint).into()),
                ),
                ("gap".to_string(), Value::Number(gap_code(c.gap) as f64)),
-               ("side".to_string(), Value::Number(side_code(c.side) as f64)),
             ]))
          })
          .collect();
@@ -307,14 +302,6 @@ fn gap_code(gap: view::Gap) -> i32 {
       view::Gap::Tight => 1,
       view::Gap::Rule => 2,
       view::Gap::Group => 3,
-   }
-}
-
-fn side_code(side: view::Side) -> i32 {
-   match side {
-      view::Side::Centre => 0,
-      view::Side::Right => 1,
-      view::Side::Left => 2,
    }
 }
 
@@ -515,10 +502,13 @@ pub fn run(demo: bool) -> Result<(), String> {
          let frame = app.borrow().frame;
          if let Some(frame) = frame {
             frame.start_drag();
-            let (x, y, _, _) = frame.rect();
+            let (x, y, w, _) = frame.rect();
             let mut a = app.borrow_mut();
             let s = a.pill.window().scale_factor();
             a.geom.position = Some([x as f32 / s, y as f32 / s]);
+            // With the width, the record says where both edges are, so the
+            // one `anchor` names can be held from here (A34).
+            a.geom.width = Some(w as f32 / s);
             crate::geometry::save(&a.geom);
          }
          Value::Void
@@ -1089,7 +1079,48 @@ fn resize(a: &mut App) {
       return;
    }
    a.sized = (w, h);
-   pill.window().set_size(slint::LogicalSize::new(w, h));
+   let Some(frame) = a.frame else {
+      pill.window().set_size(slint::LogicalSize::new(w, h));
+      return;
+   };
+
+   // Which edge holds is worked out from the record in `window.json` — where
+   // the pill was put and how wide it was then — and not from the window's
+   // rectangle read back each time, which lags the command that moved it
+   // (A06). A file from before the width was kept asks the rectangle once.
+   let s = pill.window().scale_factor();
+   let (rx, ry, rw, _) = frame.rect();
+   let [x, y] = a.geom.position.unwrap_or([rx as f32 / s, ry as f32 / s]);
+   let old_w = a.geom.width.unwrap_or(rw as f32 / s);
+   let new_x = crate::geometry::anchored_x(a.cfg.anchor, x, old_w, w);
+
+   if new_x == x {
+      pill.window().set_size(slint::LogicalSize::new(w, h));
+   } else {
+      let right = ((x + old_w) * s).round() as i32;
+      frame.set_rect(
+         (new_x * s).round() as i32,
+         (y * s).round() as i32,
+         (w * s).round() as i32,
+         (h * s).round() as i32,
+      );
+      // Slint is told the size it now has, so its own idea of the window
+      // agrees with the one just set; if that nudges the width, the right
+      // edge is put back where it was.
+      pill.window().set_size(slint::LogicalSize::new(w, h));
+      let (fx, fy, fw, _) = frame.rect();
+      if fx + fw != right {
+         frame.place(right - fw, fy);
+      }
+   }
+
+   // Only a pill that has a place of its own is written down: one the window
+   // manager put somewhere and nobody has moved has nothing to remember.
+   if a.geom.position.is_some() || new_x != x {
+      a.geom.position = Some([new_x, y]);
+      a.geom.width = Some(w);
+      crate::geometry::save(&a.geom);
+   }
 }
 
 fn pump_tray(a: &mut App) {

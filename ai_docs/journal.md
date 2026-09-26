@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-09-27** — the pill's cells lose their reserved width, and one edge holds
 - **2026-09-25** — the settings window becomes pages of cards, chosen from three mockups
 - **2026-09-23** — a setting's tip floats over the form instead of opening a line in it
 - **2026-09-13** — egui is gone, and the settings window is a list
@@ -12,6 +13,38 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-09-27 — the pill's cells lose their reserved width, and one edge holds
+
+Done: [[A34]] — a cell is as wide as its text, the gaps between figures are
+the theme's alone, and `anchor` picks which edge of the pill stays put.
+
+The user asked for steady spacing between the pill's figures and a choice of
+the side the pill grows from, and guessed the cause right: every cell reserved
+room for its widest value and centred its text in it, so the space between two
+figures was mostly slack that changed with the value. Keeping the old slots as
+an option was offered and turned down; the anchor is what makes their loss
+cheap, so the two came as one change.
+
+Three things turned up in the theme on the way. The rules between groups and
+between two halves of a pace had been zero pixels tall in both themes for some
+time, sized from a `pill_height` of `0px`; they are sized from their row now.
+The amber stale dot had been sitting in the slack of the first cell, and would
+have landed on the digit; the pill makes room for it while it shows. And the
+built-in theme's vertical centring, ported into the live theme, folded the pill
+to a sliver ([[G30]]) until the cell was given a height of its own.
+
+Checked on `--demo` with the live theme: screenshots of the default, `split`
+and `piped` forms, and the window's rectangle read before and after a figure
+was switched on and off through the config — the right edge held at `right`,
+the left at `left`, switching between them moved nothing, and a restart came
+back with the right edge where it was. A drag by hand, which writes the new
+`width` into `window.json`, is still owed.
+
+Decisions: [[A34]] · Gotchas: [[G30]]
+Status: Working
 
 ---
 

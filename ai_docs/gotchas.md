@@ -36,6 +36,7 @@ non-obvious cause.
 - **G27** · a row whose content sits only in `if` blocks has no height, and a scroll view squeezes it
 - **G28** · a repeater cannot hold an `if`, and the wrappers it needs take spacing
 - **G29** · a Slint `ScrollView` scrolls by the wheel in pulses over its content, and in jumps over its bar
+- **G30** · a `Text` placed by its own `y` gives its cell no height, and the pill folds to a sliver
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -632,3 +633,25 @@ its drag as well; so its `vertical-scrollbar-policy` is `always-off` and the
 window draws its own bar, whose wheel glides the same way at 0.6 of a notch.
 **How to spot it:** smooth but uneven motion that tracks the rhythm of the
 wheel's notches, at a frame rate that is not low.
+
+---
+
+## G30: a `Text` placed by its own `y` gives its cell no height, and the pill folds to a sliver
+**Symptom:** the pill came up 364 pixels wide and 4 tall — the right width,
+its padding, and no row of figures. The theme compiled, `theme_api` matched,
+nothing was printed.
+**Root cause:** a `Cell` is a `Rectangle` with a `Text` inside it, and that
+`Text` was given `y: (parent.height - self.height) / 2` so figures of two
+sizes sit on one line (it centres in the height the row stretches the cell to).
+A child placed by explicit coordinates is not laid out, so it no longer lends
+its size to the `Rectangle`; the cell's preferred height fell to zero, the row
+of cells with it, and `wanted_height` reported only the paddings. The width
+survived only because the cell states `width` explicitly. The built-in theme
+already carried the same `y`; it went unseen because the theme that loads here
+is the hand-tuned copy (A24), which did not have it until it was ported over.
+**Fix:** the cell states its height too — `min-height: shown.preferred-height;`
+— a minimum rather than a height, so the row can still stretch a smaller role
+to the height of a larger one and the `y` binding centres it there.
+**How to spot it:** a pill or row of the right width and almost no height,
+with a theme that loads cleanly. Same family as G27: a container whose content
+is not in a layout has no size of its own unless it is given one.

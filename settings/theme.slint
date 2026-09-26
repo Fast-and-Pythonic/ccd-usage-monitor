@@ -27,15 +27,12 @@
 //   0 — the large percentages
 //   1 — countdowns, day counts, the context figures
 //   2 — the `ctx` tag
+//   3 — the pace arrow, set apart so it can be smaller than the number
 export struct PillCell {
    text: string,
    // What this figure is called, for the line that names it while the pointer
    // is over it. Empty for punctuation.
    name: string,
-   // The widest string this cell will ever hold. The cell reserves that width
-   // whatever it is currently showing, so the pill does not twitch — and
-   // everything to the right of a changing digit does not shuffle.
-   template: string,
    role: int,
    ink: brush,
    // 0 — an ordinary space after the cell
@@ -43,8 +40,6 @@ export struct PillCell {
    // 2 — a short faint rule: two halves of one figure
    // 3 — the end of the group
    gap: int,
-   // 0 centre, 1 against the right edge, 2 against the left
-   side: int,
 }
 
 // One limit: its figures, and the hairline underneath them.
@@ -67,8 +62,15 @@ component Cell inherits Rectangle {
    callback pressed();
    callback menu();
 
-   // The wider of what is shown and what might be: see `template`.
-   width: max(shown.preferred-width, ghost.preferred-width);
+   // Exactly as wide as its text. Nothing is held open for a wider value, so
+   // the space between two figures is the gap after the cell and nothing
+   // else; the pill changes width instead, and the program keeps whichever
+   // edge the settings name where it was.
+   width: shown.preferred-width;
+   // A text placed by its own `y` no longer reports a height to the row it
+   // sits in, so the cell states it: at least its text, and taller when a
+   // neighbour of a larger role stretches the row — `shown` centres in that.
+   min-height: shown.preferred-height;
 
    // Reports on entry and never on leaving: which figure the pointer is over
    // changes as it moves along the pill, but *whether* it is over the pill is
@@ -90,14 +92,6 @@ component Cell inherits Rectangle {
       }
    }
 
-   ghost := Text {
-      text: cell.template;
-      font-size: size;
-      font-family: "Segoe UI";
-      font-weight: weight;
-      opacity: 0;
-   }
-
    shown := Text {
       text: cell.text;
       color: cell.ink;
@@ -105,9 +99,14 @@ component Cell inherits Rectangle {
       font-family: "Segoe UI";
       font-weight: weight;
       width: self.preferred-width;
-      x: cell.side == 1 ? parent.width - self.width
-         : cell.side == 2 ? 0px
-         : (parent.width - self.width) / 2;
+      x: 0px;
+      // `vertical-alignment: center` only centres within this Text's own
+      // box, which defaults to its own single line's height — no help when
+      // a neighbouring cell of a different role stretches this one taller
+      // than its text. Centring `y` against `parent.height` (the cell once
+      // the row's layout has stretched it) is what actually keeps two roles
+      // of different size sitting on the same line, not one riding high.
+      y: (parent.height - self.height) / 2;
       vertical-alignment: center;
    }
 }
@@ -148,7 +147,7 @@ export component Pill inherits Window {
    /// structs are a different matter, and a `PillCell` that has lost a field
    /// is refused wholesale by the runtime, leaving the pill empty and silent.
    /// Bumped whenever `PillCell`, `PillGroup` or `PanelLine` changes shape.
-   out property <int> theme_api: 2;
+   out property <int> theme_api: 3;
 
    // ---- what the program listens for -------------------------------------
    /// Pressed with the left button: the program hands the window to the
@@ -168,10 +167,19 @@ export component Pill inherits Window {
    property <length> track_height: 3px * scale;
 
    // Horizontal spacing — left/right padding and the gaps between cells
-   // and groups along the pill.
-   property <length> pad_x: 4px * scale;
-   property <length> cell_gap: 1px * scale;
-   property <length> group_gap: 5px * scale;
+   // and groups along the pill. Cells are as wide as their text, so these
+   // are the whole of the space between two figures: one value per kind of
+   // join, the same wherever that join occurs.
+   property <length> pad_x: 6px * scale;
+   // Between two figures of one limit.
+   property <length> cell_gap: 5px * scale;
+   // Either side of the faint rule between two halves of one figure.
+   property <length> rule_gap: 3px * scale;
+   // Either side of the divider between two limits.
+   property <length> group_gap: 7px * scale;
+   // Extra room on the left while the amber stale dot is showing, so it
+   // sits beside the first figure rather than on it.
+   property <length> stale_room: 9px * scale;
 
    // Vertical spacing — top/bottom padding and the gap between a group's
    // cells and the bar underneath them.
@@ -212,7 +220,7 @@ export component Pill inherits Window {
       // A quiet marker beats a confident wrong number: the figures are
       // history, and the pill says so without needing to be hovered.
       if root.stale: Rectangle {
-         x: 6px * scale;
+         x: pad_x;
          y: parent.height / 2 - 2.5px * scale;
          width: 5px * scale;
          height: 5px * scale;
@@ -223,7 +231,7 @@ export component Pill inherits Window {
       // The row of groups, left to right — its preferred size is what
       // `wanted_width`/`wanted_height` above report back to the program.
       body := HorizontalLayout {
-         padding-left: pad_x;
+         padding-left: root.stale ? pad_x + stale_room : pad_x;
          padding-right: pad_x;
          padding-top: pad_top;
          padding-bottom: pad_bottom;
@@ -260,16 +268,16 @@ export component Pill inherits Window {
                      Rectangle {
                         width: c.gap == 1 ? 0px
                            : c.gap == 3 ? 0px
-                           : c.gap == 2 ? cell_gap * 1.5
+                           : c.gap == 2 ? rule_gap * 2 + 1px
                            : cell_gap;
                         // The rule between two halves of one figure:
                         // shorter and quieter than the divider between
                         // groups, because it joins rather than
                         // separates.
                         if c.gap == 2: Rectangle {
-                           x: parent.width / 2;
+                           x: rule_gap;
                            width: 1px;
-                           height: pill_height * 0.32;
+                           height: parent.height * 0.5;
                            y: parent.height / 2 - self.height / 2;
                            background: #ffffff14;
                         }
@@ -296,11 +304,11 @@ export component Pill inherits Window {
             // The divider between two limits: two gaps with a rule down
             // the middle of them.
             if !g.last: Rectangle {
-               width: group_gap * 2;
+               width: group_gap * 2 + 1px;
                Rectangle {
-                  x: parent.width / 2;
+                  x: group_gap;
                   width: 1px;
-                  height: pill_height * 0.48;
+                  height: parent.height * 0.6;
                   y: parent.height / 2 - self.height / 2;
                   background: #ffffff1a;
                }

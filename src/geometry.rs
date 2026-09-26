@@ -22,6 +22,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::Anchor;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Geometry {
@@ -32,8 +34,22 @@ pub struct Geometry {
    /// for a widget left off-screen is the tray's "Reset position", not a
    /// startup heuristic that would fight a legitimate layout.
    pub position: Option<[f32; 2]>,
+   /// The pill's width, in logical pixels, when `position` was last written.
+   /// With the two, either edge can be held: the right one is `x + width`
+   /// (A34). `None` in a file written before the pill could grow leftwards.
+   pub width: Option<f32>,
    pub settings_pos: Option<[f32; 2]>,
    pub settings_size: Option<[f32; 2]>,
+}
+
+/// Where the pill's left edge goes when its width changes from `old_w` to
+/// `new_w`, with `x` where it is now: the anchored edge stays, the other one
+/// moves (A34).
+pub fn anchored_x(anchor: Anchor, x: f32, old_w: f32, new_w: f32) -> f32 {
+   match anchor {
+      Anchor::Left => x,
+      Anchor::Right => x + old_w - new_w,
+   }
 }
 
 pub fn path() -> PathBuf {
@@ -90,6 +106,19 @@ mod tests {
       let geom: Geometry = serde_json::from_str(r#"{"position":[60.0,60.0]}"#).unwrap();
       assert_eq!(geom.position, Some([60.0, 60.0]));
       assert!(geom.settings_pos.is_none());
+      // Nor a file from before the pill could grow leftwards: no width yet
+      // means the window's own rectangle is asked the first time round.
+      assert!(geom.width.is_none());
+   }
+
+   #[test]
+   fn the_anchored_edge_is_the_one_that_stays() {
+      // Growing by 12: held on the left, x does not move and the right edge
+      // goes out; held on the right, x moves left by the same 12.
+      assert_eq!(anchored_x(Anchor::Left, 100.0, 200.0, 212.0), 100.0);
+      assert_eq!(anchored_x(Anchor::Right, 100.0, 200.0, 212.0), 88.0);
+      // And shrinking gives the room back on the side that is not held.
+      assert_eq!(anchored_x(Anchor::Right, 88.0, 212.0, 200.0), 100.0);
    }
 
    #[test]
@@ -99,6 +128,7 @@ mod tests {
       // off the screen the user actually put it on.
       let geom = Geometry {
          position: Some([-1720.5, 40.0]),
+         width: Some(212.0),
          settings_pos: Some([-1500.0, 200.0]),
          settings_size: Some([360.0, 470.0]),
       };
