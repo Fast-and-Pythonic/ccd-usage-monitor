@@ -22,7 +22,7 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
    after the commands that bring it back (A10).
 - **Pace** beside each limit in whichever of eight forms `pace_view` names (A16);
    green at or under the clock, orange to red above, keyed on spending (A15).
-   Weekly days by calendar or clock, by clock as `3д16ч` or `3:16` (A29), and a weekly pace in time as `▲3д2ч` or `▲3:02` (A16); time-derived figures step on the minute (A30).
+   Weekly days by calendar or clock, by clock as `3д16ч` or `3'16` (A29), and a weekly pace in time as `▲3д2ч` or `▲3'2` (A16), the separator and the zeros a setting; time-derived figures step on the minute (A30).
    Every cell but a window's percentage can be switched off, on the pill only.
 - **The config is hand-editable, in sections, and re-read while running** (A22,
    A23); `data_dir` (A28) can move it, the theme and every other file this
@@ -38,10 +38,10 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
 - **Settings in a second native window** (A11), generated from `schema.rs` (A22,
-   A33): five pages, a card per figure of the pill, forty-seven settings, and the
+   A33): five pages, a card per figure of the pill, forty-nine settings, and the
    `.slint` file knows none of them. It carries the `AboutSlint` acknowledgement.
 - **The tray icon goes with the process** (G31); a start sweeps older ghosts (G25).
-- **Tests**: 202 in all; 36 over `view.rs`, with golden tests of panel and pill.
+- **Tests**: 203 in all; 36 over `view.rs`, with golden tests of panel and pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 

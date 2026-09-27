@@ -309,9 +309,11 @@ pub enum DaysBy {
 pub enum DaysForm {
    /// `3д16ч` — says what it is, at the cost of two letters.
    Units,
-   /// `3:16` — days and hours, as short as it gets. Reads like the five-hour
-   /// `h:mm` beside it, which is the price of the two letters it saves.
-   Colon,
+   /// `3'16` — days and hours around `weekly_sep`, as short as it gets.
+   /// Written `colon` before the separator could be chosen, and still read
+   /// under that name.
+   #[serde(alias = "colon")]
+   Short,
 }
 
 /// Which session's context the widget reports.
@@ -398,9 +400,15 @@ pub struct Config {
    /// How the days the weekly allowance is spread over are counted: whole
    /// calendar days, or the exact time to the reset (A29).
    pub days_by: DaysBy,
-   /// How the count reads by time: `3д16ч` or `3:16`. Ignored by calendar,
+   /// How the count reads by time: `3д16ч` or `3'16`. Ignored by calendar,
    /// where the count is whole days and has nothing to shorten.
    pub days_form: DaysForm,
+   /// What stands between days and hours in the short form of both weekly
+   /// figures, the count and the pace gap. Read through `weekly_sep()`.
+   pub weekly_sep: String,
+   /// Whether the hours in the short form are always two digits, `2'07`, or
+   /// as few as they need, `2'7`.
+   pub weekly_pad: bool,
    /// Which calendar days count, when `days_by` is the calendar; ignored by
    /// time. Today is usually half spent already; the reset day is worth only
    /// the hours before the reset, which with a morning reset is next to nothing.
@@ -411,7 +419,7 @@ pub struct Config {
    pub pct_mode: PctMode,
    /// The form of the pace figure on the pill, `Off` for none.
    pub pace_view: PaceView,
-   /// How the weekly gap reads in the time form: `3д2ч` or `3:02`. The
+   /// How the weekly gap reads in the time form: `3д2ч` or `3'2`. The
    /// five-hour gap is `h:mm` either way.
    pub pace_form: DaysForm,
    /// Which cells the pill carries for each window, besides its percentage.
@@ -519,6 +527,8 @@ impl Default for Config {
          anchor: Anchor::Left,
          days_by: DaysBy::Calendar,
          days_form: DaysForm::Units,
+         weekly_sep: "'".to_string(),
+         weekly_pad: false,
          count_today: false,
          count_reset_day: true,
          pct_mode: PctMode::Spent,
@@ -928,6 +938,40 @@ impl Config {
          .try_into::<Config>()
          .unwrap_or_default();
       (cfg, sectioned)
+   }
+
+   /// The separator of the short weekly form, as it is drawn. Empty falls
+   /// back to `'`, since `316` says nothing; a space is kept, `3 16` being a
+   /// fair choice. Cut to three characters so a stray paste cannot widen the
+   /// pill without bound.
+   pub fn weekly_sep(&self) -> &str {
+      if self.weekly_sep.is_empty() {
+         return "'";
+      }
+      match self.weekly_sep.char_indices().nth(3) {
+         Some((at, _)) => &self.weekly_sep[..at],
+         None => &self.weekly_sep,
+      }
+   }
+
+   /// How the day count by time is written.
+   pub fn days_span(&self) -> crate::pace::Span<'_> {
+      self.span(self.days_form)
+   }
+
+   /// How the weekly pace gap in time form is written.
+   pub fn pace_span(&self) -> crate::pace::Span<'_> {
+      self.span(self.pace_form)
+   }
+
+   fn span(&self, form: DaysForm) -> crate::pace::Span<'_> {
+      match form {
+         DaysForm::Units => crate::pace::Span::Units,
+         DaysForm::Short => crate::pace::Span::Short {
+            sep: self.weekly_sep(),
+            pad: self.weekly_pad,
+         },
+      }
    }
 
    pub fn day_count(&self) -> crate::pace::DayCount {
@@ -1533,6 +1577,35 @@ scale = 1.1
 
       *LAST_WRITTEN.lock().unwrap() = None;
       let _ = std::fs::remove_file(&path);
+   }
+
+   #[test]
+   fn the_short_weekly_form_reads_its_old_name_and_a_sane_separator() {
+      // Written `colon` before the separator could be chosen.
+      let cfg = Config::parse("days_form = \"colon\"\npace_form = \"colon\"\n").0;
+      assert_eq!(cfg.days_form, DaysForm::Short);
+      assert_eq!(cfg.pace_form, DaysForm::Short);
+      assert_eq!(cfg.weekly_sep(), "'");
+      assert_eq!(
+         cfg.days_span(),
+         crate::pace::Span::Short {
+            sep: "'",
+            pad: false
+         }
+      );
+      assert_eq!(Config::default().days_span(), crate::pace::Span::Units);
+      let sep = |s: &str| Config {
+         weekly_sep: s.into(),
+         ..Config::default()
+      };
+      assert_eq!(
+         sep("").weekly_sep(),
+         "'",
+         "nothing between the two says nothing"
+      );
+      assert_eq!(sep(" ").weekly_sep(), " ", "a space is a fair choice");
+      assert_eq!(sep("·").weekly_sep(), "·");
+      assert_eq!(sep("д··ч").weekly_sep(), "д··");
    }
 
    #[test]

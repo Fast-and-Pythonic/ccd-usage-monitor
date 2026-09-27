@@ -311,7 +311,7 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
          // counting from "Tue" to that number is work for the reader.
          let (day, allowance) = match w.resets_at {
             Some(r) => (
-               pace::fmt_days_figure(r, now, &lang, cfg.day_count(), cfg.days_form),
+               pace::fmt_days_figure(r, now, &lang, cfg.day_count(), cfg.days_span()),
                format!(
                   "{:.0}%",
                   pace::daily_allowance(w.used_pct, pace::days_until(r, now, cfg.day_count()))
@@ -468,7 +468,7 @@ fn pace_cells(
    } else {
       Paint::Tone(pace_tone(delta, cfg))
    };
-   let parts = pace::pace_parts(view, w.used_pct, target, span, &cfg.lang, cfg.pace_form);
+   let parts = pace::pace_parts(view, w.used_pct, target, span, &cfg.lang, cfg.pace_span());
    // The second half of a pair never carries an arrow (only the first piece
    // ever does), so it stays one plain cell answering to the same name.
    let half = |text: &str| Cell::new(text, Role::Time, paint).named(field);
@@ -1496,15 +1496,25 @@ g2 Time Group plain \"38%\" ContextPct
       assert_eq!(get(Field::SevenDayAllowance).text, "14%");
 
       // The short form changes the figure, nothing else.
-      let colon = Config {
-         days_form: crate::config::DaysForm::Colon,
+      let short = Config {
+         days_form: crate::config::DaysForm::Short,
          ..cfg
       };
-      let short = super::cells(&colon, &snap, false, false, now);
-      let get = |f| short.iter().find(|c| c.field == Some(f)).unwrap();
-      let days = get(Field::SevenDayDays);
-      assert_eq!(days.text, "3:05");
+      let cells_short = super::cells(&short, &snap, false, false, now);
+      let get = |f| cells_short.iter().find(|c| c.field == Some(f)).unwrap();
+      assert_eq!(get(Field::SevenDayDays).text, "3'5");
       assert_eq!(get(Field::SevenDayAllowance).text, "14%");
+      let padded = Config {
+         weekly_pad: true,
+         weekly_sep: "·".into(),
+         ..short
+      };
+      let cells_padded = super::cells(&padded, &snap, false, false, now);
+      let days = cells_padded
+         .iter()
+         .find(|c| c.field == Some(Field::SevenDayDays))
+         .unwrap();
+      assert_eq!(days.text, "3·05");
    }
 
    #[test]

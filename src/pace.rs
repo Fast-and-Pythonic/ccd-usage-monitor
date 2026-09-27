@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Datelike, Local, TimeZone, Weekday};
 
-use crate::config::{DaysForm, PaceView};
+use crate::config::PaceView;
 
 pub const FIVE_HOUR_SECS: i64 = 5 * 3600;
 pub const SEVEN_DAY_SECS: i64 = 7 * 86400;
@@ -114,7 +114,28 @@ pub fn fmt_days_until(resets_at: i64, now: i64, lang: &str, count: DayCount) -> 
    }
 }
 
-/// The day count as a figure, in the form `days_form` names: `4:07` where
+/// How a weekly span of days and hours is written on the pill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Span<'a> {
+   /// `3д16ч` — in the interface language's letters.
+   Units,
+   /// `3'16` — days and hours around `sep`; the hours two digits only with
+   /// `pad`, `2'07`, and otherwise as few as they need, `2'7`.
+   Short { sep: &'a str, pad: bool },
+}
+
+/// `3'16` / `2'7` / `2'07` — whole hours as days and hours, the short form of
+/// both weekly figures.
+fn fmt_days_short(hours: i64, sep: &str, pad: bool) -> String {
+   let (d, h) = (hours / 24, hours % 24);
+   if pad {
+      format!("{d}{sep}{h:02}")
+   } else {
+      format!("{d}{sep}{h}")
+   }
+}
+
+/// The day count as a figure, in the form `days_form` names: `4'7` where
 /// [`fmt_days_until`] says `4д7ч`. Only the count by time has a second form;
 /// by the calendar it is whole days either way.
 pub fn fmt_days_figure(
@@ -122,11 +143,10 @@ pub fn fmt_days_figure(
    now: i64,
    lang: &str,
    count: DayCount,
-   form: DaysForm,
+   span: Span,
 ) -> String {
-   if count == DayCount::Time && form == DaysForm::Colon {
-      let h = hours_until(resets_at, now);
-      return format!("{}:{:02}", h / 24, h % 24);
+   if let (DayCount::Time, Span::Short { sep, pad }) = (count, span) {
+      return fmt_days_short(hours_until(resets_at, now), sep, pad);
    }
    fmt_days_until(resets_at, now, lang, count)
 }
@@ -336,16 +356,16 @@ pub fn pace_secs(delta_pct: f64, span: i64) -> i64 {
 /// A five-hour window is watched in minutes, so it gets `h:mm` like the
 /// countdown beside it. A week is not: `73:55` is a number to do arithmetic on,
 /// and minutes are noise at that scale, so it gets days and whole hours —
-/// `3д2ч`, or with `form` colon `3:02`, the hours padded as in the day count.
-pub fn fmt_pace_time(secs: i64, span: i64, lang: &str, form: DaysForm) -> String {
+/// `3д2ч`, or in the short form `3'2`, written as the day count is.
+pub fn fmt_pace_time(secs: i64, span: i64, lang: &str, form: Span) -> String {
    let s = secs.max(0);
    if span <= 86400 {
       let mins = (s + 30) / 60;
       return format!("{}:{:02}", mins / 60, mins % 60);
    }
    let h = pace_hours(s);
-   if form == DaysForm::Colon {
-      return format!("{}:{:02}", h / 24, h % 24);
+   if let Span::Short { sep, pad } = form {
+      return fmt_days_short(h, sep, pad);
    }
    fmt_days_hours(h, lang)
 }
@@ -391,13 +411,7 @@ fn pace_arrow(delta: f64) -> &'static str {
 }
 
 /// The three renderings of one gap, unarrowed: points, ratio, time.
-fn pace_units(
-   used_pct: f64,
-   target_pct: f64,
-   span: i64,
-   lang: &str,
-   form: DaysForm,
-) -> [String; 3] {
+fn pace_units(used_pct: f64, target_pct: f64, span: i64, lang: &str, form: Span) -> [String; 3] {
    let delta = used_pct - target_pct;
    let points = format!("{:.0}%", delta.abs());
    let ratio = {
@@ -425,7 +439,7 @@ pub fn pace_parts(
    target_pct: f64,
    span: i64,
    lang: &str,
-   form: DaysForm,
+   form: Span,
 ) -> Vec<String> {
    if view == PaceView::Off {
       return Vec::new();
@@ -453,14 +467,14 @@ pub fn pace_parts(
 /// and the terminal line each join the pieces themselves.
 #[cfg(test)]
 pub fn pace_text(view: PaceView, used_pct: f64, target_pct: f64, span: i64, lang: &str) -> String {
-   pace_parts(view, used_pct, target_pct, span, lang, DaysForm::Units).join(view.joiner())
+   pace_parts(view, used_pct, target_pct, span, lang, Span::Units).join(view.joiner())
 }
 
 /// Every unit of the figure, for the panel and the JSON: the pill is where the
 /// choice is honoured, the panel is where everything is spelled out. The time
 /// form leads with time; every other form says both of its numbers in its own
 /// order and puts time last. One arrow either way, on whatever comes first.
-/// Always in words — `3д2ч`, never `3:02` — as the day count in the panel is.
+/// Always in words — `3д2ч`, never `3'2` — as the day count in the panel is.
 pub fn pace_detail(
    view: PaceView,
    used_pct: f64,
@@ -470,22 +484,15 @@ pub fn pace_detail(
 ) -> String {
    if view == PaceView::Time {
       let arrow = pace_arrow(used_pct - target_pct);
-      let [points, ratio, time] = pace_units(used_pct, target_pct, span, lang, DaysForm::Units);
+      let [points, ratio, time] = pace_units(used_pct, target_pct, span, lang, Span::Units);
       return format!("{arrow}{time} {points} {ratio}");
    }
-   let mut parts = pace_parts(
-      view.both(),
-      used_pct,
-      target_pct,
-      span,
-      lang,
-      DaysForm::Units,
-   );
+   let mut parts = pace_parts(view.both(), used_pct, target_pct, span, lang, Span::Units);
    parts.push(fmt_pace_time(
       pace_secs(used_pct - target_pct, span),
       span,
       lang,
-      DaysForm::Units,
+      Span::Units,
    ));
    parts.join(" ")
 }
@@ -717,7 +724,7 @@ mod tests {
 
    #[test]
    fn only_the_first_part_carries_the_arrow() {
-      let parts = |view| pace_parts(view, 80.0, 60.0, FIVE_HOUR_SECS, "en", DaysForm::Units);
+      let parts = |view| pace_parts(view, 80.0, 60.0, FIVE_HOUR_SECS, "en", Span::Units);
       let two = parts(PaceView::RatioPoints);
       assert_eq!(two.len(), 2);
       assert!(two[0].starts_with('▲'));
@@ -760,7 +767,7 @@ mod tests {
             pace_secs(delta, SEVEN_DAY_SECS),
             SEVEN_DAY_SECS,
             lang,
-            DaysForm::Units,
+            Span::Units,
          )
       };
       // 44 points of a week is 73 h 55 min: three days and two hours.
@@ -817,56 +824,80 @@ mod tests {
    }
 
    #[test]
-   fn a_weekly_gap_in_time_can_read_as_days_colon_hours() {
+   fn a_weekly_gap_in_time_can_read_short() {
+      const SHORT: Span = Span::Short {
+         sep: "'",
+         pad: false,
+      };
       let week = |secs, form| fmt_pace_time(secs, SEVEN_DAY_SECS, "ru", form);
       let gap = 3 * 86400 + 2 * 3600 + 10 * 60;
-      assert_eq!(week(gap, DaysForm::Units), "3д2ч");
-      assert_eq!(week(gap, DaysForm::Colon), "3:02");
-      assert_eq!(week(5 * 3600, DaysForm::Colon), "0:05");
-      // The five-hour gap is `h:mm` whatever the form says.
+      assert_eq!(week(gap, Span::Units), "3д2ч");
+      assert_eq!(week(gap, SHORT), "3'2");
       assert_eq!(
-         fmt_pace_time(27 * 60, FIVE_HOUR_SECS, "ru", DaysForm::Colon),
-         "0:27"
+         week(
+            gap,
+            Span::Short {
+               sep: "'",
+               pad: true
+            }
+         ),
+         "3'02"
       );
+      assert_eq!(week(5 * 3600, SHORT), "0'5");
+      // The five-hour gap is `h:mm` whatever the form says.
+      assert_eq!(fmt_pace_time(27 * 60, FIVE_HOUR_SECS, "ru", SHORT), "0:27");
       assert_eq!(
-         fmt_pace_time(27 * 60, FIVE_HOUR_SECS, "ru", DaysForm::Units),
+         fmt_pace_time(27 * 60, FIVE_HOUR_SECS, "ru", Span::Units),
          "0:27"
       );
       // On the pill it takes the form; the panel keeps the words.
       let target = 60.0;
       let used = target + (gap as f64) * 100.0 / SEVEN_DAY_SECS as f64;
       assert_eq!(
-         pace_parts(
-            PaceView::Time,
-            used,
-            target,
-            SEVEN_DAY_SECS,
-            "ru",
-            DaysForm::Colon
-         ),
-         vec!["▲3:02".to_string()]
+         pace_parts(PaceView::Time, used, target, SEVEN_DAY_SECS, "ru", SHORT),
+         vec!["▲3'2".to_string()]
       );
       assert!(pace_detail(PaceView::Time, used, target, SEVEN_DAY_SECS, "ru").starts_with("▲3д2ч"));
    }
 
    #[test]
-   fn by_time_the_day_count_can_read_as_days_colon_hours() {
+   fn by_time_the_day_count_can_read_short() {
       let now = 1_770_000_000;
-      let colon = |reset| fmt_days_figure(reset, now, "ru", DayCount::Time, DaysForm::Colon);
-      assert_eq!(colon(now + 3 * 86400 + 15 * 3600 + 20 * 60), "3:16");
-      // The hours are padded, as minutes are in `h:mm`, so the shape holds.
-      assert_eq!(colon(now + 4 * 86400 + 6 * 3600 + 20 * 60), "4:07");
-      assert_eq!(colon(now + 12 * 3600), "0:12");
-      assert_eq!(colon(now), "0:00");
+      let short = |reset, sep, pad| {
+         fmt_days_figure(reset, now, "ru", DayCount::Time, Span::Short { sep, pad })
+      };
+      assert_eq!(
+         short(now + 3 * 86400 + 15 * 3600 + 20 * 60, "'", false),
+         "3'16"
+      );
+      // As few digits as the hours need, or always two.
+      let reset = now + 4 * 86400 + 6 * 3600 + 20 * 60;
+      assert_eq!(short(reset, "'", false), "4'7");
+      assert_eq!(short(reset, "'", true), "4'07");
+      assert_eq!(short(now + 12 * 3600, "'", false), "0'12");
+      assert_eq!(short(now, "'", false), "0'0");
+      assert_eq!(short(now, "'", true), "0'00");
+      // Any separator, the colon it used to be among them.
+      assert_eq!(short(reset, "·", false), "4·7");
+      assert_eq!(short(reset, ":", true), "4:07");
       // By the calendar there is nothing to shorten.
       let cal = DayCount::default();
       let then = now + 5 * 86400;
       assert_eq!(
-         fmt_days_figure(then, now, "ru", cal, DaysForm::Colon),
+         fmt_days_figure(
+            then,
+            now,
+            "ru",
+            cal,
+            Span::Short {
+               sep: "'",
+               pad: false
+            }
+         ),
          fmt_days_until(then, now, "ru", cal)
       );
       assert_eq!(
-         fmt_days_figure(now + 3600, now, "ru", DayCount::Time, DaysForm::Units),
+         fmt_days_figure(now + 3600, now, "ru", DayCount::Time, Span::Units),
          "1ч"
       );
    }

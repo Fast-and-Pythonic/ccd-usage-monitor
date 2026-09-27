@@ -763,15 +763,15 @@ pub const ALL: &[Setting] = &[
       key: "pace_form",
       section: Section::Display,
       // Shown as themselves, as the pace forms are.
-      kind: Kind::Choice(&[ch("units", "▲3д2ч", "▲3d2h"), ch("colon", "▲3:02", "▲3:02")]),
+      kind: Kind::Choice(&[ch("units", "▲3д2ч", "▲3d2h"), ch("short", "▲3'2", "▲3'2")]),
       label: w("Недельный темп", "Weekly pace reads as"),
       tip: w(
-         "Как выглядит недельный темп во времени. 3:02 — дни и часы через \
-             двоеточие: короче, но читается так же, как часы и минуты \
-             пятичасового темпа рядом. В панели подробностей всегда словами.",
-         "How the weekly pace reads in time. 3:02 is days and hours around a \
-             colon: shorter, but it reads like the hours and minutes of the \
-             five-hour pace beside it. The detail panel always spells it out.",
+         "Как выглядит недельный темп во времени. 3'2 — дни и часы через \
+             разделитель; сам разделитель и нули в часах задаются в карточке \
+             дней до сброса. В панели подробностей всегда словами.",
+         "How the weekly pace reads in time. 3'2 is days and hours around a \
+             separator; the separator and the zeros in the hours are set in the \
+             card of days to the reset. The detail panel always spells it out.",
       ),
       group: Some(Group::Pace),
       needs: needs("pace_view", "time", Otherwise::Hide),
@@ -914,18 +914,48 @@ pub const ALL: &[Setting] = &[
       key: "days_form",
       section: Section::Display,
       // Shown as themselves, as the pace forms are.
-      kind: Kind::Choice(&[ch("units", "3д16ч", "3d16h"), ch("colon", "3:16", "3:16")]),
+      kind: Kind::Choice(&[ch("units", "3д16ч", "3d16h"), ch("short", "3'16", "3'16")]),
       label: w("Вид счётчика", "Count reads as"),
       tip: w(
-         "Как выглядит время до недельного сброса на пилюле. 3:16 — дни и часы \
-             через двоеточие: короче, но читается так же, как часы и минуты \
-             пятичасового окна рядом. Только при счёте по времени.",
-         "How the time to the weekly reset reads on the pill. 3:16 is days and \
-             hours around a colon: shorter, but it reads like the hours and minutes \
-             of the five-hour window beside it. Only when days are counted by time.",
+         "Как выглядит время до недельного сброса на пилюле. 3'16 — дни и часы \
+             через разделитель, он задаётся ниже. Только при счёте по времени.",
+         "How the time to the weekly reset reads on the pill. 3'16 is days and \
+             hours around a separator, set below. Only when days are counted by time.",
       ),
       group: Some(Group::Days),
       needs: needs("days_by", "time", Otherwise::Hide),
+   },
+   Setting {
+      key: "weekly_sep",
+      section: Section::Display,
+      kind: Kind::Text,
+      label: w("Разделитель", "Separator"),
+      tip: w(
+         "Что стоит между днями и часами в коротком виде: 3'16 у счётчика, \
+             ▲3'2 у недельного темпа. Не двоеточие, чтобы не путать с часами и \
+             минутами пятичасового окна, но вписать можно любой, до трёх знаков; \
+             пусто — апостроф.",
+         "What stands between days and hours in the short form: 3'16 on the \
+             count, ▲3'2 on the weekly pace. Not a colon, so it is not taken for \
+             the hours and minutes of the five-hour window, but any will do, up \
+             to three characters; empty is an apostrophe.",
+      ),
+      group: Some(Group::Days),
+      needs: None,
+   },
+   Setting {
+      key: "weekly_pad",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Часы двумя цифрами", "Hours as two digits"),
+      tip: w(
+         "В коротком виде писать 2'07 вместо 2'7. Так ширина пилюли не меняется, \
+             когда часов становится меньше десяти; без этого короче на знак.",
+         "Write 2'07 rather than 2'7 in the short form. The pill then keeps its \
+             width as the hours drop below ten; without it, one character shorter.",
+      ),
+      group: Some(Group::Days),
+      needs: None,
    },
    Setting {
       key: "count_today",

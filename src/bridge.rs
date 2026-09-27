@@ -70,7 +70,7 @@ fn pace_cell(w: crate::model::Window, span: i64, now: i64, cfg: &Config) -> Stri
          target,
          span,
          &cfg.lang,
-         cfg.pace_form
+         cfg.pace_span()
       )
       .join(&sep)
    )
@@ -123,7 +123,7 @@ pub fn render(snap: &crate::model::Snapshot, cfg: &Config, now: i64) -> String {
          pace_cell(w, pace::SEVEN_DAY_SECS, now, cfg),
          DIM,
          w.resets_at
-            .map(|r| pace::fmt_days_figure(r, now, &cfg.lang, cfg.day_count(), cfg.days_form))
+            .map(|r| pace::fmt_days_figure(r, now, &cfg.lang, cfg.day_count(), cfg.days_span()))
             .unwrap_or_else(|| "--".into()),
          RESET,
          w.resets_at

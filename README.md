@@ -19,7 +19,7 @@ edit without a compiler.
 | `20:49` | local clock time of the reset |
 | `41%` | share of the weekly limit spent, under the same setting |
 | `▲1.4×` | the same pace figure for the weekly window |
-| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`, or `4:07` with `days_form = colon`) |
+| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`, or `4'7` with `days_form = short`) |
 | `20%` | how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it, so by time half a day and 40% left reads `80%` |
 | `ctx 38%` | how full the session's context window is — the share, the token count (`309k`), or both, per `ctx_view` |
 
@@ -157,13 +157,15 @@ days to the weekly reset with the daily allowance, and the bars
 | `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left`; the colour is keyed on spending either way |
 | `warn_pct` | `60.0` | the spending at which a figure starts moving from green to amber |
 | `danger_pct` | `85.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3:02` with `pace_form = colon`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
-| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `colon` (`▲3:02`, days and hours, shorter but easy to take for the five-hour `h:mm`); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
+| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3'2` with `pace_form = short`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
+| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `short` (`▲3'2`, days and hours around `weekly_sep`; `colon`, the old name, still reads); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
 | `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
 | `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
 | `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
 | `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
-| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `colon` (`3:16`, days and hours, shorter but easy to take for the five-hour `h:mm`); ignored by calendar |
+| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `short` (`3'16`, days and hours around `weekly_sep`; `colon`, the old name, still reads); ignored by calendar |
+| `weekly_sep` | `'` | what stands between days and hours in the short form of both weekly figures — any text up to three characters; empty is `'`. A colon works, but reads like the five-hour `h:mm` |
+| `weekly_pad` | `false` | the hours of the short form always as two digits, `2'07`, rather than as few as they need, `2'7` |
 | `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
 | `count_reset_day` | `true` | by calendar only: whether the day the quota resets counts — switch it off when the reset is in the morning |
 | `bar_colour` | `fill` | what a bar's colour means: `fill` for how spent it is, `pace` for how fast it filled |

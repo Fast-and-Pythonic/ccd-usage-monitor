@@ -375,10 +375,10 @@ into a share of the window's length — 1% of five hours is three minutes, so ni
 points ahead is `▲0:27`; 1% of a week is 100.8 minutes. The grain follows the
 window rather than the value: `h:mm` for five hours, like the countdown beside
 it, and days with whole hours for the week (`▲3д2ч`), because `73:55` is a sum to
-do and minutes are noise at that scale. `pace_form = "colon"` writes the week
-as `▲3:02` instead, the way `days_form` shortens the day count (A29): on the
-pill and the status line only, never in the panel, and with the same price —
-it reads like the five-hour `h:mm`. A setting of its own rather than a
+do and minutes are noise at that scale. `pace_form = "short"` writes the week
+as `▲3'2` instead, the way `days_form` shortens the day count and with the same
+separator and zeros (A29): on the pill and the status line only, never in the
+panel. A setting of its own rather than a
 follower of `days_form`, because that one only exists when days are counted by
 time and a pace in time form does not care how they are counted. It is one form on its own, not paired:
 pairs with it would double a list of seven for no reading the panel does not
@@ -1115,21 +1115,35 @@ the zero case are the old behaviour.
 for the shape on show, `0d0h` for `3d5h`, because a fixed `0d00h` left the
 short forms floating in a hole.
 
-**By time the count has a second, shorter form**, `days_form = "colon"`:
-`3:16` for `3d16h`, the hours padded as minutes are in `h:mm`, so the figure
-keeps one width while the digits move. It is a separate setting rather than a
-third `days_by`, because it changes how the figure reads and nothing it
-divides by; the settings window hides it unless `days_by` is `time`. The
-price is that `3:16` reads like the five-hour `h:mm` beside it, which is why
-the letters stay the default. It applies to the figure only — the pill, the
-status line and `days_text` — and the hover hint keeps words. The weekly
-pace gap in time form has the same choice as a setting of its own,
-`pace_form` (A16), since it does not depend on how the days are counted.
+**By time the count has a second, shorter form**, `days_form = "short"`:
+`3'16` for `3d16h`. It is a separate setting rather than a third `days_by`,
+because it changes how the figure reads and nothing it divides by; the
+settings window hides it unless `days_by` is `time`. It applies to the figure
+only — the pill, the status line and `days_text` — and the hover hint keeps
+words. The weekly pace gap in time form has the same choice as a setting of
+its own, `pace_form` (A16), since it does not depend on how the days are
+counted.
+
+**The short form's separator is `'`, not a colon.** It started as `3:16`, and
+beside the five-hour `2:19` a colon says hours and minutes, which a weekly
+figure is not. The apostrophe is as narrow, is in every font, and reads as
+nothing but a divider. `weekly_sep` makes it a choice, shared by both weekly
+figures: an empty one falls back to `'`, since `316` says nothing, and more
+than three characters are cut, so a stray paste cannot stretch the pill. A
+config written as `colon` still reads, as `short` (`serde(alias)`), and a
+colon typed into `weekly_sep` gives the old look back.
+
+**The hours are as short as they get unless asked**: `2'7`, not `2'07`.
+`weekly_pad` pads them. The unpadded form costs a width change once a day, as
+the hours cross ten; with the cell sized to the figure on show (A34) the pill
+moves by a digit either way, and the shorter reading was chosen over the
+steadier one.
 
 **`days_left` in the JSON stays an integer.** A21 makes the type part of the
 contract; by time it carries the whole days, and the pill's text travels
 beside it as `days_text`, with `display.days_by` saying which count is on
-and `display.days_form` which form it is written in.
+and `display.days_form`, `display.weekly_sep` and `display.weekly_pad` how it
+is written.
 The exact seconds were already there in `resets_in_secs`.
 
 ## A30: figures worked out from the time step on the minute

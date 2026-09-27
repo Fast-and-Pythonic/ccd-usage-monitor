@@ -168,6 +168,8 @@ struct Display {
    days_form: DaysForm,
    pace_view: PaceView,
    pace_form: DaysForm,
+   weekly_sep: String,
+   weekly_pad: bool,
    ctx_view: CtxView,
    ctx_pct_dir: PctMode,
    ctx_tokens_dir: PctMode,
@@ -224,7 +226,7 @@ fn quota(cfg: &Config, rt: &Runtime, w: Window, span: i64, now: i64, weekly: boo
             now,
             &cfg.lang,
             cfg.day_count(),
-            cfg.days_form,
+            cfg.days_span(),
          )),
          _ => None,
       },
@@ -287,6 +289,8 @@ fn render(cfg: &Config, rt: &Runtime, snap: &Snapshot, stale: (bool, bool), now:
          days_form: cfg.days_form,
          pace_view: cfg.pace_view,
          pace_form: cfg.pace_form,
+         weekly_sep: cfg.weekly_sep().to_string(),
+         weekly_pad: cfg.weekly_pad,
          ctx_view: cfg.ctx_view,
          ctx_pct_dir: cfg.ctx_pct_dir,
          ctx_tokens_dir: cfg.ctx_tokens_dir(),
@@ -542,6 +546,8 @@ mod tests {
       assert_eq!(v["display"]["days_by"], "calendar");
       assert_eq!(v["display"]["days_form"], "units");
       assert_eq!(v["display"]["pace_form"], "units");
+      assert_eq!(v["display"]["weekly_sep"], "'");
+      assert_eq!(v["display"]["weekly_pad"], false);
       assert!(
          v["five_hour"]["days_left"].is_null(),
          "a five-hour window has no days"
