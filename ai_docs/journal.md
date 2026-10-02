@@ -5,6 +5,8 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-02** — the data folder moves beside the executable, out of `%APPDATA%`
+- **2026-10-02** — the widget asks the CLI to renew its token, and says when the CLI cannot
 - **2026-09-27** — a polite `taskkill` ends the widget, and a start clears old ghosts
 - **2026-09-27** — the settings window gets a card per figure of the pill
 - **2026-09-27** — the pill's cells lose their reserved width, and one edge holds
@@ -15,6 +17,60 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-02 — the data folder moves beside the executable, out of `%APPDATA%`
+
+Done: [[A36]] — `settings` beside the executable, the repository's own
+`settings/` for a build in its `target\`; `data_dir` only to a folder that
+exists. [[G33]] — why `%APPDATA%` could not be trusted.
+
+After the token check the widget was restarted from a Claude Code session in
+the desktop app and came up with demo figures and a note about an old theme
+contract. The session runs inside the app's package, so the widget read the
+package's private copy of `%APPDATA%` — the redirection A28 had been built to
+step around. First proposed: have the widget notice a foreign package and say
+so. The user asked instead to stop using `%APPDATA%` at all, which removes the
+trap rather than reporting it. Two choices were put to the user: a strict
+"beside the executable" or the same with a rule for this repository, since the
+widget runs from `target\quick` and the bridge from `target\release`; the
+repository rule was taken. No migration from the old folder.
+
+Checked: tests over the folder rule and the one hop; `--sources` from inside
+the session, where `%APPDATA%` is still redirected, reads the repository's
+`settings/`.
+
+Decisions: [[A36]], [[A28]]
+Gotchas: [[G33]]
+Status: Working
+
+---
+
+## 2026-10-02 — the widget asks the CLI to renew its token, and says when the CLI cannot
+
+Done: [[A35]] — an expired token is handed to `claude -p /usage`, with a switch
+and a `--revive-token` flag; [[G32]] — the CLI's verdict is read from its result,
+and a dropped session is named as one.
+
+The renewal was built on 2026-09-27 to spare the user opening a terminal every
+morning. On 2026-10-02 the pill showed dashes again, and a restart did not help.
+The renewal had been running; it was the CLI that could not renew: its refresh
+token had been refused the evening before and it had dropped the session, which
+it marks with an expiry of zero. The widget had taken the CLI's exit code of 0
+for success and gone on saying "token expired". Nothing here can mend a dropped
+session, so the change is in what the widget says: the panel and both probes
+now ask for `claude auth login`, and the CLI is no longer started for nothing.
+Why the refresh token was refused is not known.
+
+Checked: tests over a result trimmed from the real failing run; after a new
+sign-in, `--probe-api` and `--sources` on the rebuilt binary read fresh
+figures. The renewal of an expired but live token, unattended, is still
+unconfirmed.
+
+Decisions: [[A35]]
+Gotchas: [[G32]], [[G03]]
+Status: Working, one check open
 
 ---
 

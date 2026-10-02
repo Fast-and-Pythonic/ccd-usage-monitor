@@ -1,41 +1,81 @@
 //! User settings, stored as TOML next to nothing else the app needs.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 /// The one place that never moves: where a config is found when nothing has
 /// redirected it yet, and the only place `data_dir` itself is ever read from.
-fn default_base_dir() -> PathBuf {
-   dirs::config_dir()
-      .unwrap_or_else(std::env::temp_dir)
-      .join("ccd-usage-monitor")
+///
+/// It sits beside the executable, never under `%APPDATA%`: a program started
+/// from a packaged one — the Claude desktop app, a Claude Code session inside
+/// it — sees a private copy of `%APPDATA%`, and twice that meant a widget
+/// reading settings nobody had edited (A36). Worked out once per process.
+fn default_base_dir() -> &'static Path {
+   static DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+   DIR.get_or_init(|| {
+      let fallback = std::env::temp_dir().join("ccd-usage-monitor");
+      let dir = std::env::current_exe()
+         .map(|exe| default_base_dir_for(&exe))
+         .unwrap_or_else(|_| fallback.clone());
+      if std::fs::create_dir_all(&dir).is_ok() {
+         return dir;
+      }
+      // Installed somewhere it may not write, such as Program Files: a
+      // widget with settings in the temp folder beats one that will not start.
+      eprintln!(
+         "cannot create {}; keeping settings in {} instead",
+         dir.display(),
+         fallback.display()
+      );
+      let _ = std::fs::create_dir_all(&fallback);
+      fallback
+   })
+}
+
+/// `settings` beside the executable — except for a build inside this
+/// repository's `target\<profile>\`, which uses the repository's own
+/// `settings`. That is what lets the widget from `target\quick` and the
+/// status-line bridge from `target\release` find the same files, and keeps
+/// them out of reach of `cargo clean`.
+fn default_base_dir_for(exe: &Path) -> PathBuf {
+   let dir = exe.parent().unwrap_or(Path::new("."));
+   let repo = dir
+      .parent()
+      .filter(|target| target.file_name().is_some_and(|n| n == "target"))
+      .and_then(Path::parent)
+      .filter(|root| {
+         std::fs::read_to_string(root.join("Cargo.toml")).is_ok_and(|t| {
+            t.lines()
+               .any(|l| l.trim() == r#"name = "ccd-usage-monitor""#)
+         })
+      });
+   repo.unwrap_or(dir).join("settings")
 }
 
 /// Where every file this program writes actually lives.
 ///
 /// One hop: read `data_dir` out of whatever sits at the fixed location, and
-/// if it names a folder, use that instead. The folder found this way is never
-/// itself asked for a `data_dir` of its own — a chain would let two configs
-/// point at each other, and one hop is all the problem this solves needs.
+/// if it names a folder that exists, use that instead. The folder found this
+/// way is never itself asked for a `data_dir` of its own — a chain would let
+/// two configs point at each other, and one hop is all the problem this
+/// solves needs.
 ///
-/// A folder that cannot be created falls back to the fixed location rather
-/// than failing the whole program over one bad setting — the same rule A24
-/// applies to a theme that does not compile: a broken setting must not be a
-/// dead application.
+/// A folder that does not exist is ignored rather than made: a mistyped path
+/// must not quietly become a second, empty set of settings — the same spirit
+/// as A24's rule for a theme that does not compile.
 pub fn base_dir() -> PathBuf {
-   let default = default_base_dir();
+   redirected(default_base_dir())
+}
+
+fn redirected(default: &Path) -> PathBuf {
    let text = std::fs::read_to_string(default.join("config.toml")).unwrap_or_default();
    let (cfg, _) = Config::parse(&text);
-   let dir = cfg.data_dir.trim();
-   if dir.is_empty() {
-      return default;
-   }
-   let redirected = PathBuf::from(dir);
-   if std::fs::create_dir_all(&redirected).is_ok() {
-      redirected
+   let dir = PathBuf::from(cfg.data_dir.trim());
+   if !dir.as_os_str().is_empty() && dir.is_dir() {
+      dir
    } else {
-      default
+      default.to_path_buf()
    }
 }
 
@@ -47,27 +87,22 @@ pub fn config_path() -> PathBuf {
 /// location at it — called once, the moment `data_dir` changes from empty to
 /// set. Copies rather than moves, and never overwrites a file already at the
 /// destination: a broken copy, or a folder shared between two installs, must
-/// not cost the original.
-///
-/// `config.toml` and `theme.slint` come from `default_base_dir`; the rest
-/// (`state.json`, `window.json`, `api_poll.json`) come from where
-/// `state::state_dir` put them *before* it started following this same
-/// redirect — written out here rather than called there, so the answer stays
-/// the historical one no matter how that function changes later.
-pub fn relocate(new_dir: &std::path::Path) -> std::io::Result<()> {
-   std::fs::create_dir_all(new_dir)?;
-   let cfg_dir = default_base_dir();
-   let state_dir = dirs::data_local_dir()
-      .unwrap_or_else(std::env::temp_dir)
-      .join("ccd-usage-monitor");
-   for (dir, name) in [
-      (&cfg_dir, "config.toml"),
-      (&cfg_dir, "theme.slint"),
-      (&state_dir, "state.json"),
-      (&state_dir, "window.json"),
-      (&state_dir, "api_poll.json"),
+/// not cost the original. A folder that does not exist yet is refused, which
+/// leaves the setting empty (`slint_ui::changed`).
+pub fn relocate(new_dir: &Path) -> std::io::Result<()> {
+   if !new_dir.is_dir() {
+      return Err(std::io::ErrorKind::NotFound.into());
+   }
+   let from_dir = default_base_dir();
+   for name in [
+      "config.toml",
+      "theme.slint",
+      "state.json",
+      "window.json",
+      "api_poll.json",
+      "samples.json",
    ] {
-      let (from, to) = (dir.join(name), new_dir.join(name));
+      let (from, to) = (from_dir.join(name), new_dir.join(name));
       if from.exists() && !to.exists() {
          let _ = std::fs::copy(&from, &to);
       }
@@ -84,7 +119,7 @@ pub fn relocate(new_dir: &std::path::Path) -> std::io::Result<()> {
       data_dir: new_dir.to_string_lossy().into_owned(),
    })
    .unwrap_or_default();
-   std::fs::write(cfg_dir.join("config.toml"), stub)
+   std::fs::write(from_dir.join("config.toml"), stub)
 }
 
 /// One of the four places the figures can come from. Each is switched on or
@@ -482,6 +517,9 @@ pub struct Config {
    /// Requests per rolling minute the widget allows itself. Past this the
    /// poller waits instead of asking; see `api::spawn_poller`.
    pub api_budget_per_min: u32,
+   /// Whether an expired token is handed back to Claude Code to renew, by
+   /// running `claude -p /usage` out of sight (A35).
+   pub api_revive_token: bool,
    /// Read from a config written before the per-source switches; migrated on
    /// load and never written back.
    #[serde(rename = "source", skip_serializing_if = "Option::is_none")]
@@ -512,8 +550,9 @@ pub struct Config {
    /// number is worse than `--%`.
    pub drop_after_secs: i64,
    /// Where every file this program writes actually lives, once set — see
-   /// `base_dir`. Empty is the default location. Read only from the copy at
-   /// the fixed location (`default_base_dir`) — a value saved anywhere else
+   /// `base_dir`. Empty is the default location, `settings` beside the
+   /// executable (A36), and so is a folder that does not exist. Read only
+   /// from the copy at the fixed location (`default_base_dir`) — a value saved anywhere else
    /// is stored but never consulted, which is what makes moving to a second
    /// folder later a manual step: edit it there, not in the settings window.
    pub data_dir: String,
@@ -566,6 +605,7 @@ impl Default for Config {
          session_stale_secs: 900,
          api_interval_secs: 180,
          api_budget_per_min: 4,
+         api_revive_token: true,
          legacy_source: None,
          legacy_pace_cell: None,
          legacy_pace_unit: None,
@@ -1092,6 +1132,69 @@ fn clamp(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
 #[cfg(test)]
 mod tests {
    use super::*;
+
+   /// A scratch folder of its own per test, so tests running side by side
+   /// never see each other's files.
+   fn scratch_dir(name: &str) -> PathBuf {
+      let dir = std::env::temp_dir().join(format!("ccd-usage-monitor-test-{name}"));
+      let _ = std::fs::remove_dir_all(&dir);
+      std::fs::create_dir_all(&dir).unwrap();
+      dir
+   }
+
+   #[test]
+   fn a_build_in_this_repository_uses_its_settings_folder() {
+      let root = scratch_dir("repo");
+      std::fs::write(
+         root.join("Cargo.toml"),
+         "[package]\nname = \"ccd-usage-monitor\"\n",
+      )
+      .unwrap();
+      let exe = root
+         .join("target")
+         .join("quick")
+         .join("ccd-usage-monitor.exe");
+      assert_eq!(default_base_dir_for(&exe), root.join("settings"));
+   }
+
+   #[test]
+   fn anywhere_else_the_settings_sit_beside_the_exe() {
+      let other = scratch_dir("other-repo");
+      std::fs::write(other.join("Cargo.toml"), "[package]\nname = \"other\"\n").unwrap();
+      let in_other = other.join("target").join("release").join("x.exe");
+      assert_eq!(
+         default_base_dir_for(&in_other),
+         other.join("target").join("release").join("settings")
+      );
+      let plain = scratch_dir("plain")
+         .join("tools")
+         .join("ccd-usage-monitor.exe");
+      assert_eq!(
+         default_base_dir_for(&plain),
+         plain.parent().unwrap().join("settings")
+      );
+   }
+
+   #[test]
+   fn data_dir_is_followed_only_to_a_folder_that_exists() {
+      let base = scratch_dir("hop");
+      let elsewhere = scratch_dir("hop-target");
+      let point = |dir: &Path| {
+         let line = toml::to_string(&toml::Table::from_iter([(
+            "data_dir".to_string(),
+            toml::Value::String(dir.to_string_lossy().into_owned()),
+         )]))
+         .unwrap();
+         std::fs::write(base.join("config.toml"), line).unwrap();
+      };
+      assert_eq!(redirected(&base), base, "no config: the default");
+      point(&elsewhere);
+      assert_eq!(redirected(&base), elsewhere);
+      let missing = elsewhere.join("not-made");
+      point(&missing);
+      assert_eq!(redirected(&base), base, "a missing folder is ignored");
+      assert!(!missing.exists(), "and not created");
+   }
 
    /// A config with every described setting moved off its default, built from
    /// the schema so that a field added later is covered without anyone

@@ -6,6 +6,7 @@
 //!   ccd-usage-monitor --bridge    Claude Code status-line command: stdin JSON -> state file
 //!   ccd-usage-monitor --print     print the current line and exit
 //!   ccd-usage-monitor --probe-api one usage-endpoint request, printed raw
+//!   ccd-usage-monitor --revive-token  have the CLI renew its token now (A35)
 //!   ccd-usage-monitor --sources  what each source reports right now
 //!   ccd-usage-monitor --sessions  every conversation on disk and what it reports
 //!   ccd-usage-monitor --serve     the same snapshot as JSON on loopback (A21),
@@ -72,6 +73,9 @@ fn main() {
    if has("--probe-api") {
       std::process::exit(probe_api());
    }
+   if has("--revive-token") {
+      std::process::exit(revive_token());
+   }
    if has("--sources") {
       std::process::exit(probe_sources());
    }
@@ -115,8 +119,12 @@ fn probe_api() -> i32 {
       ),
       None => println!("token carries no expiry"),
    }
+   if token.is_signed_out() {
+      eprintln!("{}", api::SIGN_IN_HINT);
+      return 1;
+   }
    if token.is_expired(now) {
-      eprintln!("token expired; open Claude Code once to refresh it");
+      eprintln!("token expired; `--revive-token` or opening Claude Code once renews it");
       return 1;
    }
    match api::fetch_raw(&token.access_token) {
@@ -150,6 +158,25 @@ fn probe_api() -> i32 {
    }
 }
 
+/// What the poller does when it finds the token expired, done by hand and
+/// whatever the token's state: the expiry before, the CLI's verdict, the
+/// expiry after.
+fn revive_token() -> i32 {
+   let expiry = || match api::read_token().and_then(|t| t.expires_at_ms) {
+      Some(ms) => pace::fmt_reset_full(ms / 1000, "en"),
+      None => "unknown".to_string(),
+   };
+   println!("before : token expires at {}", expiry());
+   let started = std::time::Instant::now();
+   let result = api::revive_token();
+   match &result {
+      Ok(()) => println!("claude : ok in {:.1} s", started.elapsed().as_secs_f32()),
+      Err(e) => println!("claude : {e}"),
+   }
+   println!("after  : token expires at {}", expiry());
+   i32::from(result.is_err())
+}
+
 /// Print what every source says right now, side by side. The fastest way to
 /// answer "why is the pill showing that number".
 fn probe_sources() -> i32 {
@@ -161,6 +188,10 @@ fn probe_sources() -> i32 {
    let api = match api::read_token() {
       None => {
          println!("api      : no credentials file");
+         model::Snapshot::default()
+      }
+      Some(t) if t.is_signed_out() => {
+         println!("api      : {}", api::SIGN_IN_HINT);
          model::Snapshot::default()
       }
       Some(t) if t.is_expired(now) => {

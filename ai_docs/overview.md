@@ -41,19 +41,19 @@ the theme it reads).
 | `view.rs` | snapshot and runtime state → the words, figures and verdicts a person reads, and the composition of the pill itself (`cells`, `bars`); colour as meaning, not as RGB. No drawing (A19) |
 | `tray.rs` | the tray icon and its menu, as a source of commands rather than a handler |
 | `serve.rs` | `--serve`: the snapshot as JSON on loopback, for a widget in somebody else's panel (A21). No drawing |
-| `config.rs` | `%APPDATA%\ccd-usage-monitor\config.toml` — sectioned, edited in place so comments survive (A22) |
+| `config.rs` | `config.toml` in the data folder beside the executable (A36) — sectioned, edited in place so comments survive (A22) |
 | `schema.rs` | every setting described once: its kind, its bounds, its section, its words, its card in the settings window and what it depends on (A22, A33) |
 | `geometry.rs` | `window.json` — where the windows were left; the widget's own memory, not a setting (A22) |
 | `slint_ui.rs` | the front end: the pill and panel windows, the theme contract, the window policy over the HWND, the tray (A20, A24, A25) |
 | `settings_ui.rs` | the settings window, walked out of `schema.rs` — pages of cards in, values back out, rows rewritten in place (A22, A33) |
-| `themes/pill.slint` | the default appearance, compiled in; written to `%APPDATA%` (or `data_dir`) on first run so it can be edited (A24) |
-| `settings/` | this repository's `data_dir` (A28). Machine state, ignored by git — except `theme.slint`, the live, hand-tuned theme the widget loads here |
+| `themes/pill.slint` | the default appearance, compiled in; written to the data folder on first run so it can be edited (A24) |
+| `settings/` | the data folder of any build inside this repository (A36). Machine state, ignored by git — except `theme.slint`, the live, hand-tuned theme the widget loads here |
 | `ui/settings.slint` | the form, compiled in through `build.rs`; a side list of pages, cards of rows drawn by the control each asks for, and no knowledge of any setting (A33) |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
 
 ## Data flow
 ```
-Claude Code ──stdin JSON──> ccd-usage-monitor --bridge ──> %LOCALAPPDATA%\ccd-usage-monitor\state.json
+Claude Code ──stdin JSON──> ccd-usage-monitor --bridge ──> <data folder>\state.json
                                                           │ mtime poll, 250 ms
 desktop app ──every ~15 min──> plan-usage-history.json ────┤
                                                           │

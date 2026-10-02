@@ -543,6 +543,22 @@ pub const ALL: &[Setting] = &[
       group: Some(Group::SrcApi),
       needs: needs("api_enabled", "true", Otherwise::Dim),
    },
+   Setting {
+      key: "api_revive_token",
+      section: Section::Sources,
+      kind: Kind::Bool,
+      label: w("Оживлять токен через CLI", "Revive the token via the CLI"),
+      tip: w(
+         "Токен Claude Code живёт 8 часов, а обновляет его только CLI. Когда он \
+             истёк, виджет сам тихо запускает `claude -p /usage` — без окна и без \
+             запроса к модели, квоту это не тратит.",
+         "Claude Code's token lives 8 hours and only the CLI renews it. Once it \
+             has expired the widget quietly runs `claude -p /usage` — no window, no \
+             request to the model, no quota spent.",
+      ),
+      group: Some(Group::SrcApi),
+      needs: needs("api_enabled", "true", Otherwise::Dim),
+   },
    // ----------------------------------------------------------- behaviour ---
    Setting {
       key: "session_pick",
@@ -696,20 +712,20 @@ pub const ALL: &[Setting] = &[
       kind: Kind::Text,
       label: w("Папка данных", "Data folder"),
       tip: w(
-         "Пусто — обычное место (`%APPDATA%`). Указав папку, сюда переезжают \
-             config.toml, theme.slint и всё остальное, что программа хранит сама; \
-             виджет перезапустится. Удобно, если обычное место недоступно для \
-             прямого редактирования — например, из-за подмены %APPDATA% у \
-             какой-то из открытых программ. Повторное изменение здесь не \
-             переносит файлы второй раз — новое место нужно задавать в файле, \
-             который лежит там, куда всё уже переехало.",
-         "Empty is the usual place (`%APPDATA%`). Naming a folder moves \
-             config.toml, theme.slint and everything else this program keeps for \
-             itself there; the widget restarts. Useful when the usual place is not \
-             reachable for direct editing — say, because some open program has \
-             %APPDATA% redirected. Changing this again here does not move the \
-             files a second time — a further move has to be set from the file \
-             now sitting wherever everything already moved to.",
+         "Пусто — папка `settings` рядом с программой (у сборки из \
+             репозитория — `settings` в его корне). Указав уже существующую \
+             папку, сюда переносят config.toml, theme.slint и всё остальное, что \
+             программа хранит сама; виджет перезапустится. Несуществующая папка \
+             не принимается. Повторное изменение здесь не переносит файлы второй \
+             раз — новое место нужно задавать в файле, который лежит там, куда \
+             всё уже переехало.",
+         "Empty is a `settings` folder beside the program (for a build inside \
+             the repository, the repository's own `settings`). Naming a folder \
+             that already exists moves config.toml, theme.slint and everything \
+             else this program keeps for itself there; the widget restarts. A \
+             folder that does not exist is not taken. Changing this again here \
+             does not move the files a second time — a further move has to be \
+             set from the file now sitting wherever everything already moved to.",
       ),
       group: Some(Group::Files),
       needs: None,

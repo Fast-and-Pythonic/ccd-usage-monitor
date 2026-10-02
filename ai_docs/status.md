@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-09-27. State only — why anything is the way it is lives in
+Snapshot of 2026-10-02. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 ## Works
@@ -38,10 +38,12 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
 - **Settings in a second native window** (A11), generated from `schema.rs` (A22,
-   A33): five pages, a card per figure of the pill, forty-nine settings, and the
-   `.slint` file knows none of them. It carries the `AboutSlint` acknowledgement.
+   A33): five pages, a card per figure, fifty settings; the `.slint` file knows
+   none of them. Files beside the executable, never in `%APPDATA%` (A36).
 - **The tray icon goes with the process** (G31); a start sweeps older ghosts (G25).
-- **Tests**: 203 in all; 36 over `view.rs`, with golden tests of panel and pill.
+- **An expired token is renewed by the CLI** (A35), run out of sight with
+   `claude -p /usage`; `--revive-token` does it by hand.
+- **Tests**: 209 in all; 36 over `view.rs`, with golden tests of panel and pill.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 
@@ -61,9 +63,8 @@ Snapshot of 2026-09-27. State only — why anything is the way it is lives in
    are covered without it, but it is still the only source that *states* a window
    size. One check remains: whether a newly started desktop session picks the
    setting up.
-- **The OAuth token is short-lived** and deliberately not refreshed: writing to
-   another program's credentials file to save a countdown is a bad trade, so the
-   endpoint goes quiet on days when Claude Code is not run in a terminal.
+- **The CLI can drop its session** (G32), which no renewal mends; the cause on
+   2026-10-01 is unknown. A whole unattended day on A35 is not yet confirmed.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
 
 ## Fragile points

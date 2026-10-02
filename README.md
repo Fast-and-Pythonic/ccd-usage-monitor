@@ -121,9 +121,14 @@ command through Git Bash, which eats unescaped backslashes and then fails
 silently.
 
 Run `ccd-usage-monitor.exe` to show the widget. Its settings live in
-`config.toml`, in `%APPDATA%\ccd-usage-monitor\` unless `data_dir` names
-another folder (below); the theme, the state file and the pill's remembered
-position (`window.json`) sit beside it and move with it.
+`config.toml`, in a `settings` folder beside the executable unless `data_dir`
+names another, existing folder (below); the theme, the state file and the
+pill's remembered position (`window.json`) sit beside it and move with it. A
+build run from the repository's `target\` uses the repository's own
+`settings\`. Nothing is kept in `%APPDATA%`: a program started from a packaged
+app such as Claude desktop sees a private copy of it. Put the executable in a
+folder you can write to; where it cannot make `settings`, it falls back to the
+temp folder.
 
 ## Settings
 
@@ -360,9 +365,8 @@ a real 429 costs.
 ## The look is a file
 
 The pill's whole appearance — palette, type, paddings, corner radius, the
-thickness of the bars — is `theme.slint`, written to
-`%APPDATA%\ccd-usage-monitor\`, or into `data_dir`, the first time the widget
-runs. Edit it and use "Перезапустить" / "Restart" in the tray or the settings
+thickness of the bars — is `theme.slint`, written to the settings folder
+(or `data_dir`) the first time the widget runs. Edit it and use "Перезапустить" / "Restart" in the tray or the settings
 window; no Rust toolchain is involved.
 
 What the theme does **not** decide is deliberate: the wording and the figures

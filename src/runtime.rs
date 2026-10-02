@@ -281,12 +281,20 @@ impl Runtime {
       // request and editing a setting would cost one (G14).
       let wanted = (cfg.api_interval(), cfg.api_budget());
       if cfg.api_enabled && self.api_rx.is_none() {
-         let settings = std::sync::Arc::new(api::PollerSettings::new(wanted.0, wanted.1));
+         let settings = std::sync::Arc::new(api::PollerSettings::new(
+            wanted.0,
+            wanted.1,
+            cfg.api_revive_token,
+         ));
          let (tx, rx) = channel();
          let wake = api::spawn_poller(settings.clone(), tx);
          self.api_rx = Some(rx);
          self.api_wake = Some(wake);
          self.api_settings = Some(settings);
+      }
+      if let Some(settings) = &self.api_settings {
+         // Read only when a token has expired, so no wake-up is needed.
+         settings.set_revive(cfg.api_revive_token);
       }
       if let Some(settings) = &self.api_settings
          && settings.get() != wanted

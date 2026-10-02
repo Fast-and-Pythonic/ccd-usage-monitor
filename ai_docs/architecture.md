@@ -27,13 +27,15 @@
 - **A25** · the pill and its panel are two windows
 - **A26** · one indent width, three spaces, enforced rather than remembered
 - **A27** · the poller remembers itself across a restart
-- **A28** · `data_dir` moves every file this program writes, in one hop
+- **A28** · `data_dir` moves every file this program writes, in one hop (revised by A36)
 - **A29** · the weekly days are counted by the calendar or by the clock
 - **A30** · figures worked out from the time step on the minute
 - **A31** · a hint names the figure, then says what it is now
 - **A32** · a commit has to pass the checks, and a hook says so
 - **A33** · the settings window is pages of cards, and the schema says where each setting sits
 - **A34** · a cell is as wide as its text, and one edge of the pill stays put
+- **A35** · an expired token is handed back to the CLI to renew, never renewed here
+- **A36** · our files live beside the executable, never in `%APPDATA%`
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -48,7 +50,7 @@ widget and the bridge disagree about the state-file schema.
 window when Claude Code spawns them, and their stdout still reaches the caller.
 
 ## A02: A state file, not IPC
-The bridge writes `%LOCALAPPDATA%\ccd-usage-monitor\state.json`; the widget polls its mtime
+The bridge writes `state.json` into the data folder (A36); the widget polls its mtime
 every 250 ms.
 
 **Why:** the bridge is a short-lived process spawned by someone else, several
@@ -919,9 +921,9 @@ itself.
 
 ## A24: the theme contract — what the program sends, what the theme declares
 `themes/pill.slint` is the widget's whole appearance, compiled into the binary
-and written to `%APPDATA%\ccd-usage-monitor\theme.slint` on first run — or
-into `data_dir` when that is set (A28), which in this repository's working
-setup is `settings/`. From then on the copy on disk is what loads, so a change
+and written to `theme.slint` in the data folder on first run (A36) — which
+for a build inside this repository is its `settings/`, and wherever `data_dir`
+points when that is set (A28). From then on the copy on disk is what loads, so a change
 to the theme contract's *meaning* (not only its shape) has to be carried into
 that copy as well as into the default.
 
@@ -1042,6 +1044,11 @@ follows (A03): a reading that only renews one window must not blank out the
 other one merely because it wasn't due yet.
 
 ## A28: `data_dir` moves every file this program writes, in one hop
+> **Revised by A36:** the fixed location is now `settings` beside the
+> executable, not `%APPDATA%`, and `data_dir` must name a folder that exists.
+> The one hop and `relocate` stand; the paragraphs below describe the
+> `%APPDATA%` years.
+
 Some environments redirect a packaged program's usual per-user folder to a
 private copy of it — edits made there through the normal, unpackaged route (a
 text editor, another process) never reach what the packaged one reads, and
@@ -1364,3 +1371,77 @@ hold, and the figure is one cell.
 so the theme contract is 3 (A24) and a theme written for 2 falls back to the
 built-in copy with the two numbers on stderr (G22). `view::Cell` travels in the
 `--serve` JSON as it is, so its `schema` is 2 (A21).
+
+## A35: an expired token is handed back to the CLI to renew, never renewed here
+When the poller finds the token expired and `api_revive_token` is on (the
+default), it runs `claude -p /usage --no-session-persistence --safe-mode
+--output-format json` with no window, from the temp directory, waits up to 60 s,
+reads the token again and asks the endpoint in the same lap. A failed attempt
+keeps the next one away for 30 minutes. `--revive-token` does the same by hand
+and prints the expiry before and after.
+
+**Why the CLI and not us.** The refresh token is single-use: a renewal made
+here and written into Claude Code's credentials file would leave the CLI holding
+a dead one, and writing to another program's file is a trade the project had
+already declined. Asking the CLI keeps the file its own.
+
+**Why `/usage`.** `claude auth status` does not renew anything: it reports
+`loggedIn: true` over an expired token and leaves the file as it was. A normal
+prompt would renew it but spend quota and open a five-hour window. `/usage` is
+a built-in command that asks the same endpoint the widget does, so the token is
+renewed with zero turns, zero tokens and zero cost — measured on the JSON result
+of a real run.
+
+**Why those flags.** `--safe-mode` keeps the user's hooks and plugins out of the
+run; `--no-session-persistence` keeps it out of the transcripts the session
+source reads (A18); the temp directory, because `data_dir` (A28) can sit inside
+a project and the CLI would treat the run as that project's. 6–10 s per run.
+
+**Why the verdict is read from the result.** A run whose sign-in fails still
+exits with 0 (G32), so success is the result's `is_error` being false, not the
+exit code. A refusal of the refresh token itself is not something a revival can
+mend: the CLI then writes an expiry of zero, the poller stops starting it, and
+the panel says to run `claude auth login` once.
+
+**Why 30 minutes.** A CLI that could not renew once — signed out, offline, not
+installed — will not do better a lap later, and each attempt is a process start
+of several seconds. The last attempt is kept in memory only, so a restart may
+try once more.
+
+## A36: our files live beside the executable, never in `%APPDATA%`
+Every file this program keeps — `config.toml`, `theme.slint`, `state.json`,
+`window.json`, `api_poll.json`, `samples.json` — sits in a `settings` folder
+beside the executable. A build inside this repository's `target\<profile>\`
+(two levels up, a `Cargo.toml` naming `ccd-usage-monitor`) uses the
+repository's own `settings/` instead. `data_dir` still moves everything in one
+hop (A28), but only to a folder that already exists; anything else is ignored.
+`config::default_base_dir` is the one place this is decided.
+
+**Why not `%APPDATA%`.** A program started by a packaged one — the Claude
+desktop app, or a Claude Code session running inside it — sees a private copy
+of `%APPDATA%`, not the real folder (G33). That is what A28 was built around,
+and on 2026-10-02 it bit again: a widget restarted from a session read a copy
+of the config with demo figures on and a theme one contract version old. The
+redirection covers AppData only, so a folder beside the executable is the same
+folder whoever starts the process: Explorer, a session, or the CLI running
+`--bridge` under the desktop app.
+
+**Why the repository rule.** Here the widget runs from `target\quick` and the
+status line calls the bridge from `target\release`. Two folders beside two
+executables would split them — the bridge writing a `state.json` the widget
+never reads — and a full `cargo clean` would take the settings with it. The
+repository's `settings/` was already the live data folder (through `data_dir`)
+and is ignored by git except for the theme.
+
+**Why only an existing folder.** A mistyped `data_dir` used to be created, and
+so became a second, empty set of settings that the widget then quietly used.
+Now it is not taken, and the settings window clears it.
+
+**No migration.** Nothing is read from the old `%APPDATA%\ccd-usage-monitor`
+any more; where it holds settings worth keeping, they are copied by hand. The
+desktop app's own history (`%APPDATA%\Claude`, A14) is another program's file
+and is still read from there.
+
+**Where the folder cannot be made** — an executable installed somewhere it may
+not write — the temp folder is used and the fact goes to stderr: a widget with
+settings that do not survive a cleanup beats one that will not start.

@@ -38,6 +38,8 @@ non-obvious cause.
 - **G29** · a Slint `ScrollView` scrolls by the wheel in pulses over its content, and in jumps over its bar
 - **G30** · a `Text` placed by its own `y` gives its cell no height, and the pill folds to a sliver
 - **G31** · `taskkill` without `/F` hid the pill and left the widget running
+- **G32** · `claude -p` exits with 0 when its sign-in has failed
+- **G33** · a process started from the Claude desktop app sees a private copy of `%APPDATA%`
 
 ## G01: A backslash path in `statusLine` fails silently
 **Symptom:** the bridge never runs. No error anywhere, no state file, no line
@@ -63,7 +65,7 @@ can be missing independently.
 **Fix:** treat missing as unknown everywhere. `StatusLinePayload::apply_to` never
 clears a stored window, `StateFile::prune` deletes a window only when its reset
 time has actually passed, and the UI renders `--%` in grey rather than `0%`.
-**How to spot it:** `%LOCALAPPDATA%\ccd-usage-monitor\state.json` has `sessions` but no
+**How to spot it:** `state.json` in the data folder (A36) has `sessions` but no
 `rate_limits`.
 
 ---
@@ -75,11 +77,14 @@ itself works perfectly.
 keeps its authentication elsewhere, so on a machine used only through the
 desktop app that file stays frozen at whenever the CLI last logged in — a month
 or more.
-**Fix:** nothing to fix in the app; the endpoint source is optional by design
-and the widget runs on bridge data. Signing in with the CLI (`claude` in a
-terminal, then `/login`) refreshes the file and revives the source.
+**Fix:** an expired token is handed to the CLI to renew (`api_revive_token`,
+A35); `--revive-token` does it by hand. That needs a session the CLI can still
+renew. When its refresh token is refused the CLI writes `expiresAt: 0` and
+nothing short of `claude auth login` brings it back (G32). Note that
+`claude auth status` says `loggedIn: true` over a token that has merely
+expired; it only says `false` once the session is dropped.
 **How to spot it:** `--probe-api` prints the token's expiry date next to the
-current time before it gives up.
+current time before it gives up, and says "signed out" for an expiry of zero.
 
 ---
 
@@ -697,3 +702,50 @@ the widget running.
 keeps running, with no window on screen. List its top-level windows and read
 their visibility — a close that was answered by hiding looks exactly like
 this.
+
+---
+
+## G32: `claude -p` exits with 0 when its sign-in has failed
+**Symptom:** after a night the pill showed dashes again with the revival of A35
+switched on, and a restart changed nothing. `--revive-token` printed
+`claude : ok` and the same expiry before and after; the expiry read as the
+epoch, Thursday 08:00.
+**Root cause:** the CLI's refresh token had been refused and the CLI had dropped
+the session, writing `expiresAt: 0` — 22:15 the evening before, in a headless
+run, the same second its model-catalog cache recorded a failure. Run by hand,
+`claude -p /usage --output-format json` answered `"is_error": true` with
+"Failed to authenticate: OAuth session expired and could not be refreshed", and
+exited with 0; `claude auth status` said `loggedIn: false`. The revival read the
+exit code, so it called the attempt a success, then saw the token still expired
+and showed a bare "token expired". Why the refresh token was refused is not
+known: the widget only starts the CLI, one run at a time, 30 minutes apart.
+**Fix:** `revive_token` reads stdout and takes `is_error` as the verdict;
+an authentication failure adds the hint to run `claude auth login`. A token with
+an expiry of zero counts as signed out (`Token::is_signed_out`): the poller does
+not start the CLI for it and the panel, `--probe-api` and `--sources` say to
+sign in. After `claude auth login` the next lap of the poller picks the new
+token up with no restart.
+**How to spot it:** `claude auth status` with `loggedIn: false`, or
+`--sources` printing "Claude Code is signed out".
+
+---
+
+## G33: a process started from the Claude desktop app sees a private copy of `%APPDATA%`
+**Symptom:** after a restart the pill showed demo figures, and the panel said
+"the theme is written for contract 2, this build sends 3". The settings on disk
+had neither.
+**Root cause:** the widget had been restarted from a Claude Code session in the
+desktop app. The app is packaged, and a process it starts — directly or through
+a session's shell — has `%APPDATA%` redirected to
+`%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming`. There sat an old
+copy of `ccd-usage-monitor\`: `demo = true`, an empty `data_dir`, and a
+`theme.slint` from 2026-09-16 written for contract 2, so the widget fell back to
+the built-in theme (G22). A shell inside the session sees the same copy, so a
+listing made from there cannot tell the two folders apart.
+**Fix:** A36 — this program keeps nothing in `%APPDATA%`. The trap remains for
+any other program's file there: `desktop.rs` reads the desktop app's own
+history from `%APPDATA%\Claude`, which inside the package is whatever the
+package holds.
+**How to spot it:** `--sources` ends with "(demo figures on)" where nobody set
+it, or a setting that was changed seems not to have been. Compare the file's
+size and time with the one under `Packages\Claude_<id>\LocalCache\Roaming`.

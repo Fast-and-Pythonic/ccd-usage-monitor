@@ -36,9 +36,9 @@ app, which shows none of this itself and does not run the status line (G06).
    G27–G29 before touching its layouts or its scrolling
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
-- **Changing how the pill looks** → `settings/theme.slint` first: in this
-   repository's working setup `data_dir` (A28) points at `settings/`, so that
-   file is the theme that actually loads, and `%APPDATA%` is not in play. It is
+- **Changing how the pill looks** → `settings/theme.slint` first: any build
+   inside this repository keeps its files in `settings/` (A36), so that file is
+   the theme that actually loads. It is
    hand-tuned; since 2026-09-27 the default is a copy of it, and the two part
    only when one is edited without the other. `themes/pill.slint` is only the
    built-in default, written out where no theme exists yet (A24) — change it
@@ -57,6 +57,8 @@ app, which shows none of this itself and does not run the status line (G06).
 - **The widget quits when it is hidden, or a window steals the focus** → G20
    and G21
 - **The widget will not quit, or leaves a tray icon behind** → G31 and G25
+- **Settings, theme or demo figures look like someone else's** → A36 and G33:
+   where the data folder is, and why `%APPDATA%` is not used
 - **Upgrading Slint** → G18–G23 and G26, and re-read A24 before changing a struct the theme receives
 
 ## Five facts first
@@ -77,7 +79,8 @@ app, which shows none of this itself and does not run the status line (G06).
    purpose, which is what made the move from egui a replacement of one layer
    rather than a rewrite. One grep checks it; A19 has the line.
 5. The endpoint's token is the CLI's, not the desktop app's, so it goes stale on
-   a machine where Claude Code is only ever used through the app (G03). It is
-   revived by running the CLI once — which is worth doing anyway, because the
+   a machine where Claude Code is only ever used through the app (G03). The
+   widget asks the CLI to renew it (A35); a session the CLI has dropped needs
+   `claude auth login` once (G32). Running the CLI is worth doing anyway, because the
    status line is also the only thing that ever *states* the context window's
    size (A18).

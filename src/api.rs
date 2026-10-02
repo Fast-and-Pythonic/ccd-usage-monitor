@@ -6,7 +6,7 @@
 //! routine: if this stops working the widget keeps running on bridge data.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
@@ -18,7 +18,8 @@ const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
 
 /// The OAuth token Claude Code maintains for its own requests. We only ever
-/// read it; refreshing is Claude Code's job.
+/// read it; refreshing is Claude Code's job — at most we ask Claude Code to
+/// do it (`revive_token`, A35).
 pub struct Token {
    pub access_token: String,
    /// Milliseconds since the epoch, as stored by Claude Code.
@@ -32,7 +33,17 @@ impl Token {
          None => false,
       }
    }
+
+   /// Claude Code writes an expiry of zero when its refresh token is refused
+   /// and it gives up on the session. Only a new sign-in brings it back; no
+   /// revival can (A35).
+   pub fn is_signed_out(&self) -> bool {
+      self.expires_at_ms == Some(0)
+   }
 }
+
+/// What to do about a session Claude Code has dropped.
+pub const SIGN_IN_HINT: &str = "Claude Code is signed out; run `claude auth login` once";
 
 /// Claude Code's own directory — not ours.
 ///
@@ -58,6 +69,117 @@ pub fn read_token() -> Option<Token> {
       access_token: oauth.get("accessToken")?.as_str()?.to_string(),
       expires_at_ms: oauth.get("expiresAt").and_then(|e| e.as_i64()),
    })
+}
+
+/// How long a failed revival keeps the next one away. A CLI that could not
+/// renew the token once — signed out, offline, not installed — will not do
+/// better a lap later, and each attempt is a process start of a few seconds.
+pub const REVIVE_COOLDOWN_SECS: i64 = 1800;
+
+/// How long the CLI gets before it is killed. It takes 6–10 seconds here.
+const REVIVE_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Whether an expired token should be handed to the CLI now.
+pub fn should_revive(enabled: bool, last_attempt: Option<i64>, now: i64) -> bool {
+   enabled && last_attempt.is_none_or(|t| now - t >= REVIVE_COOLDOWN_SECS)
+}
+
+/// Where `claude.exe` is: on `PATH`, or where the native installer puts it.
+fn claude_exe() -> Option<std::path::PathBuf> {
+   let on_path = std::env::var_os("PATH").and_then(|paths| {
+      std::env::split_paths(&paths)
+         .map(|dir| dir.join("claude.exe"))
+         .find(|p| p.is_file())
+   });
+   on_path.or_else(|| {
+      let p = dirs::home_dir()?
+         .join(".local")
+         .join("bin")
+         .join("claude.exe");
+      p.is_file().then_some(p)
+   })
+}
+
+/// Have Claude Code renew its own token, the way it does on any start.
+///
+/// We never touch the refresh token ourselves: it is single-use, and a
+/// renewal made here would leave the CLI holding a dead one (A35). `/usage`
+/// is a built-in command that asks the same endpoint we do, so it renews the
+/// token without a word going to the model — no quota spent, no five-hour
+/// window opened. `--safe-mode` keeps the user's hooks and plugins out of
+/// it, `--no-session-persistence` keeps it out of the transcripts the
+/// session source reads, and it runs from the temp directory: `data_dir`
+/// (A28) can sit inside a project, which the CLI would treat as one.
+pub fn revive_token() -> Result<(), String> {
+   let exe = claude_exe().ok_or("claude CLI not found")?;
+   let mut cmd = std::process::Command::new(exe);
+   cmd.args([
+      "-p",
+      "/usage",
+      "--no-session-persistence",
+      "--safe-mode",
+      "--output-format",
+      "json",
+   ])
+   .current_dir(std::env::temp_dir())
+   .stdin(std::process::Stdio::null())
+   .stdout(std::process::Stdio::piped())
+   .stderr(std::process::Stdio::null());
+   #[cfg(windows)]
+   {
+      use std::os::windows::process::CommandExt;
+      const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+      cmd.creation_flags(CREATE_NO_WINDOW);
+   }
+   let mut child = cmd.spawn().map_err(|e| format!("claude CLI: {e}"))?;
+   let started = std::time::Instant::now();
+   loop {
+      match child.try_wait() {
+         Ok(Some(status)) => {
+            // The result is a kilobyte or two, well inside a pipe's buffer,
+            // so the CLI never blocks on it before exiting.
+            let mut out = String::new();
+            if let Some(mut stdout) = child.stdout.take() {
+               let _ = std::io::Read::read_to_string(&mut stdout, &mut out);
+            }
+            // A failed sign-in still exits with 0; only the result says so.
+            if let Some(e) = cli_error(&out) {
+               return Err(e);
+            }
+            return if status.success() {
+               Ok(())
+            } else {
+               Err(format!("claude CLI exited with {status}"))
+            };
+         }
+         Ok(None) if started.elapsed() >= REVIVE_TIMEOUT => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err("claude CLI timed out".into());
+         }
+         Ok(None) => std::thread::sleep(Duration::from_millis(250)),
+         Err(e) => return Err(format!("claude CLI: {e}")),
+      }
+   }
+}
+
+/// The CLI's own verdict from its `--output-format json` result, when it is
+/// a failure. An authentication failure means the refresh token itself was
+/// refused, which only a sign-in mends.
+fn cli_error(out: &str) -> Option<String> {
+   let v: Value = serde_json::from_str(out.trim()).ok()?;
+   if v.get("is_error").and_then(Value::as_bool) != Some(true) {
+      return None;
+   }
+   let said = v.get("result").and_then(Value::as_str).unwrap_or("failed");
+   let lower = said.to_lowercase();
+   Some(
+      if lower.contains("authenticat") || lower.contains("oauth") {
+         format!("claude CLI: {said}. {SIGN_IN_HINT}")
+      } else {
+         format!("claude CLI: {said}")
+      },
+   )
 }
 
 /// The first pause after a 429 that carries no `Retry-After`, and the longest
@@ -266,7 +388,7 @@ pub enum Wake {
    Recheck,
 }
 
-/// The poller's two settings, shared with the UI rather than copied into the
+/// The poller's settings, shared with the UI rather than copied into the
 /// thread.
 ///
 /// They used to be arguments, which meant changing one had to drop the thread
@@ -276,14 +398,26 @@ pub enum Wake {
 pub struct PollerSettings {
    interval_secs: AtomicU64,
    budget_per_min: AtomicU32,
+   /// Whether an expired token is handed to the CLI to renew. Kept apart
+   /// from the schedule: changing it changes nothing about when to ask.
+   revive: AtomicBool,
 }
 
 impl PollerSettings {
-   pub fn new(interval_secs: u64, budget_per_min: u32) -> PollerSettings {
+   pub fn new(interval_secs: u64, budget_per_min: u32, revive: bool) -> PollerSettings {
       PollerSettings {
          interval_secs: AtomicU64::new(interval_secs),
          budget_per_min: AtomicU32::new(budget_per_min),
+         revive: AtomicBool::new(revive),
       }
+   }
+
+   pub fn set_revive(&self, revive: bool) {
+      self.revive.store(revive, Ordering::Relaxed);
+   }
+
+   pub fn revive(&self) -> bool {
+      self.revive.load(Ordering::Relaxed)
    }
 
    pub fn set(&self, interval_secs: u64, budget_per_min: u32) {
@@ -438,6 +572,10 @@ pub fn spawn_poller(settings: Arc<PollerSettings>, tx: Sender<ApiEvent>) -> Send
       // A "refresh now" that has not been satisfied yet; it survives a wait
       // for the budget or for a penalty to expire.
       let mut forced = false;
+      // When the CLI was last asked to renew the token; in memory only, so a
+      // restart may ask once more, which costs a few seconds and nothing else.
+      let mut last_revive: Option<i64> = None;
+      let mut revive_error: Option<String> = None;
 
       loop {
          let now = crate::state::now();
@@ -467,14 +605,39 @@ pub fn spawn_poller(settings: Arc<PollerSettings>, tx: Sender<ApiEvent>) -> Send
                history.push(now);
                let _ = tx.send(ApiEvent::Polling);
                let mut wait = Duration::from_secs(interval.max(1));
-               match read_token() {
-                  None => {
-                     let _ = tx.send(ApiEvent::Unavailable("no credentials file".into()));
+               let token = match read_token() {
+                  // A signed-out CLI cannot renew anything, so it is not
+                  // started; the hint below says what will.
+                  Some(t)
+                     if t.is_expired(now)
+                        && !t.is_signed_out()
+                        && should_revive(settings.revive(), last_revive, now) =>
+                  {
+                     last_revive = Some(now);
+                     revive_error = revive_token().err().map(|e| format!("token expired; {e}"));
+                     read_token().ok_or("no credentials file".to_string())
                   }
-                  Some(t) if t.is_expired(now) => {
-                     let _ = tx.send(ApiEvent::Unavailable("token expired".into()));
+                  Some(t) => Ok(t),
+                  None => Err("no credentials file".to_string()),
+               };
+               // Read the clock again: a revival takes seconds.
+               match token {
+                  Err(e) => {
+                     let _ = tx.send(ApiEvent::Unavailable(e));
                   }
-                  Some(t) => match fetch_raw(&t.access_token) {
+                  Ok(t) if t.is_expired(crate::state::now()) => {
+                     // The CLI's last verdict stays on show through the
+                     // cooldown, instead of a bare "expired" after one lap.
+                     let msg = if t.is_signed_out() {
+                        SIGN_IN_HINT.to_string()
+                     } else {
+                        revive_error
+                           .clone()
+                           .unwrap_or_else(|| "token expired".into())
+                     };
+                     let _ = tx.send(ApiEvent::Unavailable(msg));
+                  }
+                  Ok(t) => match fetch_raw(&t.access_token) {
                      Ok(Fetched::RateLimited { retry_after_secs }) => {
                         penalty_secs = next_penalty(penalty_secs, retry_after_secs);
                         penalty_until = now + penalty_secs;
@@ -562,6 +725,42 @@ mod tests {
    fn a_window_without_a_reset_time_is_dropped() {
       let v: Value = serde_json::from_str(r#"{ "five_hour": { "utilization": 5 } }"#).unwrap();
       assert!(parse_usage(&v, 1_000).five_hour.is_none());
+   }
+
+   #[test]
+   fn the_cli_verdict_is_read_from_its_result_not_its_exit_code() {
+      // Trimmed from a real run on a session whose refresh token was refused.
+      let refused = r#"{"type":"result","subtype":"success","is_error":true,
+         "result":"Failed to authenticate: OAuth session expired and could not be refreshed"}"#;
+      let e = cli_error(refused).expect("a failure");
+      assert!(
+         e.contains("could not be refreshed") && e.contains("claude auth login"),
+         "{e}"
+      );
+      let other = r#"{"is_error":true,"result":"Network down"}"#;
+      assert!(!cli_error(other).unwrap().contains("auth login"));
+      assert_eq!(cli_error(r#"{"is_error":false,"result":"..."}"#), None);
+      assert_eq!(cli_error("not json"), None);
+   }
+
+   #[test]
+   fn an_expiry_of_zero_means_signed_out() {
+      let t = |ms| Token {
+         access_token: String::new(),
+         expires_at_ms: ms,
+      };
+      assert!(t(Some(0)).is_signed_out());
+      assert!(!t(Some(1)).is_signed_out());
+      assert!(!t(None).is_signed_out());
+   }
+
+   #[test]
+   fn a_revival_waits_out_its_cooldown() {
+      let now = 1_000_000;
+      assert!(should_revive(true, None, now), "never tried: go");
+      assert!(!should_revive(false, None, now), "switched off: never");
+      assert!(!should_revive(true, Some(now - 60), now));
+      assert!(should_revive(true, Some(now - REVIVE_COOLDOWN_SECS), now));
    }
 
    #[test]
