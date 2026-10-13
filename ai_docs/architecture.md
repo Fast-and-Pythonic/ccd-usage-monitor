@@ -36,6 +36,7 @@
 - **A34** · a cell is as wide as its text, and one edge of the pill stays put
 - **A35** · an expired token is handed back to the CLI to renew, never renewed here
 - **A36** · our files live beside the executable, never in `%APPDATA%`
+- **A37** · in the desktop app a Claude Code mod stands in for the status line
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -1445,3 +1446,61 @@ and is still read from there.
 **Where the folder cannot be made** — an executable installed somewhere it may
 not write — the temp folder is used and the fact goes to stderr: a widget with
 settings that do not survive a cleanup beats one that will not start.
+
+## A37: in the desktop app a Claude Code mod stands in for the status line
+`mod/` is a Claude Code plugin of function hooks (a "mod"). It does two jobs, and
+for both of them the executable decides what anything says:
+
+- **It feeds the bridge.** On every `session.measure`, which the engine raises
+  after each main-thread turn and whenever a rate-limit window moves a whole
+  point, the mod builds the status line's own JSON (`StatusLinePayload`) out of
+  the engine's figures and pipes it into `ccd-usage-monitor --bridge`. The only
+  translation is `resetsAt`, an ISO 8601 string, into epoch seconds.
+- **It pins the pill's line under the prompt.** `$.ui.status` takes the stdout of
+  `ccd-usage-monitor --line --session <id>`: `view::cells` joined by
+  `view::plain_line`, built the way `--serve` builds its snapshot, with that
+  conversation's context and no network. It runs on `session.start`, after each
+  measurement and every 60 seconds, so the countdowns move while the session is
+  idle.
+
+It acts only where something other than a terminal draws. A terminal runs the
+real status line, and a second copy of the line there would be noise.
+
+**Why.** The desktop app never runs the status line (G06), so desktop sessions
+reached the widget only through the history file and the transcripts. The
+engine itself has the figures: `$.session.usage()` and `session.measure` carry
+`five_hour` and `seven_day` with their reset times, the context window's stated
+size, its fill, and the model's full id. A mod is the one place in a desktop
+session where code of ours can read them. That closes the last gap the status
+line was needed for: the window's size is now stated by the engine in every
+session where the mod is loaded, not learned from one terminal run.
+
+**Why `--line` and not `--print`.** `--print` is the status line's own
+rendering (`bridge::render`). It carries a daily allowance the pill does not
+show and lacks the time of day the pill does show, and it reads only the state
+file and a transcript. The line under the prompt is meant to be the pill as the
+person set it up.
+
+**Why the timer never feeds the bridge.** `state.json` prefers the session that
+reported last. An idle session feeding the bridge once a minute would become that
+session every minute and take the pill's context figure away from the
+conversation actually in use. Only a measurement, which follows real work,
+feeds it.
+
+**Rejected:** the mod writing `state.json` itself. Locking and merging belong to
+`state.rs`, and two writers of one format would drift.
+
+**Finding the executable.** First the plugin option `exe`, stored in
+`~/.claude/settings.json` under `pluginConfigs["ccd-usage-monitor"].options`.
+Otherwise the executable in a `statusLine` command that ends in `--bridge`.
+Whichever it is must be a build that knows `--line`. An older one would take
+`--line` for no flag at all and start the widget.
+
+**Loading.** `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of
+`~/.claude/settings.json` names `mod/`, so every session the desktop app starts
+loads it from the repository as it stands.
+
+**The cost of the choice.** The mod API is early access (Claude Code 2.1.293
+when this was written) and moves between releases. The mod is kept thin on
+purpose, and its contract with the executable is the status-line JSON, which
+`state.rs` already tests.

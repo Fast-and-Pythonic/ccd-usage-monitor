@@ -135,6 +135,9 @@ written whatever the client is. The usage endpoint remains an option where the
 CLI credentials are current (G03), and the bridge still serves terminal
 sessions. What is lost without a status line is only the *stated* context-window
 size, which is why running the CLI once is still worth it (A18).
+Since 2026-10-10 a Claude Code mod (A37) does the status line's work in the
+desktop app: it feeds the bridge from the engine's own figures, the window's
+size among them, and pins the pill's line under the prompt.
 **How to spot it:** `sessions` in `state.json` contains no id matching the
 session you are actually working in.
 

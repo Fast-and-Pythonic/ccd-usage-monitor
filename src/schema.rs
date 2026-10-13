@@ -279,7 +279,7 @@ impl Group {
          Group::SrcBridge | Group::SrcApi | Group::SrcDesktop | Group::SrcSession => return None,
          Group::Pct => w("Проценты", "Percentages"),
          Group::Pace => w("Темп", "Pace"),
-         Group::Reset5h => w("Сброс пятичасового лимита", "Five-hour reset"),
+         Group::Reset5h => w("Часы у пятичасового лимита", "Five-hour clocks"),
          Group::Days => w(
             "Дни до недельного сброса и норма",
             "Days to the weekly reset, and allowance",
@@ -851,6 +851,22 @@ pub const ALL: &[Setting] = &[
              для пилюли: панель подробностей и строка статуса показывают всё.",
          "When the five-hour limit resets, by the local clock, 20:49. The pill \
              only: the detail panel and the status line show every figure.",
+      ),
+      group: Some(Group::Reset5h),
+      needs: None,
+   },
+   Setting {
+      key: "show_5h_now",
+      section: Section::Display,
+      kind: Kind::Bool,
+      label: w("Текущее время", "Current time"),
+      tip: w(
+         "Который час сейчас, по местным часам, 14:07 — последним в группе \
+             пятичасового лимита. Для экрана, где панель задач со своими часами \
+             скрыта. Рядом с отсчётом до сброса его удобно сравнивать.",
+         "The local time now, 14:07, last in the five-hour group. For a screen \
+             whose taskbar, clock and all, is hidden; beside the countdown to \
+             the reset it is easy to compare.",
       ),
       group: Some(Group::Reset5h),
       needs: None,

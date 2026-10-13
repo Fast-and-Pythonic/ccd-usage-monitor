@@ -120,6 +120,29 @@ Forward slashes are required: on Windows Claude Code runs the status-line
 command through Git Bash, which eats unescaped backslashes and then fails
 silently.
 
+### In the desktop app
+
+The desktop app never runs a status line. The Claude Code mod in `mod/` does
+that job instead. It hands the session's quota and context figures to
+`--bridge`, and it pins the pill's line under the prompt, between the
+permission mode and the model's name. To load it in every session, add this to
+`~/.claude/settings.json` and start a new session:
+
+```json
+"env": {
+  "CLAUDE_CODE_PLUGIN_DIRS": "C:/Home/0_My_Programming/ccd-usage-monitor/mod"
+},
+"pluginConfigs": {
+  "ccd-usage-monitor": {
+    "options": { "exe": "C:/Home/0_My_Programming/ccd-usage-monitor/target/release/ccd-usage-monitor.exe" }
+  }
+}
+```
+
+`exe` must name a build that knows `--line`. Without it the mod takes the
+executable from the status-line command above. In a terminal session the mod
+stays quiet, because the status line already does both jobs there.
+
 Run `ccd-usage-monitor.exe` to show the widget. Its settings live in
 `config.toml`, in a `settings` folder beside the executable unless `data_dir`
 names another, existing folder (below); the theme, the state file and the
@@ -166,6 +189,7 @@ days to the weekly reset with the daily allowance, and the bars
 | `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `short` (`▲3'2`, days and hours around `weekly_sep`; `colon`, the old name, still reads); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
 | `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
 | `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
+| `show_5h_now` | `false` | the local time now (`14:07`), last in the five-hour group — for a screen whose taskbar clock is hidden. Never greyed: it is this machine's clock, not a reading |
 | `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
 | `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
 | `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `short` (`3'16`, days and hours around `weekly_sep`; `colon`, the old name, still reads); ignored by calendar |
@@ -254,6 +278,7 @@ next time the widget writes it.
 | `ccd-usage-monitor --demo` | the widget on synthetic data, for working on the layout |
 | `ccd-usage-monitor --bridge` | status-line mode: reads one JSON payload on stdin, updates the state file, prints the same line for the terminal |
 | `ccd-usage-monitor --print` | prints the current line and exits |
+| `ccd-usage-monitor --line` | prints the pill's own line as plain text and exits; `--session <id>` for that conversation's context. What the mod pins in the desktop app |
 | `ccd-usage-monitor --probe-api` | one request to the usage endpoint, printed raw |
 | `ccd-usage-monitor --sources` | what each source reports right now, side by side |
 | `ccd-usage-monitor --sessions` | every conversation on disk, what it reports, and which one is picked |
@@ -278,7 +303,8 @@ that states the *size* of the context window outright — which is why one
 terminal session is worth running even if you work in the desktop app: the size
 is remembered per model and used by the transcript reader afterwards. Note that
 the status line is a feature of the *terminal* client: the desktop app appears
-never to run it.
+never to run it. There, the mod in `mod/` feeds the bridge with the same JSON
+instead, the window's size included (see *In the desktop app*).
 
 **The session transcripts** — `~/.claude/projects/<encoded-cwd>/<uuid>.jsonl`,
 the conversation files Claude Code writes for itself, whichever client is

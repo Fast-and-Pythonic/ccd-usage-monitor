@@ -31,6 +31,30 @@ pub fn fmt_clock(epoch: i64) -> String {
    }
 }
 
+/// `14:07` — the local time now, for a pill on a screen whose taskbar hides.
+///
+/// Truncated to the minute it is in, unlike a reset: a clock reading 14:08 at
+/// 14:07:40 is simply wrong, and stepping with the other figures (A30) is
+/// what keeps it from being a repaint of its own (G23).
+pub fn fmt_now(now: i64) -> String {
+   match Local.timestamp_opt(on_the_minute(now), 0).single() {
+      Some(dt) => dt.format("%H:%M").to_string(),
+      None => "--:--".to_string(),
+   }
+}
+
+/// `Пт 03.10` — today's weekday and date, for the hint under the clock.
+pub fn fmt_today(now: i64, lang: &str) -> String {
+   match Local.timestamp_opt(now, 0).single() {
+      Some(dt) => format!(
+         "{} {}",
+         weekday_name(dt.weekday(), lang),
+         dt.format("%d.%m")
+      ),
+      None => "--".to_string(),
+   }
+}
+
 /// The clock every figure worked out *from the time* reads: the start of the
 /// current minute.
 ///

@@ -283,6 +283,11 @@ pub fn cells(cfg: &Config, snap: &Snapshot, stale: bool, ctx_stale: bool, now: i
          }
       }
    }
+   // Known with or without the limit's figures, and never stale: it is this
+   // machine's clock, not a reading.
+   if cfg.show_5h_now {
+      cells.push(Cell::new(pace::fmt_now(now), Role::Time, Paint::Plain).named(Field::FiveHourNow));
+   }
    end_group(&mut cells);
 
    let weekly_from = cells.len();
@@ -505,6 +510,28 @@ fn pace_cells(
    }
 }
 
+/// The pill's line as plain text, for a place that draws one string and no
+/// colour: the status entry the Claude Code mod pins in the desktop app (A37).
+///
+/// The gaps become what they look like on the pill: a space between figures
+/// and either side of a rule, nothing inside one word, and a bar between
+/// groups. The last cell's divider has nothing after it, so it is dropped.
+pub fn plain_line(cells: &[Cell]) -> String {
+   let mut out = String::new();
+   for (i, c) in cells.iter().enumerate() {
+      out.push_str(&c.text);
+      if i + 1 == cells.len() {
+         break;
+      }
+      out.push_str(match c.gap {
+         Gap::Cell | Gap::Rule => " ",
+         Gap::Tight => "",
+         Gap::Group => " | ",
+      });
+   }
+   out
+}
+
 /// The hairline under each group that has one.
 ///
 /// Not every group does: a window nobody has reported has a row of dashes
@@ -583,6 +610,7 @@ pub enum Field {
    FiveHourPace,
    FiveHourLeft,
    FiveHourClock,
+   FiveHourNow,
    FiveHourBar,
    SevenDayPct,
    SevenDayPace,
@@ -599,11 +627,12 @@ impl Field {
    /// Every field, in the order the pill reads. The hint is handed back by
    /// the theme as the name it was given, so this is how a name is turned back
    /// into the field it names — without the theme contract carrying a key.
-   pub const ALL: [Field; 14] = [
+   pub const ALL: [Field; 15] = [
       Field::FiveHourPct,
       Field::FiveHourPace,
       Field::FiveHourLeft,
       Field::FiveHourClock,
+      Field::FiveHourNow,
       Field::FiveHourBar,
       Field::SevenDayPct,
       Field::SevenDayPace,
@@ -646,6 +675,8 @@ pub fn field_name(field: Field, cfg: &Config) -> String {
       (Field::FiveHourLeft, false) => "Until the 5-hour limit resets".into(),
       (Field::FiveHourClock, true) => "Время сброса 5-часового лимита".into(),
       (Field::FiveHourClock, false) => "When the 5-hour limit resets".into(),
+      (Field::FiveHourNow, true) => "Текущее время".into(),
+      (Field::FiveHourNow, false) => "Current time".into(),
       (Field::FiveHourBar, true) => "Полоса 5-часового лимита".into(),
       (Field::FiveHourBar, false) => "5-hour limit bar".into(),
       (Field::SevenDayPct, _) => quota("недельного лимита", "weekly limit"),
@@ -844,6 +875,8 @@ pub fn field_detail(
          )],
          None => vec![unknown_reset()],
       },
+
+      Field::FiveHourNow => vec![pace::fmt_today(now, lang)],
 
       Field::SevenDayDays => {
          let Some(r) = window.and_then(|w| w.resets_at) else {
@@ -1480,6 +1513,27 @@ g2 Time Group plain \"38%\" ContextPct
    }
 
    #[test]
+   fn the_plain_line_reads_as_the_pill_does() {
+      // The same cells as the golden test above, joined: the arrow sticks to
+      // its figure, groups part with a bar, and nothing trails the last one.
+      let now = now();
+      let (snap, _) = fixture(now);
+      assert_eq!(
+         plain_line(&cells(&en(), &snap, false, false, now)),
+         "24% ▼1.1× 3:37 15:37 | 54% 1.0× 3d 15% | ctx 38%"
+      );
+   }
+
+   #[test]
+   fn a_plain_line_with_nothing_reported_is_dashes_not_blank() {
+      let now = now();
+      let line = plain_line(&cells(&en(), &Snapshot::default(), false, false, now));
+      assert!(line.starts_with("--%"), "{line}");
+      assert!(line.contains(" | "), "{line}");
+      assert!(!line.ends_with(' ') && !line.ends_with('|'), "{line}");
+   }
+
+   #[test]
    fn by_time_the_day_cell_carries_hours() {
       // A29: 3 d 5 h to the reset is `3d5h`, not `3d`, and the allowance
       // beside it divides by the same 3 d 5 h: 46 / 3.21 is 14, not 15.
@@ -1644,6 +1698,47 @@ g2 Time Group plain \"38%\" ContextPct
    }
 
    #[test]
+   fn the_current_time_closes_the_five_hour_group_when_asked_for() {
+      let now = 1_770_000_000;
+      let (snap, _) = fixture(now);
+      let has_now = |cfg: &Config, snap: &Snapshot| {
+         super::cells(cfg, snap, false, false, now)
+            .iter()
+            .any(|c| c.field == Some(Field::FiveHourNow))
+      };
+      assert!(!has_now(&en(), &snap), "off by default");
+      let cfg = Config {
+         show_5h_now: true,
+         ..en()
+      };
+      // With the limit's figures and without: the clock is this machine's.
+      for snap in [snap, Snapshot::default()] {
+         let cells = super::cells(&cfg, &snap, true, false, now);
+         let at = cells
+            .iter()
+            .position(|c| c.field == Some(Field::FiveHourNow))
+            .expect("on the pill");
+         let clock = &cells[at];
+         assert_eq!(clock.gap, Gap::Group, "the group's last cell");
+         assert!(
+            cells[..at].iter().all(|c| c.gap != Gap::Group),
+            "nothing of another group before it"
+         );
+         assert_eq!(clock.paint, Paint::Plain, "a clock is never stale");
+         assert_eq!(clock.text, pace::fmt_now(now));
+      }
+      // To the minute it is in: 40 s past does not read as the next minute.
+      assert_eq!(
+         pace::fmt_now(now + 40),
+         pace::fmt_now(pace::on_the_minute(now + 40))
+      );
+      assert_ne!(
+         pace::fmt_now(pace::on_the_minute(now) + 59),
+         pace::fmt_now(pace::on_the_minute(now) + 60)
+      );
+   }
+
+   #[test]
    fn every_field_has_a_name_in_both_languages() {
       let mut cfg = Config::default();
       for field in [
@@ -1651,6 +1746,7 @@ g2 Time Group plain \"38%\" ContextPct
          Field::FiveHourPace,
          Field::FiveHourLeft,
          Field::FiveHourClock,
+         Field::FiveHourNow,
          Field::FiveHourBar,
          Field::SevenDayPct,
          Field::SevenDayPace,

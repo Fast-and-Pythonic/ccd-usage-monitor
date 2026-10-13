@@ -5,6 +5,9 @@
 //!   ccd-usage-monitor --demo      the widget on synthetic data
 //!   ccd-usage-monitor --bridge    Claude Code status-line command: stdin JSON -> state file
 //!   ccd-usage-monitor --print     print the current line and exit
+//!   ccd-usage-monitor --line      the pill's own line as plain text, and exit;
+//!                                 `--session ID` for that conversation's
+//!                                 context. What the Claude Code mod pins (A37)
 //!   ccd-usage-monitor --probe-api one usage-endpoint request, printed raw
 //!   ccd-usage-monitor --revive-token  have the CLI renew its token now (A35)
 //!   ccd-usage-monitor --sources  what each source reports right now
@@ -97,11 +100,43 @@ fn main() {
       println!("{}", bridge::render(&snap, &cfg, now));
       return;
    }
+   if has("--line") {
+      print_line(value("--session"));
+      return;
+   }
 
    if let Err(e) = slint_ui::run(has("--demo")) {
       eprintln!("ccd-usage-monitor: {e}");
       std::process::exit(1);
    }
+}
+
+/// `--line`: what the pill would say right now, as one plain string (A37).
+///
+/// Built the way `--serve` builds its snapshot, so it is the pill's line and
+/// not the status line's: every source the person has switched on, `view::cells`
+/// for the wording. Two departures, both because this runs once a minute from
+/// every open desktop session. It never goes to the network — the endpoint's
+/// last answer on disk still counts, but no poller is started. And with
+/// `--session`, the context is that conversation's and no other's, the same
+/// filter a pinned session gets on the pill.
+fn print_line(session_id: Option<String>) {
+   let mut cfg = config::Config::load();
+   if let Some(id) = session_id {
+      cfg.session_pick = config::SessionPick::Pinned;
+      cfg.session_id = id;
+   }
+   let now = state::now();
+   let mut rt = runtime::Runtime::new();
+   let mut offline = cfg.clone();
+   offline.api_enabled = false;
+   rt.pump(&offline, now);
+   let snap = rt.snapshot(&cfg, now);
+   let (snap, stale, ctx_stale) = rt.age_filter(&cfg, snap, now);
+   println!(
+      "{}",
+      view::plain_line(&view::cells(&cfg, &snap, stale, ctx_stale, now))
+   );
 }
 
 fn probe_api() -> i32 {

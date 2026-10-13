@@ -5,6 +5,8 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-10** — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
+- **2026-10-03** — the pill can carry the time of day
 - **2026-10-02** — the data folder moves beside the executable, out of `%APPDATA%`
 - **2026-10-02** — the widget asks the CLI to renew its token, and says when the CLI cannot
 - **2026-09-27** — a polite `taskkill` ends the widget, and a start clears old ghosts
@@ -17,6 +19,60 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-10 — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
+
+Done: [[A37]]. `mod/` feeds `--bridge` on every `session.measure` and pins
+`--line --session <id>` with `$.ui.status`. `--line` is new: `view::cells`
+joined by `view::plain_line`. [[G06]] now names the mod as its fix.
+
+Claude Code gained mods: plugins of function hooks that run inside a session,
+the desktop app's sessions included. A throwaway probe mod in a desktop session
+showed that the engine hands a mod everything the status line used to:
+`five_hour` and `seven_day` with reset times, the context window's stated size
+and fill, and the model's full id. It also showed that `$.process.run` works
+there and that a status entry is drawn in the bottom bar, between the
+permission mode and the model. The user liked that spot, and asked for the
+pill's line there exactly as they have it set up. So the line comes from
+`view::cells` and not from `bridge::render`: the two differ by the daily
+allowance and the time of day.
+
+Checked: `cargo test`; `--line` beside a screenshot of the pill, the same
+quota figures and order, plain text; with `--session` the context is that
+conversation's, and an unknown id gives `ctx --%`. `claude plugin validate mod`,
+`claude plugin test mod` (5 tests: the payload against `SAMPLE` in `state.rs`,
+the order bridge-then-line, silence in a terminal), `tsc` clean.
+
+Checked live in a desktop session, from a copy of the mod hot-loaded into it:
+the session wrote its own entry to `state.json` (quotas with reset times,
+context, window size 1 000 000, model id); the line shows in the bottom bar and
+its countdowns move while the session sits idle.
+
+Status: Working — loading through `CLAUDE_CODE_PLUGIN_DIRS` in a newly started
+desktop session is not yet seen.
+
+---
+
+## 2026-10-03 — the pill can carry the time of day
+
+Done: `show_5h_now` — the local time, last in the five-hour group, off by
+default; `view::Field::FiveHourNow`, whose hint gives the weekday and date.
+
+The user keeps the taskbar hidden, so the clock in it is out of sight, and
+asked for the time in the five-hour group. It goes last in that group, beside
+the countdown it is read against, and is shown with or without the limit's
+figures and never greyed, since it is this machine's clock and not a reading.
+It is truncated to the minute it is in, where a reset is rounded to the nearest
+one: a clock showing the next minute 40 seconds early is wrong. Stepping on the
+minute with the other time figures (A30) keeps it from adding repaints (G23).
+The card that held the two reset switches is renamed "Five-hour clocks". A new
+`field` value in the `--serve` JSON is an addition, so its schema stays 2 (A21).
+
+Checked: a test of its place, paint and truncation, with and without figures.
+
+Status: Working
 
 ---
 

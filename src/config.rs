@@ -462,6 +462,10 @@ pub struct Config {
    pub show_5h_pace: bool,
    pub show_5h_left: bool,
    pub show_5h_clock: bool,
+   /// The local time now, last in the five-hour group: not a figure of the
+   /// limit, but read beside its countdown when the taskbar clock is hidden.
+   /// Off by default, so a pill nobody asked to change keeps its width.
+   pub show_5h_now: bool,
    pub show_week_pace: bool,
    pub show_week_days: bool,
    pub show_week_allowance: bool,
@@ -576,6 +580,7 @@ impl Default for Config {
          show_5h_pace: true,
          show_5h_left: true,
          show_5h_clock: true,
+         show_5h_now: false,
          show_week_pace: true,
          show_week_days: true,
          show_week_allowance: true,

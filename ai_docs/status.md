@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-10-02. State only — why anything is the way it is lives in
+Snapshot of 2026-10-10. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 ## Works
@@ -38,20 +38,22 @@ Snapshot of 2026-10-02. State only — why anything is the way it is lives in
    draws. The first two hold nothing about drawing, checkable with one grep,
    which is what made the move to Slint (A20, A24, A25) a port and not a rewrite.
 - **Settings in a second native window** (A11), generated from `schema.rs` (A22,
-   A33): five pages, a card per figure, fifty settings; the `.slint` file knows
+   A33): five pages, a card per figure, fifty-one settings; the `.slint` file knows
    none of them. Files beside the executable, never in `%APPDATA%` (A36).
 - **The tray icon goes with the process** (G31); a start sweeps older ghosts (G25).
+- **A Claude Code mod covers the desktop app** (A37): it feeds `--bridge` and pins
+   the pill's line (`--line`) under the prompt.
 - **An expired token is renewed by the CLI** (A35), run out of sight with
    `claude -p /usage`; `--revive-token` does it by hand.
-- **Tests**: 209 in all; 36 over `view.rs`, with golden tests of panel and pill.
+- **Tests**: 212 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 
 ## Open
 
-- **The context window's size is inferred, not known.** The token count is exact;
-   the divisor is not on disk, so it comes from the status line when one has ever
-   run and from a table by model name otherwise. Two cases read five times wrong
+- **The context window's size is inferred where the mod (A37) does not run.** The
+   token count is exact; the divisor is not on disk, so it comes from the status
+   line when one has ever run and from a table by model name otherwise. Two cases read five times wrong
    with nothing on disk to reveal it: a 5-series model held to 200K by
    `CLAUDE_CODE_DISABLE_1M_CONTEXT`, and a model newer than this build.
    `ctx_limit = "fixed"` is the escape, manual on purpose.
@@ -59,16 +61,14 @@ Snapshot of 2026-10-02. State only — why anything is the way it is lives in
    rendered in both languages and a slider drag driven by synthetic events; a
    real mouse on the steppers, the menu, the text field and the conversation
    list, and the file each one writes, is still unchecked.
-- **The desktop app does not appear to run the status line** (G06). The figures
-   are covered without it, but it is still the only source that *states* a window
-   size. One check remains: whether a newly started desktop session picks the
-   setting up.
 - **The CLI can drop its session** (G32), which no renewal mends; the cause on
    2026-10-01 is unknown. A whole unattended day on A35 is not yet confirmed.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
 
 ## Fragile points
 
+- **The mod API is early access** (A37): after a Claude Code update, first run
+   `claude plugin validate mod` and `claude plugin test mod`.
 - **The usage endpoint is undocumented** and can change shape or disappear without
    notice. `api::parse_usage` accepts two spellings of each field for that reason,
    and every failure degrades to "source unavailable" rather than an error.

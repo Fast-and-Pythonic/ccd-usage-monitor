@@ -4,3 +4,6 @@
 # theme, which is worth keeping in history since it's hand-tuned.
 /settings/*
 !/settings/theme.slint
+
+# The type declarations the Claude Code engine lays into the mod at each load.
+/mod/.claude-plugin/types/

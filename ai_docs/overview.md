@@ -28,7 +28,7 @@ the theme it reads).
 
 | File | Responsibility |
 |---|---|
-| `main.rs` | mode dispatch: widget, `--demo`, `--bridge`, `--print`, `--probe-api`, `--sources`, `--sessions`, `--serve` |
+| `main.rs` | mode dispatch: widget, `--demo`, `--bridge`, `--print`, `--line`, `--probe-api`, `--sources`, `--sessions`, `--serve` |
 | `model.rs` | `Snapshot`, `Window`, `ContextInfo`, `Source`; merge rules between sources |
 | `state.rs` | the shared state file — schema, locking, atomic write, pruning; parsing of the status-line payload |
 | `api.rs` | token reading, the usage-endpoint request, response parsing, poller thread with its wake channel |
@@ -50,10 +50,12 @@ the theme it reads).
 | `settings/` | the data folder of any build inside this repository (A36). Machine state, ignored by git — except `theme.slint`, the live, hand-tuned theme the widget loads here |
 | `ui/settings.slint` | the form, compiled in through `build.rs`; a side list of pages, cards of rows drawn by the control each asks for, and no knowledge of any setting (A33) |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
+| `mod/` | the Claude Code mod for the desktop app (A37): feeds `--bridge` from the engine's figures and pins `--line` under the prompt. TypeScript; its tests run with `claude plugin test mod` |
 
 ## Data flow
 ```
 Claude Code ──stdin JSON──> ccd-usage-monitor --bridge ──> <data folder>\state.json
+ (terminal: the status line; desktop app: the mod, A37) │
                                                           │ mtime poll, 250 ms
 desktop app ──every ~15 min──> plan-usage-history.json ────┤
                                                           │
