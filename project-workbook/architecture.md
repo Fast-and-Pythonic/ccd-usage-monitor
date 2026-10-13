@@ -1234,7 +1234,7 @@ nothing until it is set, which README says.
 **Where the standard is looked for.** The linter and `make_index.py` belong to
 the documentation standard, a separate repository. The hook looks for it beside
 the *main* checkout — the parent of `git rev-parse --git-common-dir`, then
-`../project-workbook-method` — and `AI_DOCS_STANDARD` overrides that. Where it is
+`../0_project-workbook-method` — and `AI_DOCS_STANDARD` overrides that. Where it is
 absent the hook says so and lets the commit through, since a contributor without
 it has nothing to run. It used to look beside the working tree's own root, which
 is the same place for the main checkout but not for a linked worktree under

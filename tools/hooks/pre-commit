@@ -33,7 +33,7 @@ if printf '%s\n' "$staged" | grep -qE '^project-workbook/|^CLAUDE\.md$'; then
    # own parent holds no standard. The common git dir is the main checkout's
    # .git, whichever tree commits.
    main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-   std="${AI_DOCS_STANDARD:-$main/../project-workbook-method}"
+   std="${AI_DOCS_STANDARD:-$main/../0_project-workbook-method}"
    if [ -f "$std/tools/lint_workbook.py" ]; then
       echo "pre-commit: project-workbook lint and index check"
       python "$std/tools/lint_workbook.py" --root . --docs project-workbook --profile engineering --tier M
