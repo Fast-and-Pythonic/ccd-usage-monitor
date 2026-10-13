@@ -3,7 +3,7 @@
 The rules for maintaining this documentation are **not copied here**. Two sources of
 truth drift apart, which is the disease the method exists to cure.
 
-Standard: https://github.com/Fast-and-Pythonic/ai-docs-method — audited against v2.1
+Standard: https://github.com/Fast-and-Pythonic/project-workbook-method — audited against v2.1
 on 2026-09-12.
 
 | You need | Read |
@@ -13,7 +13,7 @@ on 2026-09-12.
 | Which files this project's size warrants | `RULES.md` §6, "Tiers and scaling" |
 
 There is no local method folder: this project has no departures from the standard. If
-one becomes necessary, it goes in `ai_docs_method/` at the root as a `DELTA.md`, and
+one becomes necessary, it goes in `workbook-method/` at the root as a `DELTA.md`, and
 this file gains a line saying the local method wins where the two disagree.
 
 ## Project settings
@@ -45,11 +45,11 @@ than working set — rather than citing a note nobody else can open.
 ## Checking
 
 ```
-python <standard>/tools/lint_docs.py --root . --docs ai_docs --profile engineering --tier M
-python <standard>/tools/make_index.py --root . --docs ai_docs
+python <standard>/tools/lint_workbook.py --root . --docs project-workbook --profile engineering --tier M
+python <standard>/tools/make_index.py --root . --docs project-workbook
 ```
 
-Both run by themselves before every commit that touches `ai_docs/`, together with
+Both run by themselves before every commit that touches `project-workbook/`, together with
 `cargo fmt --check` and `cargo clippy -- -D warnings` for code, through
 `tools/hooks/pre-commit` (A32) — once `git config core.hooksPath tools/hooks` has
 been run in the clone. Nothing here is advice.
