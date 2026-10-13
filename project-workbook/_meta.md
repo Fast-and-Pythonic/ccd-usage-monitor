@@ -3,8 +3,7 @@
 The rules for maintaining this documentation are **not copied here**. Two sources of
 truth drift apart, which is the disease the method exists to cure.
 
-Standard: https://github.com/Fast-and-Pythonic/project-workbook-method — audited against v2.1
-on 2026-09-12.
+Standard: https://github.com/Fast-and-Pythonic/project-workbook-method — audited against v3.0 on 2026-10-13.
 
 | You need | Read |
 |----------|------|

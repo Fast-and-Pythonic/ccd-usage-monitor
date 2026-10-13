@@ -3,7 +3,10 @@
 A floating always-on-top pill for Windows showing Claude Code's quota windows and
 how full the current session's context is.
 
-AI documentation lives in `project-workbook/`. **Start with `project-workbook/start.md`.**
+**Read `project-workbook/start.md` before acting on any task, a one-line edit included.** It routes
+each kind of task to the file that task needs.
+
+**This file is a pointer. Never add rules or knowledge here** — they go into `project-workbook/`.
 
 ## Critical rules
 
