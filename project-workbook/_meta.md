@@ -25,10 +25,12 @@ outgrow a register entry earns a page.
 **Language:** English, including these documents. Russian appears only as quoted data —
 UI labels in `schema.rs` are bilingual by design and stay as they are.
 
-**Links point outward only.** Nothing here may reference the private environment store
-on this machine: this project is public. Where a measurement method needs explaining,
-state it in full — `TotalProcessorTime` over 70 seconds, private working set rather
-than working set — rather than citing a note nobody else can open.
+**Links point outward only.** The author keeps a private store of knowledge about this
+machine and its tools, `my-setup-notes`, shared by all their projects and not published.
+Naming it is fine; citing its entries, pages or paths is not: this project is public,
+and its text must stand on its own. Where a measurement method needs explaining, state
+it in full — `TotalProcessorTime` over 70 seconds, private working set rather than
+working set — rather than citing a note nobody else can open.
 
 ## The three things most often broken here
 
