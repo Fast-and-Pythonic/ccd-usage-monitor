@@ -32,6 +32,11 @@ and its text must stand on its own. Where a measurement method needs explaining,
 it in full — `TotalProcessorTime` over 70 seconds, private working set rather than
 working set — rather than citing a note nobody else can open.
 
+**Portable entries:** [[G01]], [[G03]], [[G06]], [[G12]], [[G17]], [[G25]], [[G32]] and
+[[G33]] are also kept in `my-setup-notes`, the author's private store of knowledge about
+this machine and its tools, shared by all their projects and not published. The entries
+here stay complete; that copy is for the author's other projects.
+
 ## The three things most often broken here
 
 1. **`status.md` absorbing the chronicle.** It reached 328 lines against a limit of 80,

@@ -53,6 +53,8 @@ stripped and the command simply does not resolve.
 **How to spot it:** run the same `command` string by hand in Git Bash; if it
 prints nothing at all rather than an error, this is it.
 
+**Portable:** yes — Claude Code settings commands run through Git Bash on Windows, which strips unquoted backslashes
+
 ---
 
 ## G02: `rate_limits` is legitimately absent, and absence is not zero
@@ -85,6 +87,8 @@ nothing short of `claude auth login` brings it back (G32). Note that
 expired; it only says `false` once the session is dropped.
 **How to spot it:** `--probe-api` prints the token's expiry date next to the
 current time before it gives up, and says "signed out" for an expiry of zero.
+
+**Portable:** yes — Claude Code credentials file out of date on a machine used only through the desktop app
 
 ---
 
@@ -140,6 +144,8 @@ desktop app: it feeds the bridge from the engine's own figures, the window's
 size among them, and pins the pill's line under the prompt.
 **How to spot it:** `sessions` in `state.json` contains no id matching the
 session you are actually working in.
+
+**Portable:** yes — the Claude Code desktop app not running the status line
 
 ---
 
@@ -243,6 +249,8 @@ repaint and leaves everything else alone.
 **How to spot it:** an interaction that goes through the *system* rather than
 through egui stops working right after a window-procedure change. egui's own
 hit-testing is unaffected, which is why everything else still responds.
+
+**Portable:** yes — overriding window-procedure messages on a frameless Win32 window breaking system-driven interactions
 
 ---
 
@@ -354,6 +362,8 @@ one that jumps by a large round factor between two reads. `ccd-usage-monitor --s
 prints the token count beside the percentage for every transcript, which is
 where a wrong numerator shows up as an implausible number rather than as a
 plausible percentage.
+
+**Portable:** yes — reading Claude Code transcripts: synthetic, sidechain and repeated assistant lines
 
 ---
 
@@ -565,6 +575,8 @@ The overflow flyout's toolbar is swept too but was not exercised: it held no
 icons on the machine it was checked on. For the plain `taskkill` that used to
 leave the widget running, see G31.
 
+**Portable:** yes — ghost tray icons left by a process that exits without removing its icon
+
 ---
 
 ## G26: a Slint `Tooltip` with its own content comes out as wide as its text on one line
@@ -731,6 +743,8 @@ token up with no restart.
 **How to spot it:** `claude auth status` with `loggedIn: false`, or
 `--sources` printing "Claude Code is signed out".
 
+**Portable:** yes — `claude -p` exiting with 0 after a failed sign-in
+
 ---
 
 ## G33: a process started from the Claude desktop app sees a private copy of `%APPDATA%`
@@ -752,3 +766,5 @@ package holds.
 **How to spot it:** `--sources` ends with "(demo figures on)" where nobody set
 it, or a setting that was changed seems not to have been. Compare the file's
 size and time with the one under `Packages\Claude_<id>\LocalCache\Roaming`.
+
+**Portable:** yes — processes started from the packaged Claude desktop app seeing a redirected %APPDATA%
