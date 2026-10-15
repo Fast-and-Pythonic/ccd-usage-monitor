@@ -1513,7 +1513,11 @@ reply's last text block the way a third-party mod, Turn Usage, does it). The
 first row holds the context fill (`ctx 21% · 212k`), the turn's share of the
 five-hour and weekly windows and its dollars. The second holds the turn's tokens
 by kind and a group for the subagents that finished during the turn. The third
-holds its duration, request count and model. A row with nothing to show is left
+holds its duration, request count, model and when the prompt cache lapses
+(`кэш до 17:42`): the turn's last main-loop request plus an hour, or five
+minutes once a window is used up and turns run on extra usage. Every request
+that reads the cache starts its lifetime over; a subagent's prompt is a cache of
+its own and does not count. A row with nothing to show is left
 out; one long row wrapped at the model's name in a narrow window.
 Each part is a boolean `userConfig` switch, stored in `~/.claude/settings.json`
 under `pluginConfigs["turn-meter"].options`. The window percentages themselves

@@ -2,8 +2,8 @@ import { expect, test } from 'claude-code/testing'
 
 import { addReadings, addSpend, calibrate, emptyLog, fitWindows, formatLine, formatShare, formatTokens, prune, type SessionLog, type Show, type TurnFigures } from './meter'
 
-const ALL: Show = { context: true, tokens: true, input: true, subagents: true, limits: true, usd: true, duration: true, model: true, steps: true }
-const NONE: Show = { context: false, tokens: false, input: false, subagents: false, limits: false, usd: false, duration: false, model: false, steps: false }
+const ALL: Show = { context: true, tokens: true, input: true, subagents: true, limits: true, usd: true, duration: true, model: true, steps: true, cache: true }
+const NONE: Show = { context: false, tokens: false, input: false, subagents: false, limits: false, usd: false, duration: false, model: false, steps: false, cache: false }
 const USAGE = { input_tokens: 12, output_tokens: 3100, cache_read_input_tokens: 1_200_000, cache_creation_input_tokens: 45_000 }
 const FIGURES: TurnFigures = {
   context: { percent: 21, tokens: 212_000 },
@@ -44,6 +44,13 @@ test('subagents are a group of their own, only when some finished', () => {
   const withAgents = { ...FIGURES, agents: { count: 2, usage: USAGE } }
   expect(formatLine(withAgents, { ...NONE, subagents: true })).toBe('субагенты (2): вывод 3.1k · запись 45k · чтение 1.2M')
   expect(formatLine(FIGURES, { ...NONE, subagents: true })).toBe(undefined)
+})
+
+test('the cache lapse: local time in the third row, with the short lifetime marked', () => {
+  const until = new Date(2026, 9, 15, 17, 42).getTime()
+  expect(formatLine({ ...FIGURES, cache: { until, isShort: false } }, { ...NONE, cache: true })).toBe('кэш до 17:42')
+  expect(formatLine({ ...FIGURES, cache: { until, isShort: true } }, { ...NONE, model: true, cache: true })).toBe('opus-5-5 · кэш до 17:42 (5м)')
+  expect(formatLine(FIGURES, { ...NONE, cache: true })).toBe(undefined)
 })
 
 test('no ledger: no dollars and no shares, tokens still shown', () => {

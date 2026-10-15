@@ -61,6 +61,12 @@
       "description": "The model that answered the turn's last request.",
       "default": true
     },
+    "showCache": {
+      "type": "boolean",
+      "title": "Cache lifetime",
+      "description": "When the main loop's prompt cache lapses: the last request of the turn plus an hour, or five minutes on extra usage.",
+      "default": true
+    },
     "usdPerPct5h": {
       "type": "number",
       "title": "USD per point, five hours",

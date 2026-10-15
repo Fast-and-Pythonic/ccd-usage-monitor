@@ -205,6 +205,8 @@ export type TurnFigures = {
   durationMs: number
   model?: string
   steps: number
+  /** When the main loop's prompt cache lapses, and whether on the short (5-minute) lifetime. */
+  cache?: { until: number; isShort: boolean }
 }
 
 /** Which parts the line shows: each a `userConfig` switch. */
@@ -218,6 +220,7 @@ export type Show = {
   duration: boolean
   model: boolean
   steps: boolean
+  cache: boolean
 }
 
 export function formatTokens(n: number): string {
@@ -243,6 +246,16 @@ export function formatDuration(ms: number): string {
   const m = Math.floor(s / 60)
   if (m < 60) return `${m}м ${s % 60}с`
   return `${Math.floor(m / 60)}ч ${m % 60}м`
+}
+
+/** The prompt cache's lifetime: an hour on a subscription, five minutes once a window is used up and turns run on extra usage. */
+export const CACHE_LONG_MS = 60 * 60 * 1000
+export const CACHE_SHORT_MS = 5 * 60 * 1000
+
+/** Local wall-clock time, `17:42`. */
+export function formatClock(ms: number): string {
+  const d = new Date(ms)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
 /** `claude-opus-5-5` → `opus-5-5`. */
@@ -281,6 +294,7 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
   if (show.duration) extra.push(formatDuration(f.durationMs))
   if (show.steps && f.steps > 0) extra.push(`запросов ${f.steps}`)
   if (show.model && f.model !== undefined) extra.push(shortModel(f.model))
+  if (show.cache && f.cache !== undefined) extra.push(`кэш до ${formatClock(f.cache.until)}${f.cache.isShort ? ' (5м)' : ''}`)
   const rows = [cost.join(' │ '), tokens.join(' │ '), extra.join(' · ')].filter((row) => row !== '')
   return rows.length === 0 ? undefined : rows.join('\n')
 }

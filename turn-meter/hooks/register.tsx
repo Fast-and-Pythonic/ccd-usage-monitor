@@ -11,6 +11,8 @@ import {
   addReadings,
   addSpend,
   addUsage,
+  CACHE_LONG_MS,
+  CACHE_SHORT_MS,
   calibrate,
   emptyLog,
   fitWindows,
@@ -43,6 +45,7 @@ export function showOf(options: PluginOptions): Show {
     duration: flag(options, 'showDuration', true),
     model: flag(options, 'showModel', true),
     steps: flag(options, 'showSteps', true),
+    cache: flag(options, 'showCache', true),
   }
 }
 
@@ -76,7 +79,7 @@ type Meter = {
   needsFit: boolean
   rates: { five_hour: Calibration; seven_day: Calibration }
   // The main turn under way, and what its subagents and requests came to so far.
-  current?: { turnId: string; usd?: number; steps: number; agents: { count: number; usage: ModelUsage } }
+  current?: { turnId: string; usd?: number; steps: number; lastRequestAt?: number; agents: { count: number; usage: ModelUsage } }
 }
 
 async function ownLog($: EngineInterface, m: Meter): Promise<SessionLog> {
@@ -179,7 +182,11 @@ export const register: Register = (on, options) => {
 
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
-    if (e.agentId === undefined && m.current?.turnId === e.turnId && result.usage !== null) m.current.steps += 1
+    // Each main-loop request reads the cache and starts its lifetime over; a subagent's prompt is its own.
+    if (e.agentId === undefined && m.current?.turnId === e.turnId && result.usage !== null) {
+      m.current.steps += 1
+      m.current.lastRequestAt = await $.clock.now()
+    }
     return result
   })
 
@@ -199,7 +206,9 @@ export const register: Register = (on, options) => {
     if (answer === '') return result
 
     await refit($, m)
-    const { context, cost } = await $.session.usage()
+    const { context, cost, rateLimits } = await $.session.usage()
+    const isShort = rateLimits.some((w) => (w.kind === 'five_hour' || w.kind === 'seven_day') && w.percentUsed >= 100)
+    const lastRequestAt = turn?.lastRequestAt
     const usd = cost?.usd !== undefined && turn?.usd !== undefined ? Math.max(0, cost.usd - turn.usd) : undefined
     const line = formatLine(
       {
@@ -212,6 +221,7 @@ export const register: Register = (on, options) => {
         durationMs: e.durationMs,
         model: e.usage?.model,
         steps: turn?.steps ?? 0,
+        cache: lastRequestAt === undefined ? undefined : { until: lastRequestAt + (isShort ? CACHE_SHORT_MS : CACHE_LONG_MS), isShort },
       },
       show,
     )
