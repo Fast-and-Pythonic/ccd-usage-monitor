@@ -1,6 +1,14 @@
 import { expect, test } from 'claude-code/testing'
 
-import { formatLast, parseArgs, planOf, priceOf, referencesOf, type ResultEntry, type Shift } from './run'
+import { formatLast, parseArgs, planOf, priceOf, referencesOf, startRun, verdict, type ResultEntry, type Shift } from './run'
+
+test('no time limit: a slow model goes on while it is under its cap; the cap and 90 % stop it', () => {
+  const run = startRun(planOf('haiku-5-5', [], {}), 0, false, [{ kind: 'five_hour', percentUsed: 40, resetsAt: '2026-10-15T20:00:00.000Z' }])
+  run.spent = run.cap / 2
+  expect(verdict(run, 2 * 60 * 60 * 1000, false)).toEqual({ isDone: false })
+  expect(verdict({ ...run, spent: run.cap }, 0, false)).toEqual({ isDone: true, note: 'потолок трат' })
+  expect(verdict({ ...run, last: { five_hour: 90 } }, 0, false).isDone).toBe(true)
+})
 
 test('the words: nothing is the three aliases, a family any case, a version exactly itself', () => {
   expect(parseArgs('')).toEqual({ specs: ['opus', 'sonnet', 'haiku'], isWeek: false })

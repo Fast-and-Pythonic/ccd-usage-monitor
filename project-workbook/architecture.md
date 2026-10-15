@@ -1665,9 +1665,12 @@ over the weekly window with two counted rises.
 windows, at 100 % or more of the five-hour window (or of the week, with
 `--week`), above 80 % of the five-hour window, or when the expected spend would
 take that window past 95 %. Those checks come before any request. A model stops
-at three times its expected spend, after 30 minutes, at 90 % of the five-hour
+at three times its expected spend, at 90 % of the five-hour
 window, after three requests in a row with no answer, or when its ledger does
-not grow after an answer. The expected price is the model's latest reference,
+not grow after an answer. There is no time limit: spend, not time, uses the
+window, and a slow model (Haiku, priced per point in many requests) is the case
+worth seeing. A 30-minute limit per model was dropped before the first live run,
+to learn from it what a run takes. The expected price is the model's latest reference,
 else 0.39 and 2.85. `stop` aborts at once: the timer is cancelled and the
 subagent awaited is let go.
 

@@ -7,9 +7,8 @@ import type { SessionRateLimit } from 'claude-code'
 export const DEFAULT_MODELS = ['opus', 'sonnet', 'haiku']
 /** Moves of the reading counted after the first one, which only marks where a point begins. */
 export const SHIFTS = { five_hour: 3, seven_day: 2 }
-/** Each model stops past this many times what it was expected to cost, or after this long. */
+/** Each model stops past this many times what it was expected to cost. No time limit: spend, not time, uses the window. */
 export const CAP_RATIO = 3
-export const MAX_MS = 30 * 60 * 1000
 /** The run stops when the five-hour window reaches this. */
 export const STOP_AT = 90
 /** It does not start above this, nor when what it would spend leaves less room than `ROOM`. */
@@ -233,7 +232,6 @@ export function verdict(run: ModelRun, now: number, isWeek: boolean): { isDone: 
   if (enough('five_hour') && (!isWeek || enough('seven_day'))) return { isDone: true }
   if ((run.last.five_hour ?? 0) >= STOP_AT) return { isDone: true, note: `окно 5ч дошло до ${STOP_AT} %` }
   if (run.spent >= run.cap) return { isDone: true, note: 'потолок трат' }
-  if (now - run.startedAt >= MAX_MS) return { isDone: true, note: 'потолок времени' }
   return { isDone: false }
 }
 
