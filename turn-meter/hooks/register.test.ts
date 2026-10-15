@@ -92,3 +92,16 @@ test('a request puts what the ledger grew by on its model, in the journal', asyn
   expect(log.bymodel[0].slice(1, 2)).toEqual(['opus-5-5'])
   expect(Math.abs(log.bymodel[0][2] - 0.3)).toBeLessThan(1e-9)
 })
+
+test('each main turn goes into the journal with its dollars, its shares and the five-hour readings at both ends', { options: { autoCalibrate: false, usdPerPct5h: 0.5, usdPerPctWeek: 4 } }, async ($, on) => {
+  const window = (pct: number) => [{ kind: 'five_hour', percentUsed: pct, resetsAt: '2026-10-15T15:00:00.000Z' }]
+  const usage = { current: { ...at(1.0), rateLimits: window(7) } }
+  const written: Record<string, string> = {}
+  engine(on, usage, written)
+  await $.turn.start({ text: '', turnId: 't1' })
+  usage.current = { ...at(2.0), rateLimits: window(9) }
+  // An empty answer draws no line but is still a turn.
+  await $.turn.complete({ answer: '', durationMs: 1, isAborted: false, turnId: 't1', usage: { ...USAGE, model: 'claude-opus-5-5' }, reason: 'answer' })
+  const log = JSON.parse(Object.values(written)[0]!)
+  expect(log.turns).toEqual([[Date.parse('2026-10-15T12:00:00.000Z'), 1, 2, 0.25, 7, 9, 'opus-5-5']])
+})

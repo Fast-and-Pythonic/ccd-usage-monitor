@@ -4,9 +4,13 @@ import {
   addByModel,
   addReadings,
   addSpend,
+  addTurn,
   calibrate,
+  compareTurns,
+  DAY_MS,
   emptyLog,
   fitWindows,
+  formatComparison,
   formatLine,
   formatShare,
   formatTokens,
@@ -16,6 +20,7 @@ import {
   resolveTracked,
   turnShares,
   windowKinds,
+  windowRise,
   type ModelRate,
   type Rates,
   type SessionLog,
@@ -221,4 +226,57 @@ test('the results of limit-test: the latest sound entry per model and window', (
   ])
   expect(refs).toEqual({ 'opus-5-5': { usdPerPct5h: 0.39, usdPerPctWeek: 2.9, at: 2 } })
   expect(referencesOf('not json')).toEqual({})
+})
+
+const NOW = Date.parse('2026-10-15T12:00:00.000Z')
+
+/** A day of turns; the window's readings in two windows: one that began before the day, one that runs to 14:00. */
+function dayOfTurns(): SessionLog {
+  const log = emptyLog('s')
+  // Yesterday's window from 10:00: 30 % read before the span began, 40 % inside it.
+  log.obs.push([NOW - 25 * H, 'five_hour', '2026-10-14T15:00:00.000Z', 30], [NOW - 22 * H, 'five_hour', '2026-10-14T15:00:00.000Z', 40])
+  // The window under way began at 09:00 and reads 6 %.
+  log.obs.push([NOW - 2 * H, 'five_hour', '2026-10-15T14:00:00.000Z', 2], [NOW - H, 'five_hour', '2026-10-15T14:00:00.000Z', 6])
+  addTurn(log, [NOW - 26 * H, 0.39, 1, 0.14, 29, 30, 'opus-5-5']) // before the span
+  addTurn(log, [NOW - 5 * H, 0.39 * 1.4, 1.4, 0.2, 38, 40, 'opus-5-5'])
+  addTurn(log, [NOW - 3 * H, 0.39 * 0.6, 0.6, 0.08, 40, 1, 'opus-5-5']) // across the reset
+  addTurn(log, [NOW - 2 * H, 0.39 * 0.3, 0.3, 0.04, 2, 2, 'opus-5-5'])
+  addTurn(log, [NOW - H, 0.39 * 3.9, 3.9, 0.5, 2, 6, null])
+  addTurn(log, [NOW - H / 2, 0.39 * 0.5, 0.5, 0.07, null, null, 'haiku-5-5'])
+  return log
+}
+
+test('the turns of the last day against the steps Turn Usage shows and against the window', () => {
+  const c = compareTurns([dayOfTurns()], NOW)
+  expect(c.turns).toBe(5)
+  expect(Math.abs((c.meter ?? NaN) - 6.7)).toBeLessThan(1e-9)
+  expect(c.stepped).toEqual({ turns: 3, meter: 1.4 + 0.3 + 3.9, points: 6 })
+  expect(c.resets).toBe(1)
+  expect(c.unread).toBe(1)
+  // 30 → 40 in the window before, 0 → 6 in the one under way.
+  expect(c.rise).toBe(16)
+  // Per turn: −0.6, +0.3, −0.1.
+  expect(Math.abs((c.diff?.median ?? NaN) - -0.1)).toBeLessThan(1e-9)
+  expect(Math.abs((c.diff?.p25 ?? NaN) - -0.35)).toBeLessThan(1e-9)
+  expect(Math.abs((c.diff?.p75 ?? NaN) - 0.1)).toBeLessThan(1e-9)
+  expect(formatComparison(c)).toBe(
+    [
+      'сравнение с Turn Usage за сутки, окно 5ч (ходов 5 во всех журналах):',
+      '- turn-meter: Σ 6.7 %',
+      '- разность целых показаний, как у Turn Usage: Σ +6 п. за 3 ход., turn-meter на них Σ 5.6 % → turn-meter −7 % (не в счёт: через сброс окна 1, без показаний 1)',
+      '- прирост окна: +16 п. → turn-meter −58 %',
+      '- на ход, turn-meter минус Turn Usage: медиана −0.10 п., половина ходов от −0.35 до +0.10',
+    ].join('\n'),
+  )
+})
+
+test('no turns yet, and no readings of the window', () => {
+  expect(formatComparison(compareTurns([emptyLog('s')], NOW))).toBe('сравнение с Turn Usage за сутки, окно 5ч: ходов ещё не записано')
+  expect(windowRise([emptyLog('s')], 'five_hour', NOW - DAY_MS, NOW)).toBeUndefined()
+})
+
+test('turns older than the keep limit are pruned with the rest', () => {
+  const log = dayOfTurns()
+  prune(log, NOW + 8 * 24 * H - 1.5 * H)
+  expect(log.turns?.map((r) => r[0])).toEqual([NOW - H, NOW - H / 2])
 })

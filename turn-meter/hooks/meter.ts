@@ -32,9 +32,23 @@ export type SessionLog = {
   obs: [number, string, string, number][]
   /** `[time, model, USD]`: what the ledger grew by since the last request, put on the model that answered this one (short id). Absent in older journals. */
   bymodel?: [number, string, number][]
+  /** Each main-loop turn: see TurnRow. Absent in older journals. */
+  turns?: TurnRow[]
 }
 
-export const emptyLog = (session: string): SessionLog => ({ session, spend: [], obs: [], bymodel: [] })
+/**
+ * `[time, USD, share of 5h, share of week, 5h reading at start, at end, model]`:
+ * a main-loop turn's dollars and the shares the line priced them at, beside the
+ * two readings of the five-hour window whose difference Turn Usage shows. A
+ * reading or a model the session did not have is `null`.
+ */
+export type TurnRow = [number, number, number, number, number | null, number | null, string | null]
+
+export const emptyLog = (session: string): SessionLog => ({ session, spend: [], obs: [], bymodel: [], turns: [] })
+
+export function addTurn(log: SessionLog, row: TurnRow): void {
+  ;(log.turns ??= []).push(row)
+}
 
 /** Adds what one request's model added to the ledger. */
 export function addByModel(log: SessionLog, t: number, model: string, usd: number): void {
@@ -85,6 +99,7 @@ export function prune(log: SessionLog, now: number): void {
   else if (firstKept === -1 && log.spend.length > 1) log.spend = log.spend.slice(-1)
   log.obs = log.obs.filter(([t]) => t >= from)
   if (log.bymodel !== undefined) log.bymodel = log.bymodel.filter(([t]) => t >= from)
+  if (log.turns !== undefined) log.turns = log.turns.filter(([t]) => t >= from)
 }
 
 /** A session's cost at `t`: the last point at or before it; before its first point, that point. */
@@ -518,4 +533,112 @@ export function markdownTable(rows: readonly (readonly string[])[]): string {
   const [head, ...body] = rows
   if (head === undefined) return ''
   return [line(head), line(head.map(() => '---')), ...body.map(line)].join('\n')
+}
+
+/** The span `/turn-meter` compares turns over. */
+export const DAY_MS = 24 * 60 * 60 * 1000
+
+/** turn-meter's shares of the five-hour window against Turn Usage's way and against the window itself, over a span. */
+export type TurnComparison = {
+  turns: number
+  /** turn-meter's shares summed, in points. */
+  meter: number
+  /** Turns with both readings and no reset between them: what Turn Usage could show. */
+  stepped: { turns: number; meter: number; points: number }
+  /** Turns whose reading fell: the window reset during them. */
+  resets: number
+  /** Turns missing a reading. */
+  unread: number
+  /** What the five-hour window rose by over the span; nothing when no reading fell in it. */
+  rise?: number
+  /** Per stepped turn, turn-meter's share minus Turn Usage's step, in points. */
+  diff?: { median: number; p25: number; p75: number }
+}
+
+/** The `q`-quantile of sorted numbers, interpolated. */
+function quantile(sorted: readonly number[], q: number): number {
+  const at = (sorted.length - 1) * q
+  const lo = Math.floor(at)
+  const hi = Math.ceil(at)
+  return sorted[lo]! + (sorted[hi]! - sorted[lo]!) * (at - lo)
+}
+
+/**
+ * What a window of `kind` rose by from `from` to `to`, summed over every window
+ * the readings show: from the last reading before `from` (or the first one
+ * after it), or from zero for a window that began inside the span, to the
+ * highest reading in the span.
+ */
+export function windowRise(logs: readonly SessionLog[], kind: string, from: number, to: number): number | undefined {
+  const length = WINDOW_MS[kind]
+  if (length === undefined) return undefined
+  const byWindow = new Map<string, [number, number][]>()
+  for (const log of logs) {
+    for (const [t, k, resetsAt, pct] of log.obs) {
+      if (k !== kind || resetsAt === '' || t > to) continue
+      const key = new Date(Math.round(Date.parse(resetsAt) / 60_000) * 60_000).toISOString()
+      byWindow.set(key, [...(byWindow.get(key) ?? []), [t, pct]])
+    }
+  }
+  let rise: number | undefined
+  for (const [resetsAt, readings] of byWindow) {
+    const inside = readings.filter(([t]) => t >= from).map(([, pct]) => pct)
+    if (inside.length === 0) continue
+    readings.sort((a, b) => a[0] - b[0])
+    const before = readings.findLast(([t]) => t < from)
+    const base = Date.parse(resetsAt) - length >= from ? 0 : (before?.[1] ?? readings.find(([t]) => t >= from)![1])
+    rise = (rise ?? 0) + Math.max(0, Math.max(...inside) - base)
+  }
+  return rise
+}
+
+/** The main-loop turns of every journal from `now - span` to `now`, compared. */
+export function compareTurns(logs: readonly SessionLog[], now: number, span = DAY_MS): TurnComparison {
+  const from = now - span
+  const c: TurnComparison = { turns: 0, meter: 0, stepped: { turns: 0, meter: 0, points: 0 }, resets: 0, unread: 0 }
+  const diffs: number[] = []
+  for (const log of logs) {
+    for (const [t, , share5h, , start, end] of log.turns ?? []) {
+      if (t < from || t > now) continue
+      c.turns += 1
+      c.meter += share5h
+      if (start === null || end === null) c.unread += 1
+      else if (end < start) c.resets += 1
+      else {
+        c.stepped.turns += 1
+        c.stepped.meter += share5h
+        c.stepped.points += end - start
+        diffs.push(share5h - (end - start))
+      }
+    }
+  }
+  const rise = windowRise(logs, 'five_hour', from, now)
+  if (rise !== undefined) c.rise = rise
+  if (diffs.length > 0) {
+    const sorted = diffs.sort((a, b) => a - b)
+    c.diff = { median: quantile(sorted, 0.5), p25: quantile(sorted, 0.25), p75: quantile(sorted, 0.75) }
+  }
+  return c
+}
+
+const signed = (n: number, digits: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(digits)}`
+
+/** How far `a` is off `b`, in percent of `b`: `−12 %`; nothing when `b` is zero. */
+const offBy = (a: number, b: number) => (b > 0 ? ` → turn-meter ${signed((a / b - 1) * 100, 0)} %` : '')
+
+/** The comparison as `/turn-meter` prints it: a paragraph and a list, in markdown. */
+export function formatComparison(c: TurnComparison): string {
+  const head = 'сравнение с Turn Usage за сутки, окно 5ч'
+  if (c.turns === 0) return `${head}: ходов ещё не записано`
+  const skipped = [c.resets > 0 ? `через сброс окна ${c.resets}` : '', c.unread > 0 ? `без показаний ${c.unread}` : ''].filter((s) => s !== '')
+  const lines = [
+    `${head} (ходов ${c.turns} во всех журналах):`,
+    `- turn-meter: Σ ${c.meter.toFixed(1)} %`,
+    `- разность целых показаний, как у Turn Usage: Σ +${c.stepped.points} п. за ${c.stepped.turns} ход., turn-meter на них Σ ${c.stepped.meter.toFixed(1)} %${offBy(c.stepped.meter, c.stepped.points)}${skipped.length === 0 ? '' : ` (не в счёт: ${skipped.join(', ')})`}`,
+    `- прирост окна: ${c.rise === undefined ? 'показаний нет' : `+${c.rise} п.${offBy(c.meter, c.rise)}`}`,
+  ]
+  if (c.diff !== undefined) {
+    lines.push(`- на ход, turn-meter минус Turn Usage: медиана ${signed(c.diff.median, 2)} п., половина ходов от ${signed(c.diff.p25, 2)} до ${signed(c.diff.p75, 2)}`)
+  }
+  return lines.join('\n')
 }

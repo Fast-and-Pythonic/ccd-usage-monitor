@@ -11,12 +11,15 @@ import {
   addReadings,
   addByModel,
   addSpend,
+  addTurn,
   addUsage,
   CACHE_LONG_MS,
   CACHE_SHORT_MS,
   calibrate,
+  compareTurns,
   emptyLog,
   fitWindows,
+  formatComparison,
   formatLimitSize,
   formatLine,
   KEEP_MS,
@@ -102,7 +105,7 @@ type Meter = {
   /** The ledger when the last request's dollars were put on its model. */
   lastCost?: number
   // The main turn under way, and what its subagents, requests and models came to so far.
-  current?: { turnId: string; usd?: number; steps: number; lastRequestAt?: number; agents: { count: number; usage: ModelUsage }; byModel: Map<string, number> }
+  current?: { turnId: string; usd?: number; pct5h?: number; steps: number; lastRequestAt?: number; agents: { count: number; usage: ModelUsage }; byModel: Map<string, number> }
 }
 
 async function ownLog($: EngineInterface, m: Meter): Promise<SessionLog> {
@@ -200,6 +203,9 @@ function modelTable(m: Meter): string {
   return markdownTable(rows)
 }
 
+/** The five-hour window's reading as the session last measured it: what Turn Usage takes its difference of. */
+const reading5h = (limits: readonly { kind: string; percentUsed: number }[]) => limits.find((w) => w.kind === 'five_hour')?.percentUsed
+
 async function report($: EngineInterface, m: Meter): Promise<string> {
   m.needsFit = true
   await refit($, m)
@@ -222,6 +228,7 @@ async function report($: EngineInterface, m: Meter): Promise<string> {
     rows.push(lines.join('\n'))
   }
   rows.push('по моделям (окна, где на модель ≥ 90 % трат; без них — замер limit-test):', modelTable(m))
+  rows.push(formatComparison(compareTurns(logs, await $.clock.now())))
   return rows.join('\n\n')
 }
 
@@ -250,7 +257,7 @@ export const register: Register = (on, options) => {
     const r = await next(e)
     await $.command.register({
       name: 'turn-meter',
-      description: 'Цена 1 % лимита по моделям и размер окон; `reset` — забыть выученное',
+      description: 'Цена 1 % лимита по моделям, размер окон и сравнение с Turn Usage за сутки; `reset` — забыть выученное',
     })
     m.lastCost = (await $.session.usage()).cost?.usd
     await refit($, m)
@@ -273,10 +280,10 @@ export const register: Register = (on, options) => {
   })
 
   on('turn.start', async ($, e, next) => {
-    const { cost } = await $.session.usage()
+    const { cost, rateLimits } = await $.session.usage()
     // A module reloaded mid-session saw no session.start: its first request is priced from here.
     m.lastCost ??= cost?.usd
-    m.current = { turnId: e.turnId, usd: cost?.usd, steps: 0, agents: { count: 0, usage: ZERO_USAGE }, byModel: new Map() }
+    m.current = { turnId: e.turnId, usd: cost?.usd, pct5h: reading5h(rateLimits), steps: 0, agents: { count: 0, usage: ZERO_USAGE }, byModel: new Map() }
     return next(e)
   })
 
@@ -303,14 +310,23 @@ export const register: Register = (on, options) => {
     const turn = m.current?.turnId === e.turnId ? m.current : undefined
     m.current = undefined
     const answer = e.answer.trim()
+    await refit($, m)
+    const { context, cost, rateLimits } = await $.session.usage()
+    const usd = cost?.usd !== undefined && turn?.usd !== undefined ? Math.max(0, cost.usd - turn.usd) : undefined
+    const shares = usd === undefined || turn === undefined ? undefined : turnShares(turn.byModel, usd, m.modelRates, m.rates)
+    // Every main turn, with a line or without, for the comparison with Turn Usage in /turn-meter.
+    if (usd !== undefined && turn !== undefined) {
+      const share5h = shares?.five_hour ?? usd / m.rates.five_hour.usdPerPct
+      const shareWeek = shares?.seven_day ?? usd / m.rates.seven_day.usdPerPct
+      const model = e.usage?.model === undefined ? null : shortModel(e.usage.model)
+      addTurn(await ownLog($, m), [await $.clock.now(), usd, share5h, shareWeek, turn.pct5h ?? null, reading5h(rateLimits) ?? null, model])
+      m.isDirty = true
+    }
     await flush($, m)
     if (answer === '') return result
 
-    await refit($, m)
-    const { context, cost, rateLimits } = await $.session.usage()
     const isShort = rateLimits.some((w) => (w.kind === 'five_hour' || w.kind === 'seven_day') && w.percentUsed >= 100)
     const lastRequestAt = turn?.lastRequestAt
-    const usd = cost?.usd !== undefined && turn?.usd !== undefined ? Math.max(0, cost.usd - turn.usd) : undefined
     const line = formatLine(
       {
         context,
@@ -319,7 +335,7 @@ export const register: Register = (on, options) => {
         usd,
         pct5h: m.rates.five_hour,
         pctWeek: m.rates.seven_day,
-        shares: usd === undefined || turn === undefined ? undefined : turnShares(turn.byModel, usd, m.modelRates, m.rates),
+        shares,
         limitSize: { five_hour: m.rates.five_hour.usdPerPct * 100, seven_day: m.rates.seven_day.usdPerPct * 100 },
         durationMs: e.durationMs,
         model: e.usage?.model,

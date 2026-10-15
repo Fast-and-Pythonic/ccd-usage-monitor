@@ -1606,6 +1606,28 @@ place of the shares, and the dollars stay.
 sends per-model weekly windows (Opus, Sonnet) to a Claude Code session is not
 known yet; this is how it will show.
 
+**Checking the share against Turn Usage.** The two lines under one reply
+disagree (`≈2.5% 5ч` beside `+3%`), and the question is whether Turn Usage adds
+anything. So the journal also has `turns`, `[time, USD, share of 5h, share of
+week, 5h reading at start, 5h reading at end, model][]` (absent in journals
+written before 2026-10-15). A row is written on every main-loop
+`turn.complete` whose dollars are known, with a line under the reply or
+without: the dollars, the shares as the line priced them (computed as well on
+extra usage, where the line shows none), and the five-hour reading from
+`$.session.usage()` at `turn.start` and at `turn.complete`. The difference of
+those two readings is what Turn Usage shows. It is pruned with the other fields.
+`/turn-meter` ends with a comparison over the last day, across every journal:
+the turns, turn-meter's shares summed, then the readings' steps summed over the
+turns that have both readings and no reset between them, beside turn-meter's
+shares on those same turns. Last comes the window's own rise over the day,
+from the readings: from the last one before the day began, or from zero for a
+window that began inside it, to the highest one in it. Per turn it gives the
+median of turn-meter's share minus the step and the middle half of that
+difference. Parallel sessions make the steps sum to more than the rise, since
+each turn's step holds the other sessions' spend; that is part of what is being
+measured. The decision this feeds: drop Turn Usage if turn-meter stays within
+about 15 % of the window's rise.
+
 **Known bias.** Spend this machine never sees (claude.ai, the phone, a session
 without the mod) moves the windows without moving the journals. The price then
 reads low. The 2× bound and `autoCalibrate: false` with a hand-set price are the
