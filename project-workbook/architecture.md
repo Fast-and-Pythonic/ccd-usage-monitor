@@ -38,6 +38,7 @@
 - **A36** · our files live beside the executable, never in `%APPDATA%`
 - **A37** · in the desktop app a Claude Code mod stands in for the status line
 - **A38** · `turn-meter`: a turn's share of the limits is its dollars over the price of a point
+- **A39** · `limit-test`: a model's price of a point, measured by spending on it alone
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -1525,8 +1526,13 @@ are not shown: the pill shows them.
 
 **The turn's dollars** are the session ledger (`$.session.usage().cost.usd`) at
 `turn.complete` minus its value at `turn.start`. The ledger is the engine's own,
-at API list prices, over every request of the session. So the turn's subagents,
-side calls and other mods' forks are in it with no price table of ours.
+at API list prices, over the session's model requests. So the turn's main-loop
+requests and its subagents are in it with no price table of ours. A mod's
+`$.model.complete` is **not**: on 2026-10-15 a probe mod made two Haiku
+completions and the ledger stayed the same to the last digit, with no
+`session.measure` after them. Neither the dollars nor the shares see such calls,
+another mod's included; whether `$.model.fork` reaches the ledger was not
+checked.
 
 **The share** is those dollars over the price of one point of the window:
 `usdPerPct5h` and `usdPerPctWeek`, with starting values 0.39 and 2.85. Those
@@ -1548,6 +1554,42 @@ or 3 (week), R² ≥ 0.9, and a slope within 2× of the configured price. The pr
 in use is the median of the last ten windows that count. Below three windows it
 is blended with the configured one, and the line marks the shares with `≈`.
 `/turn-meter` prints the fits, and `/turn-meter reset` forgets them.
+
+**Per model.** The windows do not follow API prices exactly: Opus 5 came to about
+$0.60 a point of the five-hour window, Opus 5.5 to $0.39. So the journal also
+has `bymodel`, `[time, model, USD][]` (absent in journals written before
+2026-10-15). After every `turn.step` that carries usage, main loop and
+subagents alike, what the ledger grew by since the previous entry goes on the
+model that answered, by its short id (`opus-5-5`). An engine call with no step
+of its own lands in the next step's entry: a small, known inaccuracy. A model's
+own price comes from the windows where it had 90 % or more of the spend, judged
+within 2× of its reference when it has one and within 3× of the shared price
+otherwise, then the same median as above. A mixed window (60/40) counts for no
+model, only for the shared price. A turn's share is each model's dollars over
+that model's price where it has one, and the rest, with dollars no step
+claimed, over the shared price; a subagent on Haiku is priced as Haiku.
+
+**References from limit-test** (A39). turn-meter reads
+`results.json` from `limit-test/data/` in the neighbouring folder: per model and
+window, the latest entry with a price, not marked noisy, spanning all its
+counted moves (3 points of the five-hour window, 2 of the week). A reference
+starts the model's median and stands alone while the model has no windows of
+its own. No file, no references. Nothing about them is kept in `$.store`.
+
+**The price table and the size of the windows.** `/turn-meter` answers in
+markdown, since the engine draws a command's answer that way. It names the
+size of each window, a hundred times the shared price (`размер окна: 5ч ≈ $39 ·
+нед ≈ $285`), and a table: model, price of a point and whole window for five
+hours, price of a point for the week, the windows behind it, and the source
+(`живые окна` or `замер limit-test`), `мало данных` where there is none. Its
+rows are `trackModels` (`userConfig`, default `opus, sonnet, haiku`): a
+versioned name is exactly that version, a family is the newest version of it
+the journals saw. `showLimitSize` (off by default) puts the size under each
+reply as a fourth row of its own.
+
+**The journal is a contract.** limit-test reads `spend` and `bymodel` of every
+journal (A39): to subtract other sessions' spend, and to resolve a family to its
+newest version. Rename neither; add fields instead.
 
 **Why files and not `$.store`.** `$.store` is one JSON file per plugin under
 `~/.claude/plugins/store/`. Parallel sessions writing it would race on the whole
@@ -1576,3 +1618,87 @@ exists. Writing learned prices into `settings.json`, which is the person's file.
 **Loading.** `CLAUDE_CODE_PLUGIN_DIRS` names `turn-meter/`, as it does for the
 other mods. Run `claude plugin validate turn-meter` and `claude plugin test
 turn-meter` after editing it.
+
+## A39: `limit-test`: a model's price of a point, measured by spending on it alone
+`limit-test/` is a third Claude Code mod, with a line of its own in
+`CLAUDE_CODE_PLUGIN_DIRS`. `/limit-test [models…] [--week]` measures what one
+point of the five-hour window (and, with `--week`, of the weekly one) costs on
+each named model; `/limit-test stop` ends a run, `/limit-test last` answers the
+last run as a table. Its results are what turn-meter starts each model's price
+from (A38).
+
+**Which models.** None named means `opus`, `sonnet`, `haiku`. A family, in any
+case, is its newest version seen in turn-meter's journals (`bymodel`), called
+by its full id (`claude-opus-5-5`), so the version measured is known for
+certain. A family never seen is called by its alias, and the spawn's answer
+names the version it resolved to. A versioned name (`opus-5`) is exactly it.
+
+**Why subagents, not `$.model.complete`.** The first design called
+`$.model.complete`. A probe on 2026-10-15 showed that its spend never reaches
+the session's ledger (A38), and its answer names no model. Without the ledger
+there are no dollars to put against the windows' moves. `$.agent.spawn` with
+`model` does reach the ledger and resolves to the model it started. Each request
+is a subagent of the mod's own type, `limit-test:writer`: no tools, no
+CLAUDE.md, a one-line system prompt, hidden from the model by an `agent.offer`
+hook, so a request costs little beyond its answer. A subagent takes no
+`maxTokens`, so the size of a request is the length of the numbered list it is
+asked for: about 2,000 tokens first, then sized from the previous request's
+dollars per output token to cost a quarter of a five-hour point, between 1,000
+and 32,000.
+
+**The run.** Models go strictly one after another, one request at a time. A
+request's dollars are the ledger after its subagent's `turn.complete` less the
+ledger before the spawn. While a main turn of the session runs, the next
+request waits. After each answer a `$.ui.log` line says where the run is
+(`opus-5-5 · запрос 7 · 5ч 43 % · $0.041 (итого $0.29)`). The first rise of the
+five-hour reading only marks where a point begins; three more are counted. The
+price is the test's dollars between the first and the last rise over the points
+between them, less the points that others' dollars would have moved at the
+shared price. Others are the other sessions' journals over that span plus
+whatever else this session's ledger grew by in it. turn-meter keeps its learned
+shared price nowhere a neighbour could read it, so that conversion uses the
+starting prices, 0.39 and 2.85. Where others come to more than a quarter of the
+money the result is marked `шумно` and is no reference. `--week` does the same
+over the weekly window with two counted rises.
+
+**Guards.** It does not start while a run is going, without readings of the
+windows, at 100 % or more of the five-hour window (or of the week, with
+`--week`), above 80 % of the five-hour window, or when the expected spend would
+take that window past 95 %. Those checks come before any request. A model stops
+at three times its expected spend, after 30 minutes, at 90 % of the five-hour
+window, after three requests in a row with no answer, or when its ledger does
+not grow after an answer. The expected price is the model's latest reference,
+else 0.39 and 2.85. `stop` aborts at once: the timer is cancelled and the
+subagent awaited is let go.
+
+**Why the table is behind `/limit-test last`.** A command's answer is drawn as
+markdown, a real table on the desktop; a `$.ui.log` line joins newlines into
+one. A mod's `$.command.run` of its own command skips the whole calling mod,
+and replacing the row through `ui.render` does not draw on the desktop. So the
+run ends with the line `замер готов — /limit-test last`, and the person types
+it. The engine puts the plugin's name before a command's answer itself, so the
+answers do not repeat it.
+
+**Background work** runs on the `$` of `session.start`. Its hook starts a loop
+that waits for the command to hand it a run, and the run goes on that `$`'s
+timers. A module reloaded mid-session has no such loop, and its run goes on the
+command's own clock.
+
+**The results file is the contract with turn-meter.** `results.json` in `limit-test/data/`
+(ignored by git) is an array, one entry a model per run: `model` (short id),
+`at`, `run` (when the whole run started, shared by its entries), `usdPerPct5h`
+and `usdPerPctWeek` when measured, `points5h`, `pointsWeek`, `spent`,
+`requests`, `isNoisy`, `isWeek`, `note`. turn-meter reads it as A38 says.
+Rename no field; add instead. **The journals are the contract the other way**:
+limit-test reads `spend` and `bymodel` from `turn-meter/data/*.json`. A mod may
+not import a file from another mod's folder, so limit-test keeps its own copy
+of the few lines that read them.
+
+**Known gaps.** Spend this machine never sees (claude.ai, the phone) moves the
+windows unseen; the start message asks the person not to work there meanwhile.
+In tests the engine leaves `agentId` out of a spawn a hook answered, so an
+answer is matched to its spawn by agent id when core started it and by model
+otherwise.
+
+**Loading.** `CLAUDE_CODE_PLUGIN_DIRS` names `limit-test/`. Run `claude plugin
+validate limit-test` and `claude plugin test limit-test` after editing it.

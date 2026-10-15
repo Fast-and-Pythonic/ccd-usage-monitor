@@ -1,0 +1,8 @@
+{
+  "name": "limit-test",
+  "version": "0.1.0",
+  "description": "Measures what one point of the five-hour and weekly limits costs on each model: spends on that model alone through subagents and watches the windows move. turn-meter takes the results as its references.",
+  "author": {
+    "name": "Fast_and_Pythonic"
+  }
+}

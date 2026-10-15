@@ -11,3 +11,7 @@
 # turn-meter: the engine's type declarations, and the per-session spend journals (A38).
 /turn-meter/.claude-plugin/types/
 /turn-meter/data/
+
+# limit-test: the engine's type declarations, and its measurements (A39).
+/limit-test/.claude-plugin/types/
+/limit-test/data/

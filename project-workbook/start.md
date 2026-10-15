@@ -39,6 +39,9 @@ app, which shows none of this itself and does not run the status line (G06).
    after editing it. The line it pins is `--line`, worded by `view::plain_line`
 - **The line under each reply in the desktop app** → `turn-meter/` and A38.
    Run `claude plugin validate turn-meter` and `claude plugin test turn-meter`
+- **A model's price of a point, measured** → `limit-test/` and A39; the files
+   it shares with turn-meter are contracts both ways (A38, A39). Run `claude
+   plugin validate limit-test` and `claude plugin test limit-test`
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
 - **Changing how the pill looks** → `settings/theme.slint` first: any build

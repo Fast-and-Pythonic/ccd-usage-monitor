@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-15** — prices per model in `turn-meter`, and `limit-test` to measure them
 - **2026-10-15** — `turn-meter` draws each turn's spend under the reply
 - **2026-10-10** — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
 - **2026-10-03** — the pill can carry the time of day
@@ -22,6 +23,24 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
 
 ---
+
+## 2026-10-15 — prices per model in `turn-meter`, and `limit-test` to measure them
+
+Done: [[A38]] extended, [[A39]] new. History showed Opus 5 at about $0.60 a
+five-hour point and Opus 5.5 at $0.39, so one shared price misprices a turn on
+the other model, and a turn whose subagents run on Haiku. The journal gained
+`bymodel`, and a model's price comes from windows it had nearly to itself.
+Such windows are rare, so a model needs a measured starting price. The first
+design measured it inside turn-meter with `$.model.complete`; a probe showed
+that those calls never reach the session's ledger, so the measurement moved to
+subagents, and into a mod of its own that can be switched on only when wanted.
+The same probe showed that a `$.ui.log` line cannot carry a table and that a mod
+cannot run its own command, which is why the result waits behind
+`/limit-test last`.
+
+Checked: `claude plugin test` (22 in turn-meter, 8 in limit-test, the run
+simulated on a mocked clock), `claude plugin validate` for both, `tsc` clean.
+Not run live.
 
 ## 2026-10-15 — `turn-meter` draws each turn's spend under the reply
 

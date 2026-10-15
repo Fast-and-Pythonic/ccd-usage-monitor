@@ -16,8 +16,13 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
 - **`turn-meter`, the line under each reply** (A38): context fill, the turn's
    tokens by kind, subagents, its share of the five-hour and weekly windows, its
    dollars, its duration, requests and model, each part a switch. The price of a
-   point is learned from per-session journals. 13 tests pass; not yet seen in a
+   point is learned from per-session journals, shared and per model, and the
+   share of a turn is priced model by model; `/turn-meter` gives the size of the
+   windows and a price table of `trackModels`. 22 tests pass; not yet seen in a
    live desktop session as of 2026-10-15.
+- **`limit-test`, a model's price of a point measured** (A39): spends on each
+   named model alone through subagents and watches the windows move; the results
+   are turn-meter's references. 8 tests pass; never run live.
 - **Four sources, merged field by field** (A03), each an independent switch with
    its own staleness threshold (A14): the desktop app's history (A08), the bridge,
    the usage endpoint, and the session transcripts (A18). Figures grey out after
@@ -58,7 +63,8 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
    the pill's line (`--line`) under the prompt.
 - **An expired token is renewed by the CLI** (A35), run out of sight with
    `claude -p /usage`; `--revive-token` does it by hand.
-- **Tests**: 212 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`.
+- **Tests**: 212 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
+   22 in `turn-meter/`, 8 in `limit-test/`.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 
@@ -77,11 +83,17 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
 - **The CLI can drop its session** (G32), which no renewal mends; the cause on
    2026-10-01 is unknown. A whole unattended day on A35 is not yet confirmed.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
+- **`limit-test` has not run live** (A39): it needs its own line in
+   `CLAUDE_CODE_PLUGIN_DIRS`, and a run of three models takes about a tenth of the
+   five-hour window. Whether a subagent the mod spawns wakes the main loop when it
+   finishes is unknown; if it does, the run waits each such turn out and counts
+   its dollars as others'.
 
 ## Fragile points
 
 - **The mod API is early access** (A37): after a Claude Code update, first run
-   `claude plugin validate mod` and `claude plugin test mod`.
+   `claude plugin validate` and `claude plugin test` on `mod`, `turn-meter` and
+   `limit-test`.
 - **The usage endpoint is undocumented** and can change shape or disappear without
    notice. `api::parse_usage` accepts two spellings of each field for that reason,
    and every failure degrades to "source unavailable" rather than an error.

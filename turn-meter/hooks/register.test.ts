@@ -72,3 +72,23 @@ test('a turn with no answer leaves no line; a measurement goes into the journal'
   expect(log.spend.length).toBe(1)
   expect(log.obs[0].slice(1)).toEqual(['five_hour', '2026-10-15T15:00:00.000Z', 7])
 })
+
+test('a request puts what the ledger grew by on its model, in the journal', async ($, on) => {
+  const usage = { current: at(1.0) }
+  const written: Record<string, string> = {}
+  engine(on, usage, written)
+  on('turn.step', async function* ($, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: { ...USAGE, model: 'claude-opus-5-5' } }
+  })
+  await $.turn.start({ text: '', turnId: 't1' })
+  usage.current = at(1.3)
+  const step = $.turn.step({ turnId: 't1', index: 0, model: 'claude-opus-5-5', messageCount: 1 })
+  for await (const _ of step) {
+    // The chunks are not what this test is about.
+  }
+  await $.turn.complete({ answer: 'Да.', durationMs: 1, isAborted: false, turnId: 't1', usage: { ...USAGE, model: 'claude-opus-5-5' }, reason: 'answer' })
+  const log = JSON.parse(Object.values(written)[0]!)
+  expect(log.bymodel.length).toBe(1)
+  expect(log.bymodel[0].slice(1, 2)).toEqual(['opus-5-5'])
+  expect(Math.abs(log.bymodel[0][2] - 0.3)).toBeLessThan(1e-9)
+})

@@ -23,16 +23,24 @@ const MIN_R2 = 0.9
 /** Journal entries older than this are dropped; the weekly window needs seven days of them. */
 export const KEEP_MS = 8 * 24 * 60 * 60 * 1000
 
-/** One session's journal: its total cost over time, and each change of a window's reading. */
+/** One session's journal: its total cost over time, each change of a window's reading, and what each model request added. */
 export type SessionLog = {
   session: string
   /** `[time, session cost in USD]`, written when the cost grows. */
   spend: [number, number][]
   /** `[time, kind, resetsAt, percentUsed]`, written when a reading changes. */
   obs: [number, string, string, number][]
+  /** `[time, model, USD]`: what the ledger grew by since the last request, put on the model that answered this one (short id). Absent in older journals. */
+  bymodel?: [number, string, number][]
 }
 
-export const emptyLog = (session: string): SessionLog => ({ session, spend: [], obs: [] })
+export const emptyLog = (session: string): SessionLog => ({ session, spend: [], obs: [], bymodel: [] })
+
+/** Adds what one request's model added to the ledger. */
+export function addByModel(log: SessionLog, t: number, model: string, usd: number): void {
+  if (!(usd > 0)) return
+  ;(log.bymodel ??= []).push([t, model, usd])
+}
 
 /** Adds a cost point when the total moved. */
 export function addSpend(log: SessionLog, t: number, usd: number | undefined): void {
@@ -76,6 +84,7 @@ export function prune(log: SessionLog, now: number): void {
   if (firstKept > 0) log.spend = log.spend.slice(firstKept - 1)
   else if (firstKept === -1 && log.spend.length > 1) log.spend = log.spend.slice(-1)
   log.obs = log.obs.filter(([t]) => t >= from)
+  if (log.bymodel !== undefined) log.bymodel = log.bymodel.filter(([t]) => t >= from)
 }
 
 /** A session's cost at `t`: the last point at or before it; before its first point, that point. */
@@ -100,9 +109,22 @@ export function spentBetween(logs: readonly SessionLog[], start: number, t: numb
   return sum
 }
 
+/** What each model's requests added after `start` up to `t`, over every journal that records models. */
+export function spentByModel(logs: readonly SessionLog[], start: number, t: number): Map<string, number> {
+  const by = new Map<string, number>()
+  for (const log of logs) {
+    for (const [at, model, usd] of log.bymodel ?? []) {
+      if (at > start && at <= t) by.set(model, (by.get(model) ?? 0) + usd)
+    }
+  }
+  return by
+}
+
 export type WindowFit = {
   kind: string
   resetsAt: string
+  /** USD by model over the anchors' span, from the journals that record models. */
+  models?: Record<string, number>
   /** USD per point: the slope of spend against the reading. */
   usdPerPct: number
   /** Points the reading rose over the anchors. */
@@ -138,24 +160,100 @@ export function fitWindows(logs: readonly SessionLog[], kind: string, prior: num
     readings.sort((a, b) => a[0] - b[0])
     const start = Date.parse(resetsAt) - length
     const points: [number, number][] = []
+    const times: number[] = []
     let top = -Infinity
     for (const [t, pct] of readings) {
-      if (pct > top && top !== -Infinity) points.push([pct, spentBetween(logs, start, t)])
+      if (pct > top && top !== -Infinity) {
+        points.push([pct, spentBetween(logs, start, t)])
+        times.push(t)
+      }
       top = Math.max(top, pct)
     }
     const fit = fitLine(points)
     const rise = points.length === 0 ? 0 : points[points.length - 1]![0] - points[0]![0]
-    const base = { kind, resetsAt, rise, anchors: points.length }
+    const by = times.length < 2 ? new Map<string, number>() : spentByModel(logs, times[0]!, times[times.length - 1]!)
+    const base = { kind, resetsAt, rise, anchors: points.length, ...(by.size === 0 ? {} : { models: Object.fromEntries(by) }) }
     if (fit === undefined || rise < (MIN_RISE[kind] ?? 1)) {
       fits.push({ ...base, usdPerPct: fit?.slope ?? 0, r2: fit?.r2 ?? 0, accepted: false, why: 'мало пунктов' })
       continue
     }
-    let why: string | undefined
-    if (fit.r2 < MIN_R2) why = 'разброс'
-    else if (fit.slope > prior * SANE_RATIO || fit.slope < prior / SANE_RATIO) why = 'далеко от конфига'
+    const why = judge(fit.slope, fit.r2, prior, SANE_RATIO)
     fits.push({ ...base, usdPerPct: fit.slope, r2: fit.r2, accepted: why === undefined, why })
   }
   return fits.sort((a, b) => a.resetsAt.localeCompare(b.resetsAt))
+}
+
+/** Why a fitted window does not count, or nothing when it does. */
+function judge(slope: number, r2: number, prior: number, ratio: number): string | undefined {
+  if (r2 < MIN_R2) return 'разброс'
+  if (slope > prior * ratio || slope < prior / ratio) return 'далеко от конфига'
+  return undefined
+}
+
+/** A window counts toward a model when this share of its spend went to that model. */
+export const MODEL_SHARE = 0.9
+/** Without a measured price of its own, a model's windows are held this close to the shared price: Haiku may sit far from Opus. */
+const MODEL_RATIO = 3
+
+/**
+ * The windows where one model spent nine tenths or more, judged again against
+ * that model's own measured price when there is one (2×), else the shared one (3×).
+ */
+export function modelFits(fits: readonly WindowFit[], model: string, prior: number, isMeasured: boolean): WindowFit[] {
+  const out: WindowFit[] = []
+  for (const f of fits) {
+    const total = Object.values(f.models ?? {}).reduce((a, b) => a + b, 0)
+    if (total <= 0 || (f.models?.[model] ?? 0) / total < MODEL_SHARE) continue
+    if (f.why === 'мало пунктов') {
+      out.push(f)
+      continue
+    }
+    const why = judge(f.usdPerPct, f.r2, prior, isMeasured ? SANE_RATIO : MODEL_RATIO)
+    out.push({ ...f, accepted: why === undefined, why })
+  }
+  return out
+}
+
+/** `claude-opus-5-5` (or `opus-5-5`) → `opus`, `[5, 5]`; a date suffix is dropped. */
+export function parseModel(id: string): { family: string; version: number[] } | undefined {
+  const m = /^([a-z]+)((?:-\d+)*)$/.exec(shortModel(id.trim().toLowerCase()))
+  if (m === null) return undefined
+  return { family: m[1]!, version: m[2]!.split('-').filter((p) => p !== '').map(Number) }
+}
+
+function isNewer(a: readonly number[], b: readonly number[]): boolean {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const d = (a[i] ?? 0) - (b[i] ?? 0)
+    if (d !== 0) return d > 0
+  }
+  return false
+}
+
+/** The newest version of `family` among `seen`, in the short form. */
+export function newestOf(family: string, seen: Iterable<string>): string | undefined {
+  let best: { id: string; version: number[] } | undefined
+  for (const id of seen) {
+    const p = parseModel(id)
+    if (p === undefined || p.family !== family || p.version.length === 0) continue
+    if (best === undefined || isNewer(p.version, best.version)) best = { id: shortModel(id), version: p.version }
+  }
+  return best?.id
+}
+
+/**
+ * The models a comma list names, in the short form: a versioned name
+ * (`opus-5`) is that version; a family (`opus`) is its newest version seen, or
+ * the family itself while none is.
+ */
+export function resolveTracked(spec: string, seen: Iterable<string>): string[] {
+  const ids = [...seen]
+  const out: string[] = []
+  for (const token of spec.split(/[,\s]+/).map((t) => shortModel(t.trim().toLowerCase())).filter((t) => t !== '')) {
+    const p = parseModel(token)
+    const id = p !== undefined && p.version.length === 0 ? (newestOf(p.family, ids) ?? token) : token
+    if (!out.includes(id)) out.push(id)
+  }
+  return out
 }
 
 /** Least squares of spend on the reading: slope and R². */
@@ -192,6 +290,86 @@ export function calibrate(fits: readonly WindowFit[], prior: number): Calibratio
   return { usdPerPct: median * w + prior * (1 - w), windows: slopes.length, isLearned: false }
 }
 
+/** A model's price as limit-test measured it, the latest sound one in each window. */
+export type Reference = { usdPerPct5h?: number; usdPerPctWeek?: number; at: number }
+
+/** Points a limit-test result must span to be taken as a reference: all of its counted moves. */
+const REFERENCE_POINTS = { five_hour: 3, seven_day: 2 }
+
+/**
+ * The references in limit-test's `data/results.json` (A39): per model, the
+ * latest entry in each window with a price, not marked noisy and spanning its
+ * counted moves. Anything that does not read as that file is no reference.
+ */
+export function referencesOf(results: unknown): Record<string, Reference> {
+  const refs: Record<string, Reference> = {}
+  if (!Array.isArray(results)) return refs
+  for (const r of results as Record<string, unknown>[]) {
+    if (r === null || typeof r !== 'object' || typeof r.model !== 'string' || typeof r.at !== 'number' || r.isNoisy === true) continue
+    const take = (price: unknown, points: unknown, need: number) => (typeof price === 'number' && price > 0 && typeof points === 'number' && points >= need ? price : undefined)
+    const five = take(r.usdPerPct5h, r.points5h, REFERENCE_POINTS.five_hour)
+    const week = take(r.usdPerPctWeek, r.pointsWeek, REFERENCE_POINTS.seven_day)
+    if (five === undefined && week === undefined) continue
+    const ref = refs[r.model]
+    const isLater = ref === undefined || ref.at <= r.at
+    refs[r.model] = {
+      usdPerPct5h: five !== undefined && (isLater || ref?.usdPerPct5h === undefined) ? five : ref?.usdPerPct5h,
+      usdPerPctWeek: week !== undefined && (isLater || ref?.usdPerPctWeek === undefined) ? week : ref?.usdPerPctWeek,
+      at: Math.max(ref?.at ?? 0, r.at),
+    }
+  }
+  return refs
+}
+
+export type Rates = { five_hour: Calibration; seven_day: Calibration }
+
+/** One model's price of a point in each window, and whether it is the model's own or the shared one. */
+export type ModelRate = Rates & { hasOwn: { five_hour: boolean; seven_day: boolean } }
+
+/**
+ * A model's price: its own windows' median, started from its measured price
+ * when there is one, else from the shared price. A measured price with no
+ * windows yet stands alone.
+ */
+export function modelRate(fits: { five_hour: readonly WindowFit[]; seven_day: readonly WindowFit[] }, model: string, shared: Rates, ref?: Reference): ModelRate {
+  const one = (kind: 'five_hour' | 'seven_day', measured: number | undefined): [Calibration, boolean] => {
+    const prior = measured ?? shared[kind].usdPerPct
+    const cal = calibrate(modelFits(fits[kind], model, prior, measured !== undefined), prior)
+    if (cal.windows === 0 && measured !== undefined) return [{ ...cal, isLearned: true }, true]
+    return [cal, cal.windows > 0]
+  }
+  const [five, ownFive] = one('five_hour', ref?.usdPerPct5h)
+  const [week, ownWeek] = one('seven_day', ref?.usdPerPctWeek)
+  return { five_hour: five, seven_day: week, hasOwn: { five_hour: ownFive, seven_day: ownWeek } }
+}
+
+/**
+ * A turn's shares priced model by model: each model's dollars over its own
+ * price where it has one, the rest (and dollars no request claimed) over the
+ * shared price. Nothing when no request of the turn recorded its model.
+ */
+export function turnShares(byModel: ReadonlyMap<string, number>, usd: number, rates: ReadonlyMap<string, ModelRate>, shared: Rates): TurnFigures['shares'] {
+  if (byModel.size === 0) return undefined
+  let five = 0
+  let week = 0
+  let claimed = 0
+  let isLearned = true
+  for (const [model, spent] of byModel) {
+    const r = rates.get(model)
+    const p5 = r?.hasOwn.five_hour === true ? r.five_hour : shared.five_hour
+    const pw = r?.hasOwn.seven_day === true ? r.seven_day : shared.seven_day
+    five += spent / p5.usdPerPct
+    week += spent / pw.usdPerPct
+    isLearned &&= p5.isLearned && pw.isLearned
+    claimed += spent
+  }
+  const rest = Math.max(0, usd - claimed)
+  five += rest / shared.five_hour.usdPerPct
+  week += rest / shared.seven_day.usdPerPct
+  if (rest > 0) isLearned &&= shared.five_hour.isLearned && shared.seven_day.isLearned
+  return { five_hour: five, seven_day: week, isLearned }
+}
+
 /** Token counts summed. */
 export function addUsage(a: ModelUsage, b: ModelUsage): ModelUsage {
   return {
@@ -219,6 +397,10 @@ export type TurnFigures = {
   usd?: number
   pct5h?: Calibration
   pctWeek?: Calibration
+  /** The shares when the turn was priced model by model; else `usd` over the shared prices. */
+  shares?: { five_hour: number; seven_day: number; isLearned: boolean }
+  /** Each window's whole size in USD, for `showLimitSize`. */
+  limitSize?: { five_hour: number; seven_day: number }
   durationMs: number
   model?: string
   steps: number
@@ -240,6 +422,7 @@ export type Show = {
   model: boolean
   steps: boolean
   cache: boolean
+  limitSize: boolean
 }
 
 export function formatTokens(n: number): string {
@@ -258,6 +441,12 @@ export function formatShare(pct: number, decimals: number): string {
 
 // Escaped, so a line with a dollar amount never reads as inline math.
 export const formatUsd = (n: number) => (n < 0.005 ? '<\\$0.01' : `\\$${n.toFixed(2)}`)
+
+/** `5ч ≈ $39 · нед ≈ $285`: a window's whole size, a hundred points; escaped for a reply's markdown. */
+export function formatLimitSize(size: { five_hour: number; seven_day: number }, isEscaped: boolean): string {
+  const d = isEscaped ? '\\$' : '$'
+  return `5ч ≈ ${d}${Math.round(size.five_hour)} · нед ≈ ${d}${Math.round(size.seven_day)}`
+}
 
 export function formatDuration(ms: number): string {
   const s = Math.round(ms / 1000)
@@ -288,9 +477,10 @@ function tokenParts(u: ModelUsage, input: boolean): string {
 }
 
 /**
- * The note under a reply, up to three rows joined by newlines: the context and
- * what the turn cost; its tokens; its time, requests and model. Groups within a
- * row are split by a bar, and a row with nothing to show is left out.
+ * The note under a reply, up to four rows joined by newlines: the context and
+ * what the turn cost; its tokens; its time, requests and model; the windows'
+ * size, when asked for. Groups within a row are split by a bar, and a row with
+ * nothing to show is left out.
  */
 export function formatLine(f: TurnFigures, show: Show): string | undefined {
   const cost: string[] = []
@@ -301,9 +491,9 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
     cost.push('**сверх лимита**')
   } else if (show.limits && f.usd !== undefined && (f.pct5h !== undefined || f.pctWeek !== undefined)) {
     const shares: string[] = []
-    if (f.pct5h !== undefined) shares.push(`${formatShare(f.usd / f.pct5h.usdPerPct, 1)} 5ч`)
-    if (f.pctWeek !== undefined) shares.push(`${formatShare(f.usd / f.pctWeek.usdPerPct, 2)} нед`)
-    const learned = (f.pct5h?.isLearned ?? true) && (f.pctWeek?.isLearned ?? true)
+    if (f.pct5h !== undefined) shares.push(`${formatShare(f.shares?.five_hour ?? f.usd / f.pct5h.usdPerPct, 1)} 5ч`)
+    if (f.pctWeek !== undefined) shares.push(`${formatShare(f.shares?.seven_day ?? f.usd / f.pctWeek.usdPerPct, 2)} нед`)
+    const learned = f.shares?.isLearned ?? ((f.pct5h?.isLearned ?? true) && (f.pctWeek?.isLearned ?? true))
     cost.push(`${learned ? '' : '≈'}${shares.join(' · ')}`)
   }
   if (show.usd && f.usd !== undefined) cost.push(formatUsd(f.usd))
@@ -317,6 +507,15 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
   if (show.steps && f.steps > 0) extra.push(`запросов ${f.steps}`)
   if (show.model && f.model !== undefined) extra.push(shortModel(f.model))
   if (show.cache && f.cache !== undefined) extra.push(`кэш до ${formatClock(f.cache.until)}${f.cache.isShort ? ' (5м)' : ''}`)
-  const rows = [cost.join(' │ '), tokens.join(' │ '), extra.join(' · ')].filter((row) => row !== '')
+  const size = show.limitSize && f.limitSize !== undefined ? formatLimitSize(f.limitSize, true) : ''
+  const rows = [cost.join(' │ '), tokens.join(' │ '), extra.join(' · '), size].filter((row) => row !== '')
   return rows.length === 0 ? undefined : rows.join('\n')
+}
+
+/** A markdown table, the first row its head: command answers are drawn as markdown. */
+export function markdownTable(rows: readonly (readonly string[])[]): string {
+  const line = (r: readonly string[]) => `| ${r.join(' | ')} |`
+  const [head, ...body] = rows
+  if (head === undefined) return ''
+  return [line(head), line(head.map(() => '---')), ...body.map(line)].join('\n')
 }

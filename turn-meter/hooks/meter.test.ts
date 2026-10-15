@@ -1,9 +1,30 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addReadings, windowKinds, addSpend, calibrate, emptyLog, fitWindows, formatLine, formatShare, formatTokens, prune, type SessionLog, type Show, type TurnFigures } from './meter'
+import {
+  addByModel,
+  addReadings,
+  addSpend,
+  calibrate,
+  emptyLog,
+  fitWindows,
+  formatLine,
+  formatShare,
+  formatTokens,
+  modelFits,
+  prune,
+  referencesOf,
+  resolveTracked,
+  turnShares,
+  windowKinds,
+  type ModelRate,
+  type Rates,
+  type SessionLog,
+  type Show,
+  type TurnFigures,
+} from './meter'
 
-const ALL: Show = { context: true, tokens: true, input: true, subagents: true, limits: true, usd: true, duration: true, model: true, steps: true, cache: true }
-const NONE: Show = { context: false, tokens: false, input: false, subagents: false, limits: false, usd: false, duration: false, model: false, steps: false, cache: false }
+const ALL: Show = { context: true, tokens: true, input: true, subagents: true, limits: true, usd: true, duration: true, model: true, steps: true, cache: true, limitSize: false }
+const NONE: Show = { context: false, tokens: false, input: false, subagents: false, limits: false, usd: false, duration: false, model: false, steps: false, cache: false, limitSize: false }
 const USAGE = { input_tokens: 12, output_tokens: 3100, cache_read_input_tokens: 1_200_000, cache_creation_input_tokens: 45_000 }
 const FIGURES: TurnFigures = {
   context: { percent: 21, tokens: 212_000 },
@@ -133,4 +154,71 @@ test('the journal keeps changes only, and old points go, but the baseline stays'
   prune(log, later)
   expect(log.spend).toEqual([[3, 2], [later, 5]])
   expect(log.obs).toEqual([])
+})
+
+/** One session's window at `price` dollars a point, its spend split over models by `shares`, each request journaled on its model. */
+function modelWindow(price: number, points: number, shares: Record<string, number>): SessionLog[] {
+  const log = emptyLog('m')
+  addSpend(log, START - 1000, 10)
+  let total = 0
+  for (let k = 1; k <= points * 4; k++) {
+    const t = START + k * 60_000
+    for (const [model, share] of Object.entries(shares)) {
+      const usd = (price / 4) * share
+      total += usd
+      addByModel(log, t, model, usd)
+    }
+    addSpend(log, t, 10 + total)
+    addReadings(log, t + 1, [{ kind: 'five_hour', percentUsed: Math.floor(total / price + 1e-9), resetsAt: RESET }])
+  }
+  return [log]
+}
+
+test('a clean Opus window gives back its price as that of the model', () => {
+  const fits = fitWindows(modelWindow(0.4, 20, { 'opus-5-5': 0.95, 'haiku-5-5': 0.05 }), 'five_hour', 0.39)
+  const own = modelFits(fits, 'opus-5-5', 0.39, false)
+  expect(own.length).toBe(1)
+  expect(own[0]!.accepted).toBe(true)
+  expect(own[0]!.usdPerPct).toBeGreaterThan(0.38)
+  expect(own[0]!.usdPerPct).toBeLessThan(0.42)
+  expect(modelFits(fits, 'haiku-5-5', 0.39, false)).toEqual([])
+})
+
+test('a 60/40 window counts for no model, but for the shared price', () => {
+  const fits = fitWindows(modelWindow(0.4, 20, { 'opus-5-5': 0.6, 'sonnet-5-5': 0.4 }), 'five_hour', 0.39)
+  expect(fits[0]!.accepted).toBe(true)
+  expect(modelFits(fits, 'opus-5-5', 0.39, false)).toEqual([])
+  expect(modelFits(fits, 'sonnet-5-5', 0.39, false)).toEqual([])
+})
+
+test('a family is its newest version seen; a versioned name is itself', () => {
+  expect(resolveTracked('opus, haiku-4-5', ['opus-5', 'opus-5-5'])).toEqual(['opus-5-5', 'haiku-4-5'])
+  expect(resolveTracked('Sonnet', [])).toEqual(['sonnet'])
+})
+
+test('a turn is priced model by model: $0.40 at 0.40 and $0.10 at 0.20 come to 1.5 points', () => {
+  const cal = (usdPerPct: number) => ({ usdPerPct, windows: 3, isLearned: true })
+  const shared: Rates = { five_hour: cal(0.39), seven_day: cal(2.5) }
+  const own = (p: number): ModelRate => ({ five_hour: cal(p), seven_day: cal(2.5), hasOwn: { five_hour: true, seven_day: false } })
+  const rates = new Map([['opus-5-5', own(0.4)], ['haiku-5-5', own(0.2)]])
+  const shares = turnShares(new Map([['opus-5-5', 0.4], ['haiku-5-5', 0.1]]), 0.5, rates, shared)
+  expect(formatLine({ ...FIGURES, usd: 0.5, shares }, { ...NONE, limits: true })).toBe('1.5% 5ч · 0.20% нед')
+})
+
+test('the size of the windows is a fourth row of its own', () => {
+  const line = formatLine({ ...FIGURES, limitSize: { five_hour: 39, seven_day: 285 } }, { ...ALL, limitSize: true })
+  expect(line).toBe(
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5\n5ч ≈ \\$39 · нед ≈ \\$285',
+  )
+})
+
+test('the results of limit-test: the latest sound entry per model and window', () => {
+  const refs = referencesOf([
+    { model: 'opus-5-5', at: 1, usdPerPct5h: 0.41, points5h: 3, pointsWeek: 0, spent: 2, requests: 9, isNoisy: false },
+    { model: 'opus-5-5', at: 2, usdPerPct5h: 0.39, usdPerPctWeek: 2.9, points5h: 3, pointsWeek: 2, spent: 2, requests: 9, isNoisy: false },
+    { model: 'opus-5-5', at: 3, usdPerPct5h: 0.6, points5h: 3, pointsWeek: 0, spent: 2, requests: 9, isNoisy: true },
+    { model: 'haiku-5-5', at: 3, usdPerPct5h: 0.2, points5h: 1, pointsWeek: 0, spent: 1, requests: 30, isNoisy: false },
+  ])
+  expect(refs).toEqual({ 'opus-5-5': { usdPerPct5h: 0.39, usdPerPctWeek: 2.9, at: 2 } })
+  expect(referencesOf('not json')).toEqual({})
 })

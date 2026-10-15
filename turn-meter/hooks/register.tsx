@@ -1,7 +1,7 @@
 // A dim line under each reply: the context's fill, what the turn spent in
 // tokens and dollars, and what share of the five-hour and weekly windows that
-// comes to, priced in dollars per point and learned from every session's
-// spend journal (A38).
+// comes to, priced in dollars per point model by model and learned from every
+// session's spend journal, started from limit-test's measurements (A38).
 
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, PluginOptions, Register } from 'claude-code'
@@ -9,6 +9,7 @@ import type { EngineInterface, ModelUsage, PluginOptions, Register } from 'claud
 import type { TurnNote } from '../types'
 import {
   addReadings,
+  addByModel,
   addSpend,
   addUsage,
   CACHE_LONG_MS,
@@ -16,13 +17,25 @@ import {
   calibrate,
   emptyLog,
   fitWindows,
+  formatLimitSize,
   formatLine,
   KEEP_MS,
+  markdownTable,
+  modelRate,
+  newestOf,
+  parseModel,
   prune,
+  referencesOf,
+  resolveTracked,
+  shortModel,
+  turnShares,
   ZERO_USAGE,
-  type Calibration,
+  type ModelRate,
+  type Rates,
+  type Reference,
   type SessionLog,
   type Show,
+  type WindowFit,
   windowKinds,
 } from './meter'
 
@@ -47,6 +60,7 @@ export function showOf(options: PluginOptions): Show {
     model: flag(options, 'showModel', true),
     steps: flag(options, 'showSteps', true),
     cache: flag(options, 'showCache', true),
+    limitSize: flag(options, 'showLimitSize', false),
   }
 }
 
@@ -75,12 +89,20 @@ type Meter = {
   isAuto: boolean
   prior5h: number
   priorWeek: number
+  trackModels: string
   log?: SessionLog
   isDirty: boolean
   needsFit: boolean
-  rates: { five_hour: Calibration; seven_day: Calibration }
-  // The main turn under way, and what its subagents and requests came to so far.
-  current?: { turnId: string; usd?: number; steps: number; lastRequestAt?: number; agents: { count: number; usage: ModelUsage } }
+  rates: Rates
+  /** Each model's price, for every model the journals or limit-test's references name. */
+  modelRates: Map<string, ModelRate>
+  /** The models seen, short form. */
+  seen: Set<string>
+  references: Record<string, Reference>
+  /** The ledger when the last request's dollars were put on its model. */
+  lastCost?: number
+  // The main turn under way, and what its subagents, requests and models came to so far.
+  current?: { turnId: string; usd?: number; steps: number; lastRequestAt?: number; agents: { count: number; usage: ModelUsage }; byModel: Map<string, number> }
 }
 
 async function ownLog($: EngineInterface, m: Meter): Promise<SessionLog> {
@@ -103,15 +125,79 @@ async function flush($: EngineInterface, m: Meter): Promise<void> {
   m.isDirty = false
 }
 
-async function refit($: EngineInterface, m: Meter): Promise<void> {
-  if (!m.isAuto || !m.needsFit) return
-  m.needsFit = false
-  const logs = await allLogs($, await ownLog($, m))
-  const since = Number((await $.store.get('resetAt')) ?? 0)
-  m.rates = {
-    five_hour: calibrate(fitWindows(logs, 'five_hour', m.prior5h, since), m.prior5h),
-    seven_day: calibrate(fitWindows(logs, 'seven_day', m.priorWeek, since), m.priorWeek),
+/** A request's model in the short form; an alias (`haiku`) as the newest of its family seen. */
+function modelName(m: Meter, model: string): string {
+  const short = shortModel(model)
+  const p = parseModel(short)
+  if (p !== undefined && p.version.length === 0) return newestOf(p.family, m.seen) ?? short
+  return short
+}
+
+/** Puts what the ledger grew by since the last request on the model that answered this one. */
+async function recordStep($: EngineInterface, m: Meter, model: string): Promise<void> {
+  const { cost } = await $.session.usage()
+  if (cost === undefined) return
+  const usd = cost.usd - (m.lastCost ?? cost.usd)
+  m.lastCost = cost.usd
+  if (!(usd > 0)) return
+  const name = modelName(m, model)
+  m.seen.add(name)
+  addByModel(await ownLog($, m), await $.clock.now(), name, usd)
+  m.isDirty = true
+  if (m.current !== undefined) m.current.byModel.set(name, (m.current.byModel.get(name) ?? 0) + usd)
+}
+
+/** limit-test's results, in its own folder beside this one (A39); none while it has measured nothing. */
+async function readReferences($: EngineInterface): Promise<Record<string, Reference>> {
+  const path = `${$.plugin.root}/../limit-test/data/results.json`
+  try {
+    if (!(await $.fs.exists(path))) return {}
+    return referencesOf(JSON.parse(await $.fs.read(path)))
+  } catch {
+    return {}
   }
+}
+
+async function refit($: EngineInterface, m: Meter): Promise<void> {
+  if (!m.needsFit) return
+  m.needsFit = false
+  m.references = await readReferences($)
+  const logs = await allLogs($, await ownLog($, m))
+  for (const log of logs) for (const [, model] of log.bymodel ?? []) m.seen.add(model)
+  for (const id of Object.keys(m.references)) m.seen.add(id)
+  const fits = { five_hour: [] as WindowFit[], seven_day: [] as WindowFit[] }
+  if (m.isAuto) {
+    const since = Number((await $.store.get('resetAt')) ?? 0)
+    fits.five_hour = fitWindows(logs, 'five_hour', m.prior5h, since)
+    fits.seven_day = fitWindows(logs, 'seven_day', m.priorWeek, since)
+    m.rates = { five_hour: calibrate(fits.five_hour, m.prior5h), seven_day: calibrate(fits.seven_day, m.priorWeek) }
+  }
+  m.modelRates = new Map([...m.seen].map((id) => [id, modelRate(fits, id, m.rates, m.references[id])]))
+}
+
+// Escaped: a command's answer is drawn as markdown, and two amounts on a line would read as math.
+const usd = (n: number, digits: number) => `\\$${n.toFixed(digits)}`
+
+/** The price table: one row a tracked model, its own price in each window or `мало данных`. */
+function modelTable(m: Meter): string {
+  const rows = [['модель', '1 % 5ч', 'окно 5ч', '1 % нед', 'окон', 'источник']]
+  for (const id of resolveTracked(m.trackModels, m.seen)) {
+    const r = m.modelRates.get(id)
+    if (r === undefined || (!r.hasOwn.five_hour && !r.hasOwn.seven_day)) {
+      rows.push([id, 'мало данных', '', 'мало данных', '', ''])
+      continue
+    }
+    const isLive = r.five_hour.windows > 0 || r.seven_day.windows > 0
+    rows.push([
+      id,
+      r.hasOwn.five_hour ? usd(r.five_hour.usdPerPct, 3) : 'мало данных',
+      r.hasOwn.five_hour ? usd(r.five_hour.usdPerPct * 100, 0) : '',
+      r.hasOwn.seven_day ? usd(r.seven_day.usdPerPct, 3) : 'мало данных',
+      `${r.five_hour.windows} / ${r.seven_day.windows}`,
+      isLive ? 'живые окна' : 'замер limit-test',
+    ])
+  }
+  return markdownTable(rows)
 }
 
 async function report($: EngineInterface, m: Meter): Promise<string> {
@@ -119,20 +205,24 @@ async function report($: EngineInterface, m: Meter): Promise<string> {
   await refit($, m)
   const since = Number((await $.store.get('resetAt')) ?? 0)
   const logs = await allLogs($, await ownLog($, m))
-  const rows: string[] = [`turn-meter: журналов ${logs.length}, автокалибровка ${m.isAuto ? 'вкл' : 'выкл'}`]
+  // Drawn as markdown: a paragraph a line, each price's fitted windows a list under it.
+  const rows: string[] = [`журналов ${logs.length}, автокалибровка ${m.isAuto ? 'вкл' : 'выкл'}`]
   const kinds = [...windowKinds(logs)].map(([kind, [, resetsAt, pct]]) => `${kind} ${pct}%${resetsAt === '' ? '' : ` (сброс ${resetsAt})`}`)
   rows.push(`окна лимитов: ${kinds.length === 0 ? 'ещё не видели' : kinds.join(', ')}`)
+  rows.push(`размер окна: ${formatLimitSize({ five_hour: m.rates.five_hour.usdPerPct * 100, seven_day: m.rates.seven_day.usdPerPct * 100 }, true)}`)
   for (const [kind, prior, label] of [
     ['five_hour', m.prior5h, '5ч'],
     ['seven_day', m.priorWeek, 'неделя'],
   ] as const) {
     const r = m.rates[kind]
-    rows.push(`${label}: 1 % = $${r.usdPerPct.toFixed(3)} (конфиг $${prior}, окон ${r.windows}${r.isLearned ? '' : ', ещё не выучено'})`)
+    const lines = [`${label}: 1 % = ${usd(r.usdPerPct, 3)} (конфиг \\$${prior}, окон ${r.windows}${r.isLearned ? '' : ', ещё не выучено'})`]
     for (const f of fitWindows(logs, kind, prior, since).slice(-5)) {
-      rows.push(`  сброс ${f.resetsAt}: $${f.usdPerPct.toFixed(3)}, +${f.rise} п., точек ${f.anchors}, R² ${f.r2.toFixed(2)}${f.accepted ? '' : ` — отброшено: ${f.why}`}`)
+      lines.push(`- сброс ${f.resetsAt}: ${usd(f.usdPerPct, 3)}, +${f.rise} п., точек ${f.anchors}, R² ${f.r2.toFixed(2)}${f.accepted ? '' : ` — отброшено: ${f.why}`}`)
     }
+    rows.push(lines.join('\n'))
   }
-  return rows.join('\n')
+  rows.push('по моделям (окна, где на модель ≥ 90 % трат; без них — замер limit-test):', modelTable(m))
+  return rows.join('\n\n')
 }
 
 export const register: Register = (on, options) => {
@@ -144,20 +234,25 @@ export const register: Register = (on, options) => {
     isAuto,
     prior5h,
     priorWeek,
+    trackModels: typeof options.trackModels === 'string' && options.trackModels.trim() !== '' ? options.trackModels : 'opus, sonnet, haiku',
     isDirty: false,
     needsFit: true,
     rates: {
       five_hour: { usdPerPct: prior5h, windows: 0, isLearned: !isAuto },
       seven_day: { usdPerPct: priorWeek, windows: 0, isLearned: !isAuto },
     },
+    modelRates: new Map(),
+    seen: new Set(),
+    references: {},
   }
 
   on('session.start', async ($, e, next) => {
     const r = await next(e)
     await $.command.register({
       name: 'turn-meter',
-      description: 'Цена 1 % лимита, выученная turn-meter; `reset` забывает выученное',
+      description: 'Цена 1 % лимита по моделям и размер окон; `reset` — забыть выученное',
     })
+    m.lastCost = (await $.session.usage()).cost?.usd
     await refit($, m)
     return r
   })
@@ -179,12 +274,15 @@ export const register: Register = (on, options) => {
 
   on('turn.start', async ($, e, next) => {
     const { cost } = await $.session.usage()
-    m.current = { turnId: e.turnId, usd: cost?.usd, steps: 0, agents: { count: 0, usage: ZERO_USAGE } }
+    // A module reloaded mid-session saw no session.start: its first request is priced from here.
+    m.lastCost ??= cost?.usd
+    m.current = { turnId: e.turnId, usd: cost?.usd, steps: 0, agents: { count: 0, usage: ZERO_USAGE }, byModel: new Map() }
     return next(e)
   })
 
   on('turn.step', async function* ($, e, next) {
     const result = yield* next(e)
+    if (result.usage !== null) await recordStep($, m, result.usage.model)
     // Each main-loop request reads the cache and starts its lifetime over; a subagent's prompt is its own.
     if (e.agentId === undefined && m.current?.turnId === e.turnId && result.usage !== null) {
       m.current.steps += 1
@@ -221,6 +319,8 @@ export const register: Register = (on, options) => {
         usd,
         pct5h: m.rates.five_hour,
         pctWeek: m.rates.seven_day,
+        shares: usd === undefined || turn === undefined ? undefined : turnShares(turn.byModel, usd, m.modelRates, m.rates),
+        limitSize: { five_hour: m.rates.five_hour.usdPerPct * 100, seven_day: m.rates.seven_day.usdPerPct * 100 },
         durationMs: e.durationMs,
         model: e.usage?.model,
         steps: turn?.steps ?? 0,
@@ -234,11 +334,12 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'turn-meter' }, async ($, e) => {
-    if (e.args.trim() === 'reset') {
+    const args = e.args.trim().split(/\s+/).filter((a) => a !== '')
+    if (args[0] === 'reset') {
       await $.store.set('resetAt', await $.clock.now())
       m.needsFit = true
       await refit($, m)
-      return { text: 'turn-meter: выученное забыто, до новых окон — цены из конфига.' }
+      return { text: 'выученное забыто, до новых окон — цены из конфига и замеров limit-test.' }
     }
     return { text: await report($, m) }
   })

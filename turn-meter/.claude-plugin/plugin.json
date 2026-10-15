@@ -1,7 +1,7 @@
 {
   "name": "turn-meter",
   "version": "0.1.0",
-  "description": "A dim line under each reply: context fill, the turn's tokens and dollars, and its share of the five-hour and weekly limits, priced per point and learned from live readings.",
+  "description": "A dim line under each reply: context fill, the turn's tokens and dollars, and its share of the five-hour and weekly limits, priced per point model by model: learned from live readings, started from limit-test's measurements.",
   "author": {
     "name": "Fast_and_Pythonic"
   },
@@ -67,6 +67,12 @@
       "description": "When the main loop's prompt cache lapses: the last request of the turn plus an hour, or five minutes on extra usage.",
       "default": true
     },
+    "showLimitSize": {
+      "type": "boolean",
+      "title": "Window size",
+      "description": "A fourth row under the reply, 5ч ≈ $39 · нед ≈ $285: each window's whole size in dollars, a hundred times the shared price of a point.",
+      "default": false
+    },
     "usdPerPct5h": {
       "type": "number",
       "title": "USD per point, five hours",
@@ -84,6 +90,12 @@
       "title": "Learn the prices",
       "description": "Refine both prices from the moments the windows' readings move, over every session's spend.",
       "default": true
+    },
+    "trackModels": {
+      "type": "string",
+      "title": "Models in the price table",
+      "description": "Comma list for /turn-meter: a versioned name (opus-5, opus-5-5) is that version; a family (opus, sonnet, haiku) is its newest version seen in the journals.",
+      "default": "opus, sonnet, haiku"
     }
   }
 }
