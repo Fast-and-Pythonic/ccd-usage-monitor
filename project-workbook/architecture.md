@@ -1609,8 +1609,12 @@ known yet; this is how it will show.
 **Checking the share against Turn Usage.** The two lines under one reply
 disagree (`≈2.5% 5ч` beside `+3%`), and the question is whether Turn Usage adds
 anything. So the journal also has `turns`, `[time, USD, share of 5h, share of
-week, 5h reading at start, 5h reading at end, model][]` (absent in journals
-written before 2026-10-15). A row is written on every main-loop
+week, 5h reading at start, 5h reading at end, model, tokens][]` (absent in
+journals written before 2026-10-15). `tokens` is `[cache read, cache write,
+input, output]` of the main loop and the subagents that finished during the
+turn, the requests its dollars paid for: kept to test whether the windows weigh
+token kinds the way list prices do, a cache write after the cache lapsed above
+all (absent in the first rows written). A row is written on every main-loop
 `turn.complete` whose dollars are known, with a line under the reply or
 without: the dollars, the shares as the line priced them (computed as well on
 extra usage, where the line shows none), and the five-hour reading from
@@ -1623,7 +1627,12 @@ shares on those same turns. Last comes the window's own rise over the day,
 from the readings: from the last one before the day began, or from zero for a
 window that began inside it, to the highest one in it. Per turn it gives the
 median of turn-meter's share minus the step and the middle half of that
-difference. Parallel sessions make the steps sum to more than the rise, since
+difference. Then the spend between turns: per session, what the ledger grew by
+from the start of its first turn in the day (that turn's ending cost less its
+dollars, so a session whose journal of turns began late is not charged for what
+came before) to now, less what its turns claimed. That is spend no line under a
+reply shows, a background subagent that finished after its turn the usual
+case. Parallel sessions make the steps sum to more than the rise, since
 each turn's step holds the other sessions' spend; that is part of what is being
 measured. The decision this feeds: drop Turn Usage if turn-meter stays within
 about 15 % of the window's rise.

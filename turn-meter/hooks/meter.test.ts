@@ -253,6 +253,7 @@ test('the turns of the last day against the steps Turn Usage shows and against t
   expect(c.stepped).toEqual({ turns: 3, meter: 1.4 + 0.3 + 3.9, points: 6 })
   expect(c.resets).toBe(1)
   expect(c.unread).toBe(1)
+  expect(c.ledger).toBeUndefined()
   // 30 → 40 in the window before, 0 → 6 in the one under way.
   expect(c.rise).toBe(16)
   // Per turn: −0.6, +0.3, −0.1.
@@ -279,4 +280,20 @@ test('turns older than the keep limit are pruned with the rest', () => {
   const log = dayOfTurns()
   prune(log, NOW + 8 * 24 * H - 1.5 * H)
   expect(log.turns?.map((r) => r[0])).toEqual([NOW - H, NOW - H / 2])
+})
+
+test('spend between turns: what the ledger grew by from the start of the first turn that no turn claimed', () => {
+  const log = emptyLog('s')
+  // $5 before the journal of turns began is not counted; the first turn ends at $6 having spent $1.
+  log.spend.push([NOW - 30 * H, 0], [NOW - 3 * H, 6], [NOW - 2 * H - 1, 6.5], [NOW - 2 * H, 7.5], [NOW - H, 9])
+  addTurn(log, [NOW - 3 * H, 1, 2.5, 0.35, 10, 13, 'opus-5-5', [100_000, 2000, 10, 500]])
+  // $0.50 of a background subagent between the turns, the second turn's $1, then $1.50 after it.
+  addTurn(log, [NOW - 2 * H, 1, 2.5, 0.35, 13, 16, 'opus-5-5'])
+  // A journal of turns that holds none in the span adds nothing.
+  const quiet = emptyLog('q')
+  quiet.spend.push([NOW - 5 * H, 1], [NOW - H, 4])
+  const c = compareTurns([log, quiet], NOW)
+  // From $5 at the first turn's start to $9: $4, of which the turns claimed $2.
+  expect(c.ledger).toEqual({ usd: 4, between: 2 })
+  expect(formatComparison(c).split('\n')[4]).toBe('- траты между ходами, мимо строк: \\$2.00 из \\$4.00 (50 %)')
 })

@@ -32,6 +32,7 @@ import {
   resolveTracked,
   shortModel,
   turnShares,
+  turnTokens,
   ZERO_USAGE,
   type ModelRate,
   type Rates,
@@ -319,7 +320,8 @@ export const register: Register = (on, options) => {
       const share5h = shares?.five_hour ?? usd / m.rates.five_hour.usdPerPct
       const shareWeek = shares?.seven_day ?? usd / m.rates.seven_day.usdPerPct
       const model = e.usage?.model === undefined ? null : shortModel(e.usage.model)
-      addTurn(await ownLog($, m), [await $.clock.now(), usd, share5h, shareWeek, turn.pct5h ?? null, reading5h(rateLimits) ?? null, model])
+      const tokens = turnTokens(addUsage(e.usage ?? ZERO_USAGE, turn.agents.usage))
+      addTurn(await ownLog($, m), [await $.clock.now(), usd, share5h, shareWeek, turn.pct5h ?? null, reading5h(rateLimits) ?? null, model, tokens])
       m.isDirty = true
     }
     await flush($, m)

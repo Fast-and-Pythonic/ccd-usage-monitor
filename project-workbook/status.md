@@ -19,8 +19,8 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
    point is learned from per-session journals, shared and per model, and the
    share of a turn is priced model by model; `/turn-meter` gives the size of the
    windows, a price table of `trackModels`, and a day's comparison of its shares
-   with Turn Usage's steps and the window's rise, from a per-turn journal. 26
-   tests pass; not yet seen in a live desktop session as of 2026-10-15.
+   with Turn Usage's steps and the window's rise, and the spend between turns,
+   from a per-turn journal. 27 tests pass; not yet seen in a live desktop session as of 2026-10-15.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
    are turn-meter's references. 8 tests pass; never run live.
@@ -64,8 +64,8 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
    the pill's line (`--line`) under the prompt.
 - **An expired token is renewed by the CLI** (A35), run out of sight with
    `claude -p /usage`; `--revive-token` does it by hand.
-- **Tests**: 216 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
-   26 in `turn-meter/`, 8 in `limit-test/`.
+- **Tests**: 217 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
+   27 in `turn-meter/`, 8 in `limit-test/`.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 

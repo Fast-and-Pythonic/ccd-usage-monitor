@@ -37,12 +37,19 @@ export type SessionLog = {
 }
 
 /**
- * `[time, USD, share of 5h, share of week, 5h reading at start, at end, model]`:
- * a main-loop turn's dollars and the shares the line priced them at, beside the
- * two readings of the five-hour window whose difference Turn Usage shows. A
- * reading or a model the session did not have is `null`.
+ * `[time, USD, share of 5h, share of week, 5h reading at start, at end, model,
+ * tokens]`: a main-loop turn's dollars and the shares the line priced them at,
+ * beside the two readings of the five-hour window whose difference Turn Usage
+ * shows. `tokens` is `[cache read, cache write, input, output]` of the main loop
+ * and the subagents that finished during the turn, the requests the dollars
+ * paid for. A reading or a model the session did not have is `null`; rows
+ * written before tokens were kept have none.
  */
-export type TurnRow = [number, number, number, number, number | null, number | null, string | null]
+export type TurnRow = [number, number, number, number, number | null, number | null, string | null, TurnTokens?]
+
+export type TurnTokens = [number, number, number, number]
+
+export const turnTokens = (u: ModelUsage): TurnTokens => [u.cache_read_input_tokens, u.cache_creation_input_tokens, u.input_tokens, u.output_tokens]
 
 export const emptyLog = (session: string): SessionLog => ({ session, spend: [], obs: [], bymodel: [], turns: [] })
 
@@ -549,6 +556,8 @@ export type TurnComparison = {
   resets: number
   /** Turns missing a reading. */
   unread: number
+  /** What the ledgers of the sessions with turns grew by, and the part of it no turn claimed; nothing without a cost point. */
+  ledger?: { usd: number; between: number }
   /** What the five-hour window rose by over the span; nothing when no reading fell in it. */
   rise?: number
   /** Per stepped turn, turn-meter's share minus Turn Usage's step, in points. */
@@ -592,14 +601,33 @@ export function windowRise(logs: readonly SessionLog[], kind: string, from: numb
   return rise
 }
 
+/**
+ * What a session's ledger grew by from its first turn of the span to `now`, and
+ * how much of that no turn claimed: spend between turns, such as a background
+ * subagent that finished after its turn. The first turn's start is its end's
+ * cost less its dollars, so a session whose journal of turns began late is not
+ * charged for what came before it.
+ */
+function ledgerOf(log: SessionLog, turns: readonly TurnRow[], now: number): { usd: number; between: number } | undefined {
+  const first = turns[0]
+  const end = costAt(log.spend, now)
+  const firstEnd = first === undefined ? undefined : costAt(log.spend, first[0])
+  if (first === undefined || end === undefined || firstEnd === undefined) return undefined
+  const usd = Math.max(0, end - (firstEnd - first[1]))
+  const claimed = turns.reduce((sum, r) => sum + r[1], 0)
+  return { usd, between: Math.max(0, usd - claimed) }
+}
+
 /** The main-loop turns of every journal from `now - span` to `now`, compared. */
 export function compareTurns(logs: readonly SessionLog[], now: number, span = DAY_MS): TurnComparison {
   const from = now - span
   const c: TurnComparison = { turns: 0, meter: 0, stepped: { turns: 0, meter: 0, points: 0 }, resets: 0, unread: 0 }
   const diffs: number[] = []
   for (const log of logs) {
-    for (const [t, , share5h, , start, end] of log.turns ?? []) {
-      if (t < from || t > now) continue
+    const turns = (log.turns ?? []).filter(([t]) => t >= from && t <= now)
+    const ledger = ledgerOf(log, turns, now)
+    if (ledger !== undefined) c.ledger = { usd: (c.ledger?.usd ?? 0) + ledger.usd, between: (c.ledger?.between ?? 0) + ledger.between }
+    for (const [, , share5h, , start, end] of turns) {
       c.turns += 1
       c.meter += share5h
       if (start === null || end === null) c.unread += 1
@@ -621,6 +649,9 @@ export function compareTurns(logs: readonly SessionLog[], now: number, span = DA
   return c
 }
 
+// Escaped: a command's answer is drawn as markdown.
+const usd2 = (n: number) => `\\$${n.toFixed(2)}`
+
 const signed = (n: number, digits: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).toFixed(digits)}`
 
 /** How far `a` is off `b`, in percent of `b`: `−12 %`; nothing when `b` is zero. */
@@ -637,6 +668,10 @@ export function formatComparison(c: TurnComparison): string {
     `- разность целых показаний, как у Turn Usage: Σ +${c.stepped.points} п. за ${c.stepped.turns} ход., turn-meter на них Σ ${c.stepped.meter.toFixed(1)} %${offBy(c.stepped.meter, c.stepped.points)}${skipped.length === 0 ? '' : ` (не в счёт: ${skipped.join(', ')})`}`,
     `- прирост окна: ${c.rise === undefined ? 'показаний нет' : `+${c.rise} п.${offBy(c.meter, c.rise)}`}`,
   ]
+  if (c.ledger !== undefined && c.ledger.usd > 0) {
+    const share = (c.ledger.between / c.ledger.usd) * 100
+    lines.push(`- траты между ходами, мимо строк: ${usd2(c.ledger.between)} из ${usd2(c.ledger.usd)} (${share.toFixed(0)} %)`)
+  }
   if (c.diff !== undefined) {
     lines.push(`- на ход, turn-meter минус Turn Usage: медиана ${signed(c.diff.median, 2)} п., половина ходов от ${signed(c.diff.p25, 2)} до ${signed(c.diff.p75, 2)}`)
   }
