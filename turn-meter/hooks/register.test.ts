@@ -41,7 +41,7 @@ test('a turn: its dollars are the ledger moved between start and end, its subage
   expect(value.length).toBe(1)
   expect(value[0]?.answer).toBe('Готово.')
   expect(value[0]?.line).toBe(
-    'ctx 21% · 212k │ ход: вывод 3.1k · запись 45k · чтение 1.2M · вход 12 │ субагенты (1): вывод 3.1k · запись 45k · чтение 1.2M · вход 12 │ ≈1.4% 5ч · 0.19% нед │ \\$0.55 │ 1м 35с · opus-5-5',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: вывод 3.1k · запись 45k · чтение 1.2M · вход 12 │ субагенты (1): вывод 3.1k · запись 45k · чтение 1.2M · вход 12\n1м 35с · opus-5-5',
   )
 })
 

@@ -254,30 +254,33 @@ function tokenParts(u: ModelUsage, input: boolean): string[] {
   return parts
 }
 
-/** The line, its groups split by a bar; undefined when nothing is left to show. */
+/**
+ * The note under a reply, up to three rows joined by newlines: the context and
+ * what the turn cost; its tokens; its time, requests and model. Groups within a
+ * row are split by a bar, and a row with nothing to show is left out.
+ */
 export function formatLine(f: TurnFigures, show: Show): string | undefined {
-  const groups: string[] = []
+  const cost: string[] = []
   if (show.context && f.context?.percent !== undefined) {
-    groups.push(f.context.tokens === undefined ? `ctx ${f.context.percent}%` : `ctx ${f.context.percent}% · ${formatTokens(f.context.tokens)}`)
-  }
-  if (show.tokens && f.usage !== undefined) {
-    groups.push(`ход: ${tokenParts(f.usage, show.input).join(' · ')}`)
-  }
-  if (show.subagents && f.agents.count > 0) {
-    groups.push(`субагенты (${f.agents.count}): ${tokenParts(f.agents.usage, show.input).join(' · ')}`)
+    cost.push(f.context.tokens === undefined ? `ctx ${f.context.percent}%` : `ctx ${f.context.percent}% · ${formatTokens(f.context.tokens)}`)
   }
   if (show.limits && f.usd !== undefined && (f.pct5h !== undefined || f.pctWeek !== undefined)) {
     const shares: string[] = []
     if (f.pct5h !== undefined) shares.push(`${formatShare(f.usd / f.pct5h.usdPerPct, 1)} 5ч`)
     if (f.pctWeek !== undefined) shares.push(`${formatShare(f.usd / f.pctWeek.usdPerPct, 2)} нед`)
     const learned = (f.pct5h?.isLearned ?? true) && (f.pctWeek?.isLearned ?? true)
-    groups.push(`${learned ? '' : '≈'}${shares.join(' · ')}`)
+    cost.push(`${learned ? '' : '≈'}${shares.join(' · ')}`)
   }
-  if (show.usd && f.usd !== undefined) groups.push(formatUsd(f.usd))
+  if (show.usd && f.usd !== undefined) cost.push(formatUsd(f.usd))
+  const tokens: string[] = []
+  if (show.tokens && f.usage !== undefined) tokens.push(`ход: ${tokenParts(f.usage, show.input).join(' · ')}`)
+  if (show.subagents && f.agents.count > 0) {
+    tokens.push(`субагенты (${f.agents.count}): ${tokenParts(f.agents.usage, show.input).join(' · ')}`)
+  }
   const extra: string[] = []
   if (show.duration) extra.push(formatDuration(f.durationMs))
   if (show.steps && f.steps > 0) extra.push(`запросов ${f.steps}`)
   if (show.model && f.model !== undefined) extra.push(shortModel(f.model))
-  if (extra.length > 0) groups.push(extra.join(' · '))
-  return groups.length === 0 ? undefined : groups.join(' │ ')
+  const rows = [cost.join(' │ '), tokens.join(' │ '), extra.join(' · ')].filter((row) => row !== '')
+  return rows.length === 0 ? undefined : rows.join('\n')
 }

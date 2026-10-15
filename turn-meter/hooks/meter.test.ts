@@ -29,7 +29,7 @@ test('numbers: tokens in k and M, shares with a floor', () => {
 
 test('the whole line, every part on', () => {
   expect(formatLine(FIGURES, ALL)).toBe(
-    'ctx 21% · 212k │ ход: вывод 3.1k · запись 45k · чтение 1.2M · вход 12 │ ≈1.4% 5ч · 0.19% нед │ \\$0.55 │ 1м 35с · запросов 7 · opus-5-5',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: вывод 3.1k · запись 45k · чтение 1.2M · вход 12\n1м 35с · запросов 7 · opus-5-5',
   )
 })
 

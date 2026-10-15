@@ -1508,11 +1508,13 @@ purpose, and its contract with the executable is the status-line JSON, which
 
 ## A38: `turn-meter`: a turn's share of the limits is its dollars over the price of a point
 `turn-meter/` is a second Claude Code mod, separate from `mod/`. Under each
-reply it draws one dim line (`ui.render` on `AssistantMessage`, matched to the
-reply's last text block the way a third-party mod, Turn Usage, does it). The line
-holds the context fill (`ctx 21% · 212k`), the turn's tokens by kind, a group for
-the subagents that finished during the turn, the turn's share of the five-hour
-and weekly windows, its dollars, its duration, its request count and its model.
+reply it draws dim rows (`ui.render` on `AssistantMessage`, matched to the
+reply's last text block the way a third-party mod, Turn Usage, does it). The
+first row holds the context fill (`ctx 21% · 212k`), the turn's share of the
+five-hour and weekly windows and its dollars. The second holds the turn's tokens
+by kind and a group for the subagents that finished during the turn. The third
+holds its duration, request count and model. A row with nothing to show is left
+out; one long row wrapped at the model's name in a narrow window.
 Each part is a boolean `userConfig` switch, stored in `~/.claude/settings.json`
 under `pluginConfigs["turn-meter"].options`. The window percentages themselves
 are not shown: the pill shows them.

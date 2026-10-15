@@ -242,8 +242,10 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column">
         {await next(e)}
-        <Box marginTop={1} paddingLeft={indent}>
-          <Markdown dimColor text={note.line} />
+        <Box marginTop={1} paddingLeft={indent} flexDirection="column">
+          {note.line.split('\n').map((row, i) => (
+            <Markdown key={String(i)} dimColor text={row} />
+          ))}
         </Box>
       </Box>
     )
