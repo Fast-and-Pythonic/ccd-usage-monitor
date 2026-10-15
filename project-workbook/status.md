@@ -3,6 +3,15 @@
 Snapshot of 2026-10-10. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
+> **Paused 2026-10-15.** After the desktop app update to Claude Code 2.1.295 a mod
+> can no longer draw beside the model and effort picker: `$.ui.status` lands on a
+> row under it, which lifts the bottom area and takes height from the transcript,
+> and no other render site sits there (checked site by site with a probe mod).
+> The mod is off (`showLine: false`, not in `CLAUDE_CODE_PLUGIN_DIRS`). When work
+> resumes, the plan is to keep only the context figure, as `ctx 21% · 212k`, and
+> show it at the end of a turn (under the reply, as `ui.render` on
+> `AssistantMessage`) or elsewhere, not in the pill.
+
 ## Works
 
 - **Four sources, merged field by field** (A03), each an independent switch with

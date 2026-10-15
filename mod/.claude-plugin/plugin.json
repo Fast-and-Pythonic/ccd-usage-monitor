@@ -1,0 +1,22 @@
+{
+  "name": "ccd-usage-monitor",
+  "version": "0.1.0",
+  "description": "Feeds the Claude Code desktop app's quota and context figures to ccd-usage-monitor, which the desktop app never runs as a status line, and pins the pill's line under the prompt.",
+  "author": {
+    "name": "Fast_and_Pythonic"
+  },
+  "userConfig": {
+    "exe": {
+      "type": "string",
+      "title": "ccd-usage-monitor executable",
+      "description": "Full path to ccd-usage-monitor.exe. Empty takes the executable from the statusLine command, when that command ends in --bridge.",
+      "default": ""
+    },
+    "showLine": {
+      "type": "boolean",
+      "title": "Show the line under the prompt",
+      "description": "Pin the pill's line under the prompt. Off keeps feeding --bridge and draws nothing.",
+      "default": true
+    }
+  }
+}
