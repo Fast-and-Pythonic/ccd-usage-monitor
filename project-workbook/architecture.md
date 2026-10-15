@@ -37,6 +37,7 @@
 - **A35** · an expired token is handed back to the CLI to renew, never renewed here
 - **A36** · our files live beside the executable, never in `%APPDATA%`
 - **A37** · in the desktop app a Claude Code mod stands in for the status line
+- **A38** · `turn-meter`: a turn's share of the limits is its dollars over the price of a point
 
 ## A01: One executable, two modes
 `ccd-usage-monitor.exe` is both the widget and the status-line command (`--bridge`).
@@ -1504,3 +1505,59 @@ loads it from the repository as it stands.
 when this was written) and moves between releases. The mod is kept thin on
 purpose, and its contract with the executable is the status-line JSON, which
 `state.rs` already tests.
+
+## A38: `turn-meter`: a turn's share of the limits is its dollars over the price of a point
+`turn-meter/` is a second Claude Code mod, separate from `mod/`. Under each
+reply it draws one dim line (`ui.render` on `AssistantMessage`, matched to the
+reply's last text block the way a third-party mod, Turn Usage, does it). The line
+holds the context fill (`ctx 21% · 212k`), the turn's tokens by kind, a group for
+the subagents that finished during the turn, the turn's share of the five-hour
+and weekly windows, its dollars, its duration, its request count and its model.
+Each part is a boolean `userConfig` switch, stored in `~/.claude/settings.json`
+under `pluginConfigs["turn-meter"].options`. The window percentages themselves
+are not shown: the pill shows them.
+
+**The turn's dollars** are the session ledger (`$.session.usage().cost.usd`) at
+`turn.complete` minus its value at `turn.start`. The ledger is the engine's own,
+at API list prices, over every request of the session. So the turn's subagents,
+side calls and other mods' forks are in it with no price table of ours.
+
+**The share** is those dollars over the price of one point of the window:
+`usdPerPct5h` and `usdPerPctWeek`, with starting values 0.39 and 2.85. Those
+come from fitting about 22,500 requests in this machine's transcripts against
+the desktop app's history of the windows, 2026-09-23 to 2026-10-12. Measured
+against the windows, list-price dollars spread less (IQR/median 0.12) than raw
+token sums (0.4–0.6). The usual Turn Usage line is the difference of two whole
+percentages, which shows most turns as `<1%` or `+1%`. A price per point has no
+such step, and other sessions' spend does not leak into it.
+
+**Learning the price.** Each session keeps a journal in
+`turn-meter/data/<session id>.json` (ignored by git). On every `session.measure`
+it records the ledger when it grew, and each window's reading when it moved. In
+each window, the moments a reading first shows a new value are where it sits
+closest to a whole point. The spend of all sessions from the window's start to
+each such moment, against the value, is a line. Its least-squares slope is that
+window's price of a point. A window counts with a rise of 8 points (five hours)
+or 3 (week), R² ≥ 0.9, and a slope within 2× of the configured price. The price
+in use is the median of the last ten windows that count. Below three windows it
+is blended with the configured one, and the line marks the shares with `≈`.
+`/turn-meter` prints the fits, and `/turn-meter reset` forgets them.
+
+**Why files and not `$.store`.** `$.store` is one JSON file per plugin under
+`~/.claude/plugins/store/`. Parallel sessions writing it would race on the whole
+file. One journal file per session has one writer. The learned price is never
+stored: it is a pure function of the journals, computed again when a window
+moves.
+
+**Known bias.** Spend this machine never sees (claude.ai, the phone, a session
+without the mod) moves the windows without moving the journals. The price then
+reads low. The 2× bound and `autoCalibrate: false` with a hand-set price are the
+guards.
+
+**Rejected:** the share as a difference of whole percentages, which is Turn
+Usage's way and is mostly noise. A price table of our own, while the ledger
+exists. Writing learned prices into `settings.json`, which is the person's file.
+
+**Loading.** `CLAUDE_CODE_PLUGIN_DIRS` names `turn-meter/`, as it does for the
+other mods. Run `claude plugin validate turn-meter` and `claude plugin test
+turn-meter` after editing it.

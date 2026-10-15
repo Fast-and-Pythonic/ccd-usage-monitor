@@ -1,0 +1,83 @@
+{
+  "name": "turn-meter",
+  "version": "0.1.0",
+  "description": "A dim line under each reply: context fill, the turn's tokens and dollars, and its share of the five-hour and weekly limits, priced per point and learned from live readings.",
+  "author": {
+    "name": "Fast_and_Pythonic"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "showContext": {
+      "type": "boolean",
+      "title": "Context",
+      "description": "ctx 21% · 212k: how full this session's context window is.",
+      "default": true
+    },
+    "showTokens": {
+      "type": "boolean",
+      "title": "Turn tokens",
+      "description": "The main loop's output, cache writes and cache reads this turn.",
+      "default": true
+    },
+    "showInput": {
+      "type": "boolean",
+      "title": "Uncached input",
+      "description": "Add uncached input tokens to the token groups.",
+      "default": true
+    },
+    "showSubagents": {
+      "type": "boolean",
+      "title": "Subagents",
+      "description": "Subagents that finished during the turn, as a group of their own.",
+      "default": true
+    },
+    "showLimits": {
+      "type": "boolean",
+      "title": "Share of the limits",
+      "description": "What share of the five-hour and weekly windows the turn's dollars come to.",
+      "default": true
+    },
+    "showUsd": {
+      "type": "boolean",
+      "title": "Dollars",
+      "description": "The turn's cost at API prices, as the session's ledger counts it.",
+      "default": true
+    },
+    "showDuration": {
+      "type": "boolean",
+      "title": "Duration",
+      "description": "How long the turn took.",
+      "default": true
+    },
+    "showSteps": {
+      "type": "boolean",
+      "title": "Requests",
+      "description": "How many model requests the main loop made this turn.",
+      "default": true
+    },
+    "showModel": {
+      "type": "boolean",
+      "title": "Model",
+      "description": "The model that answered the turn's last request.",
+      "default": true
+    },
+    "usdPerPct5h": {
+      "type": "number",
+      "title": "USD per point, five hours",
+      "description": "Price of one point of the five-hour window at API prices; the start value when autoCalibrate is on, used as is when off.",
+      "default": 0.39
+    },
+    "usdPerPctWeek": {
+      "type": "number",
+      "title": "USD per point, week",
+      "description": "Price of one point of the weekly window at API prices; the start value when autoCalibrate is on, used as is when off.",
+      "default": 2.85
+    },
+    "autoCalibrate": {
+      "type": "boolean",
+      "title": "Learn the prices",
+      "description": "Refine both prices from the moments the windows' readings move, over every session's spend.",
+      "default": true
+    }
+  }
+}

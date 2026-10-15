@@ -7,3 +7,7 @@
 
 # The type declarations the Claude Code engine lays into the mod at each load.
 /mod/.claude-plugin/types/
+
+# turn-meter: the engine's type declarations, and the per-session spend journals (A38).
+/turn-meter/.claude-plugin/types/
+/turn-meter/data/

@@ -1,19 +1,23 @@
 # Status
 
-Snapshot of 2026-10-10. State only — why anything is the way it is lives in
+Snapshot of 2026-10-15. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 > **Paused 2026-10-15.** After the desktop app update to Claude Code 2.1.295 a mod
 > can no longer draw beside the model and effort picker: `$.ui.status` lands on a
 > row under it, which lifts the bottom area and takes height from the transcript,
 > and no other render site sits there (checked site by site with a probe mod).
-> The mod is off (`showLine: false`, not in `CLAUDE_CODE_PLUGIN_DIRS`). When work
-> resumes, the plan is to keep only the context figure, as `ctx 21% · 212k`, and
-> show it at the end of a turn (under the reply, as `ui.render` on
-> `AssistantMessage`) or elsewhere, not in the pill.
+> The mod is off (`showLine: false`, not in `CLAUDE_CODE_PLUGIN_DIRS`). The context
+> figure now goes under each reply as `ctx 21% · 212k`, drawn by the second mod,
+> `turn-meter/` (A38, 2026-10-15).
 
 ## Works
 
+- **`turn-meter`, the line under each reply** (A38): context fill, the turn's
+   tokens by kind, subagents, its share of the five-hour and weekly windows, its
+   dollars, its duration, requests and model, each part a switch. The price of a
+   point is learned from per-session journals. 13 tests pass; not yet seen in a
+   live desktop session as of 2026-10-15.
 - **Four sources, merged field by field** (A03), each an independent switch with
    its own staleness threshold (A14): the desktop app's history (A08), the bridge,
    the usage endpoint, and the session transcripts (A18). Figures grey out after

@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-15** — `turn-meter` draws each turn's spend under the reply
 - **2026-10-10** — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
 - **2026-10-03** — the pill can carry the time of day
 - **2026-10-02** — the data folder moves beside the executable, out of `%APPDATA%`
@@ -21,6 +22,16 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
 
 ---
+
+## 2026-10-15 — `turn-meter` draws each turn's spend under the reply
+
+Done: [[A38]]. The paused note in `status.md` asked for the context figure under
+the reply. A third-party mod, Turn Usage, already drew a line there, but its
+per-turn figure is the difference of two whole percentages. A fit of this
+machine's history showed that the windows follow list-price dollars closely. So
+the turn's share became its dollars over a price per point, and the price is
+learned live. Journals went to one file per session after reading that
+`$.store` is a single shared JSON file.
 
 ## 2026-10-10 — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
 

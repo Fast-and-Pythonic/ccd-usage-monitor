@@ -51,6 +51,7 @@ the theme it reads).
 | `ui/settings.slint` | the form, compiled in through `build.rs`; a side list of pages, cards of rows drawn by the control each asks for, and no knowledge of any setting (A33) |
 | `win.rs` | Win32 frame surgery: no DWM shadow and no non-client frame (A10) |
 | `mod/` | the Claude Code mod for the desktop app (A37): feeds `--bridge` from the engine's figures and pins `--line` under the prompt. TypeScript; its tests run with `claude plugin test mod` |
+| `turn-meter/` | a second mod (A38): the line under each reply, with the turn's tokens, dollars and share of the limits, and a price per point learned from per-session journals in `turn-meter/data/` |
 
 ## Data flow
 ```

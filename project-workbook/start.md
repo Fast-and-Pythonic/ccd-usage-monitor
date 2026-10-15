@@ -37,6 +37,8 @@ app, which shows none of this itself and does not run the status line (G06).
 - **The figures in the desktop app's own window, or the bridge fed from it** →
    `mod/` and A37. Run `claude plugin validate mod` and `claude plugin test mod`
    after editing it. The line it pins is `--line`, worded by `view::plain_line`
+- **The line under each reply in the desktop app** → `turn-meter/` and A38.
+   Run `claude plugin validate turn-meter` and `claude plugin test turn-meter`
 - **A widget for some other bar (Zebar, Rainmeter, eww)** → `ccd-usage-monitor
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
 - **Changing how the pill looks** → `settings/theme.slint` first: any build
