@@ -261,10 +261,11 @@ export function formatClock(ms: number): string {
 /** `claude-opus-5-5` → `opus-5-5`. */
 export const shortModel = (id: string) => id.replace(/^claude-/, '').replace(/-\d{8}$/, '')
 
-function tokenParts(u: ModelUsage, input: boolean): string[] {
-  const parts = [`вывод ${formatTokens(u.output_tokens)}`, `запись ${formatTokens(u.cache_creation_input_tokens)}`, `чтение ${formatTokens(u.cache_read_input_tokens)}`]
-  if (input) parts.push(`вход ${formatTokens(u.input_tokens)}`)
-  return parts
+/** In the order a request runs: the prompt from its cached head to its uncached tail, then the reply. */
+function tokenParts(u: ModelUsage, input: boolean): string {
+  const prompt = [`чтение ${formatTokens(u.cache_read_input_tokens)}`, `запись ${formatTokens(u.cache_creation_input_tokens)}`]
+  if (input) prompt.push(`вход ${formatTokens(u.input_tokens)}`)
+  return `${prompt.join(' · ')} → вывод ${formatTokens(u.output_tokens)}`
 }
 
 /**
@@ -286,9 +287,9 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
   }
   if (show.usd && f.usd !== undefined) cost.push(formatUsd(f.usd))
   const tokens: string[] = []
-  if (show.tokens && f.usage !== undefined) tokens.push(`ход: ${tokenParts(f.usage, show.input).join(' · ')}`)
+  if (show.tokens && f.usage !== undefined) tokens.push(`ход: ${tokenParts(f.usage, show.input)}`)
   if (show.subagents && f.agents.count > 0) {
-    tokens.push(`субагенты (${f.agents.count}): ${tokenParts(f.agents.usage, show.input).join(' · ')}`)
+    tokens.push(`субагенты (${f.agents.count}): ${tokenParts(f.agents.usage, show.input)}`)
   }
   const extra: string[] = []
   if (show.duration) extra.push(formatDuration(f.durationMs))

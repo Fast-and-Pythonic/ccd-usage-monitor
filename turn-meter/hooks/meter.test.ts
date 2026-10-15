@@ -29,20 +29,20 @@ test('numbers: tokens in k and M, shares with a floor', () => {
 
 test('the whole line, every part on', () => {
   expect(formatLine(FIGURES, ALL)).toBe(
-    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: вывод 3.1k · запись 45k · чтение 1.2M · вход 12\n1м 35с · запросов 7 · opus-5-5',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5',
   )
 })
 
 test('each switch takes its part away; all off is no line', () => {
   expect(formatLine(FIGURES, NONE)).toBe(undefined)
   expect(formatLine(FIGURES, { ...NONE, usd: true })).toBe('\\$0.55')
-  expect(formatLine(FIGURES, { ...NONE, tokens: true })).toBe('ход: вывод 3.1k · запись 45k · чтение 1.2M')
+  expect(formatLine(FIGURES, { ...NONE, tokens: true })).toBe('ход: чтение 1.2M · запись 45k → вывод 3.1k')
   expect(formatLine({ ...FIGURES, pct5h: { usdPerPct: 0.4, windows: 3, isLearned: true }, pctWeek: { usdPerPct: 2.5, windows: 3, isLearned: true } }, { ...NONE, limits: true })).toBe('1.4% 5ч · 0.22% нед')
 })
 
 test('subagents are a group of their own, only when some finished', () => {
   const withAgents = { ...FIGURES, agents: { count: 2, usage: USAGE } }
-  expect(formatLine(withAgents, { ...NONE, subagents: true })).toBe('субагенты (2): вывод 3.1k · запись 45k · чтение 1.2M')
+  expect(formatLine(withAgents, { ...NONE, subagents: true })).toBe('субагенты (2): чтение 1.2M · запись 45k → вывод 3.1k')
   expect(formatLine(FIGURES, { ...NONE, subagents: true })).toBe(undefined)
 })
 
@@ -54,7 +54,7 @@ test('the cache lapse: local time in the third row, with the short lifetime mark
 })
 
 test('no ledger: no dollars and no shares, tokens still shown', () => {
-  expect(formatLine({ ...FIGURES, usd: undefined }, { ...NONE, usd: true, limits: true, tokens: true })).toBe('ход: вывод 3.1k · запись 45k · чтение 1.2M')
+  expect(formatLine({ ...FIGURES, usd: undefined }, { ...NONE, usd: true, limits: true, tokens: true })).toBe('ход: чтение 1.2M · запись 45k → вывод 3.1k')
 })
 
 const H = 60 * 60 * 1000
