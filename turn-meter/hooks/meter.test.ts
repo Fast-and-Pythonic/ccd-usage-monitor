@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { addReadings, addSpend, calibrate, emptyLog, fitWindows, formatLine, formatShare, formatTokens, prune, type SessionLog, type Show, type TurnFigures } from './meter'
+import { addReadings, windowKinds, addSpend, calibrate, emptyLog, fitWindows, formatLine, formatShare, formatTokens, prune, type SessionLog, type Show, type TurnFigures } from './meter'
 
 const ALL: Show = { context: true, tokens: true, input: true, subagents: true, limits: true, usd: true, duration: true, model: true, steps: true, cache: true }
 const NONE: Show = { context: false, tokens: false, input: false, subagents: false, limits: false, usd: false, duration: false, model: false, steps: false, cache: false }
@@ -51,6 +51,10 @@ test('the cache lapse: local time in the third row, with the short lifetime mark
   expect(formatLine({ ...FIGURES, cache: { until, isShort: false } }, { ...NONE, cache: true })).toBe('кэш до 17:42')
   expect(formatLine({ ...FIGURES, cache: { until, isShort: true } }, { ...NONE, model: true, cache: true })).toBe('opus-5-5 · кэш до 17:42 (5м)')
   expect(formatLine(FIGURES, { ...NONE, cache: true })).toBe(undefined)
+})
+
+test('on extra usage the shares give way to a mark, and the dollars stay', () => {
+  expect(formatLine({ ...FIGURES, isExtraUsage: true }, { ...NONE, limits: true, usd: true })).toBe('**сверх лимита** │ \\$0.55')
 })
 
 test('no ledger: no dollars and no shares, tokens still shown', () => {
@@ -122,7 +126,8 @@ test('the journal keeps changes only, and old points go, but the baseline stays'
   addReadings(log, 3, [{ kind: 'five_hour', percentUsed: 4, resetsAt: RESET }, { kind: 'spend_limit', percentUsed: 1 }])
   addReadings(log, 4, [{ kind: 'five_hour', percentUsed: 4, resetsAt: RESET }])
   expect(log.spend).toEqual([[1, 1], [3, 2]])
-  expect(log.obs.length).toBe(1)
+  expect(log.obs.length).toBe(2)
+  expect([...windowKinds([log])].map(([k, [, r, p]]) => [k, r, p])).toEqual([['five_hour', RESET, 4], ['spend_limit', '', 1]])
   const later = 10 * 24 * H
   addSpend(log, later, 5)
   prune(log, later)

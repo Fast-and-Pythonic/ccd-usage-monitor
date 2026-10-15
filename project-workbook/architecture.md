@@ -1555,6 +1555,15 @@ file. One journal file per session has one writer. The learned price is never
 stored: it is a pure function of the journals, computed again when a window
 moves.
 
+**Extra usage.** Once a five-hour or weekly window reads 100 % or more, turns
+are paid in money, not in shares: the first row shows `сверх лимита` in bold in
+place of the shares, and the dollars stay.
+
+**Every kind of window is journaled**, not only the two the line prices, and
+`/turn-meter` lists the kinds seen with their latest reading. Whether the API
+sends per-model weekly windows (Opus, Sonnet) to a Claude Code session is not
+known yet; this is how it will show.
+
 **Known bias.** Spend this machine never sees (claude.ai, the phone, a session
 without the mod) moves the windows without moving the journals. The price then
 reads low. The 2× bound and `autoCalibrate: false` with a hand-set price are the

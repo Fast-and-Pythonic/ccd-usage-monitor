@@ -23,6 +23,7 @@ import {
   type Calibration,
   type SessionLog,
   type Show,
+  windowKinds,
 } from './meter'
 
 const MAX_NOTES = 100
@@ -119,6 +120,8 @@ async function report($: EngineInterface, m: Meter): Promise<string> {
   const since = Number((await $.store.get('resetAt')) ?? 0)
   const logs = await allLogs($, await ownLog($, m))
   const rows: string[] = [`turn-meter: журналов ${logs.length}, автокалибровка ${m.isAuto ? 'вкл' : 'выкл'}`]
+  const kinds = [...windowKinds(logs)].map(([kind, [, resetsAt, pct]]) => `${kind} ${pct}%${resetsAt === '' ? '' : ` (сброс ${resetsAt})`}`)
+  rows.push(`окна лимитов: ${kinds.length === 0 ? 'ещё не видели' : kinds.join(', ')}`)
   for (const [kind, prior, label] of [
     ['five_hour', m.prior5h, '5ч'],
     ['seven_day', m.priorWeek, 'неделя'],
@@ -221,6 +224,7 @@ export const register: Register = (on, options) => {
         durationMs: e.durationMs,
         model: e.usage?.model,
         steps: turn?.steps ?? 0,
+        isExtraUsage: isShort,
         cache: lastRequestAt === undefined ? undefined : { until: lastRequestAt + (isShort ? CACHE_SHORT_MS : CACHE_LONG_MS), isShort },
       },
       show,

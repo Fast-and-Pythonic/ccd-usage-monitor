@@ -42,14 +42,31 @@ export function addSpend(log: SessionLog, t: number, usd: number | undefined): v
   log.spend.push([t, usd])
 }
 
-/** Adds a reading of each window whose value or reset moved since this session last saw it. */
+/**
+ * Adds a reading of each window whose value or reset moved since this session
+ * last saw it. Every kind is kept, not only the two the line prices: whether
+ * the API sends per-model weekly windows is still to be seen. A window with no
+ * reset time is kept with an empty one.
+ */
 export function addReadings(log: SessionLog, t: number, limits: readonly SessionRateLimit[]): void {
   for (const w of limits) {
-    if (WINDOW_MS[w.kind] === undefined || w.resetsAt === undefined) continue
+    const resetsAt = w.resetsAt ?? ''
     const last = log.obs.findLast((o) => o[1] === w.kind)
-    if (last !== undefined && last[2] === w.resetsAt && last[3] === w.percentUsed) continue
-    log.obs.push([t, w.kind, w.resetsAt, w.percentUsed])
+    if (last !== undefined && last[2] === resetsAt && last[3] === w.percentUsed) continue
+    log.obs.push([t, w.kind, resetsAt, w.percentUsed])
   }
+}
+
+/** Every kind of window the journals saw, with its latest reading: `[time, resetsAt, percentUsed]`. */
+export function windowKinds(logs: readonly SessionLog[]): Map<string, [number, string, number]> {
+  const kinds = new Map<string, [number, string, number]>()
+  for (const log of logs) {
+    for (const [t, kind, resetsAt, pct] of log.obs) {
+      const seen = kinds.get(kind)
+      if (seen === undefined || seen[0] < t) kinds.set(kind, [t, resetsAt, pct])
+    }
+  }
+  return kinds
 }
 
 export function prune(log: SessionLog, now: number): void {
@@ -108,7 +125,7 @@ export function fitWindows(logs: readonly SessionLog[], kind: string, prior: num
   const byWindow = new Map<string, [number, number][]>()
   for (const log of logs) {
     for (const [t, k, resetsAt, pct] of log.obs) {
-      if (k !== kind || t < since) continue
+      if (k !== kind || t < since || resetsAt === '') continue
       // The same reset reported a few seconds apart is the same window.
       const key = new Date(Math.round(Date.parse(resetsAt) / 60_000) * 60_000).toISOString()
       const list = byWindow.get(key) ?? []
@@ -205,6 +222,8 @@ export type TurnFigures = {
   durationMs: number
   model?: string
   steps: number
+  /** A window is used up: the turn ran on extra usage, paid in money rather than in shares. */
+  isExtraUsage?: boolean
   /** When the main loop's prompt cache lapses, and whether on the short (5-minute) lifetime. */
   cache?: { until: number; isShort: boolean }
 }
@@ -278,7 +297,9 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
   if (show.context && f.context?.percent !== undefined) {
     cost.push(f.context.tokens === undefined ? `ctx ${f.context.percent}%` : `ctx ${f.context.percent}% · ${formatTokens(f.context.tokens)}`)
   }
-  if (show.limits && f.usd !== undefined && (f.pct5h !== undefined || f.pctWeek !== undefined)) {
+  if (show.limits && f.isExtraUsage === true) {
+    cost.push('**сверх лимита**')
+  } else if (show.limits && f.usd !== undefined && (f.pct5h !== undefined || f.pctWeek !== undefined)) {
     const shares: string[] = []
     if (f.pct5h !== undefined) shares.push(`${formatShare(f.usd / f.pct5h.usdPerPct, 1)} 5ч`)
     if (f.pctWeek !== undefined) shares.push(`${formatShare(f.usd / f.pctWeek.usdPerPct, 2)} нед`)
