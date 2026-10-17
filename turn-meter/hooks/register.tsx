@@ -13,21 +13,25 @@ import {
   addSpend,
   addTurn,
   addUsage,
+  archiveOf,
   CACHE_LONG_MS,
   CACHE_SHORT_MS,
   calibrate,
   compareTurns,
   emptyLog,
-  fitWindows,
   formatComparison,
   formatLimitSize,
   formatLine,
+  judgeFits,
   KEEP_MS,
+  learnOf,
   markdownTable,
+  mergeFits,
   modelRate,
   newestOf,
   parseModel,
   prune,
+  rawFits,
   referencesOf,
   resolveTracked,
   shortModel,
@@ -36,6 +40,7 @@ import {
   ZERO_USAGE,
   type ModelRate,
   type Rates,
+  type RawFit,
   type Reference,
   type SessionLog,
   type Show,
@@ -98,6 +103,8 @@ type Meter = {
   isDirty: boolean
   needsFit: boolean
   rates: Rates
+  /** The shared windows as last judged, archived ones included: what `/turn-meter` lists. */
+  fits: { five_hour: WindowFit[]; seven_day: WindowFit[] }
   /** Each model's price, for every model the journals or limit-test's references name. */
   modelRates: Map<string, ModelRate>
   /** The models seen, short form. */
@@ -162,6 +169,18 @@ async function readReferences($: EngineInterface): Promise<Record<string, Refere
   }
 }
 
+/** The finished windows of `kind` as an earlier fit left them; none when the file is missing or unreadable. */
+async function readArchive($: EngineInterface, kind: string): Promise<{ fits: RawFit[]; text: string }> {
+  const path = `${dataDir($)}/fits/${kind}.json`
+  try {
+    if (!(await $.fs.exists(path))) return { fits: [], text: '' }
+    const text = await $.fs.read(path)
+    return { fits: JSON.parse(text) as RawFit[], text }
+  } catch {
+    return { fits: [], text: '' }
+  }
+}
+
 async function refit($: EngineInterface, m: Meter): Promise<void> {
   if (!m.needsFit) return
   m.needsFit = false
@@ -169,14 +188,25 @@ async function refit($: EngineInterface, m: Meter): Promise<void> {
   const logs = await allLogs($, await ownLog($, m))
   for (const log of logs) for (const [, model] of log.bymodel ?? []) m.seen.add(model)
   for (const id of Object.keys(m.references)) m.seen.add(id)
-  const fits = { five_hour: [] as WindowFit[], seven_day: [] as WindowFit[] }
+  m.fits = { five_hour: [], seven_day: [] }
   if (m.isAuto) {
     const since = Number((await $.store.get('resetAt')) ?? 0)
-    fits.five_hour = fitWindows(logs, 'five_hour', m.prior5h, since)
-    fits.seven_day = fitWindows(logs, 'seven_day', m.priorWeek, since)
-    m.rates = { five_hour: calibrate(fits.five_hour, m.prior5h), seven_day: calibrate(fits.seven_day, m.priorWeek) }
+    const now = await $.clock.now()
+    for (const [kind, prior] of [
+      ['five_hour', m.prior5h],
+      ['seven_day', m.priorWeek],
+    ] as const) {
+      // Journals live eight days and a weekly window seven: finished windows are kept apart, or the week never has three.
+      const stored = await readArchive($, kind)
+      const raw = mergeFits(rawFits(logs, kind, since), stored.fits, since)
+      const text = JSON.stringify(archiveOf(raw, kind, now))
+      // Two sessions may write it at once; the loser's windows come back from the journals next time.
+      if (text !== stored.text && !(text === '[]' && stored.text === '')) await $.fs.write(`${dataDir($)}/fits/${kind}.json`, text)
+      m.fits[kind] = judgeFits(raw, prior)
+    }
+    m.rates = { five_hour: calibrate(m.fits.five_hour, m.prior5h), seven_day: calibrate(m.fits.seven_day, m.priorWeek) }
   }
-  m.modelRates = new Map([...m.seen].map((id) => [id, modelRate(fits, id, m.rates, m.references[id])]))
+  m.modelRates = new Map([...m.seen].map((id) => [id, modelRate(m.fits, id, m.rates, m.references[id])]))
 }
 
 // Escaped: a command's answer is drawn as markdown, and two amounts on a line would read as math.
@@ -210,7 +240,6 @@ const reading5h = (limits: readonly { kind: string; percentUsed: number }[]) => 
 async function report($: EngineInterface, m: Meter): Promise<string> {
   m.needsFit = true
   await refit($, m)
-  const since = Number((await $.store.get('resetAt')) ?? 0)
   const logs = await allLogs($, await ownLog($, m))
   // Drawn as markdown: a paragraph a line, each price's fitted windows a list under it.
   const rows: string[] = [`журналов ${logs.length}, автокалибровка ${m.isAuto ? 'вкл' : 'выкл'}`]
@@ -223,8 +252,12 @@ async function report($: EngineInterface, m: Meter): Promise<string> {
   ] as const) {
     const r = m.rates[kind]
     const lines = [`${label}: 1 % = ${usd(r.usdPerPct, 3)} (конфиг \\$${prior}, окон ${r.windows}${r.isLearned ? '' : ', ещё не выучено'})`]
-    for (const f of fitWindows(logs, kind, prior, since).slice(-5)) {
-      lines.push(`- сброс ${f.resetsAt}: ${usd(f.usdPerPct, 3)}, +${f.rise} п., точек ${f.anchors}, R² ${f.r2.toFixed(2)}${f.accepted ? '' : ` — отброшено: ${f.why}`}`)
+    if (r.farStreak !== undefined) {
+      lines.push(`- **последних окон далеко от цены: ${r.farStreak}** — либо расход мимо журналов, либо лимиты сменились; после ${learnOf(kind).shift} согласных между собой подряд мод перейдёт на новую цену`)
+    }
+    for (const f of m.fits[kind].slice(-5)) {
+      const unseen = f.unseen === undefined ? '' : `, мимо трат +${f.unseen.toFixed(1)} п.`
+      lines.push(`- сброс ${f.resetsAt}: ${usd(f.usdPerPct, 3)}, +${f.rise} п., точек ${f.anchors}, R² ${f.r2.toFixed(2)}${unseen}${f.isShift ? ' — новая цена' : ''}${f.accepted ? '' : ` — отброшено: ${f.why}`}`)
     }
     rows.push(lines.join('\n'))
   }
@@ -249,6 +282,7 @@ export const register: Register = (on, options) => {
       five_hour: { usdPerPct: prior5h, windows: 0, isLearned: !isAuto },
       seven_day: { usdPerPct: priorWeek, windows: 0, isLearned: !isAuto },
     },
+    fits: { five_hour: [], seven_day: [] },
     modelRates: new Map(),
     seen: new Set(),
     references: {},

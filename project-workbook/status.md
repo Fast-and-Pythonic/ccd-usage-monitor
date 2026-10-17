@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-10-15. State only — why anything is the way it is lives in
+Snapshot of 2026-10-17. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 > **Paused 2026-10-15.** After the desktop app update to Claude Code 2.1.295 a mod
@@ -20,7 +20,12 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
    share of a turn is priced model by model; `/turn-meter` gives the size of the
    windows, a price table of `trackModels`, and a day's comparison of its shares
    with Turn Usage's steps and the window's rise, and the spend between turns,
-   from a per-turn journal. 27 tests pass; not yet seen in a live desktop session as of 2026-10-15.
+   from a per-turn journal. A window is held to the learned median, refused when
+   its reading jumps past its spend, and finished windows outlive the journals in
+   `data/fits/`; the week is priced by its latest window alone (2026-10-17).
+   32 tests pass. Live since 2026-10-15: on 2026-10-17,
+   14 journals gave four accepted five-hour windows (R² ≥ 0.99), median $0.390 a
+   point against the configured $0.39, with the one window of unseen spend refused.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
    are turn-meter's references. 8 tests pass; never run live.
@@ -64,8 +69,8 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
    the pill's line (`--line`) under the prompt.
 - **An expired token is renewed by the CLI** (A35), run out of sight with
    `claude -p /usage`; `--revive-token` does it by hand.
-- **Tests**: 217 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
-   27 in `turn-meter/`, 8 in `limit-test/`.
+- **Tests**: 222 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
+   32 in `turn-meter/`, 8 in `limit-test/`.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 
@@ -84,8 +89,11 @@ Snapshot of 2026-10-15. State only — why anything is the way it is lives in
 - **The CLI can drop its session** (G32), which no renewal mends; the cause on
    2026-10-01 is unknown. A whole unattended day on A35 is not yet confirmed.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
-- **`limit-test` has not run live** (A39): it needs its own line in
-   `CLAUDE_CODE_PLUGIN_DIRS`, and a run of three models takes about a tenth of the
+- **Whether the limits' size moves weekly is not measured** (A38). The week is
+   priced by its latest window alone on that assumption; the archive in
+   `data/fits/` will show from 2026-10-27 whether weekly prices differ.
+- **`limit-test` has not run live** (A39): it is loaded through
+   `CLAUDE_CODE_PLUGIN_DIRS` but has never been started, and a run of three models takes about a tenth of the
    five-hour window. Whether a subagent the mod spawns wakes the main loop when it
    finishes is unknown; if it does, the run waits each such turn out and counts
    its dollars as others'.

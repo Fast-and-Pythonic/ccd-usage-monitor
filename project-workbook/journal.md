@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-17** — `turn-meter` keeps finished windows, and refuses jumps its journals never paid for
 - **2026-10-15** — prices per model in `turn-meter`, and `limit-test` to measure them
 - **2026-10-15** — `turn-meter` draws each turn's spend under the reply
 - **2026-10-10** — a Claude Code mod feeds the bridge in the desktop app and pins the pill's line
@@ -21,6 +22,31 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-17 — `turn-meter` keeps finished windows, and refuses jumps its journals never paid for
+
+Done: [[A38]] extended. The first look at two days of live journals, by running
+the mod's own fit over them, settled the five-hour price ($0.385 against the
+configured $0.39) and turned up two faults that reading the code had only
+suspected. The weekly price could never be learned: journals live eight days,
+and trusting the median takes three weekly windows. One window was accepted at
+$0.28 with R² 0.998, though its reading jumped 29 points over $9 and 4 over
+nothing: jumps that lie on the line do not lower R². The jump test was chosen
+over a bound on distance from the median because on these journals it split
+clean windows (0) from the two dirty ones (13 %, 18 %) with nothing between,
+while the median's neighbours spread ±7 % for reasons of their own, such as the
+model mix. Holding a window to the learned median instead of the config came
+with a way out, three agreeing windows as a new price, since otherwise a change
+of limits would leave the mod stuck on the old median just as it would have been
+on the config.
+
+Later the same day the user said the size of the limits seems to change about
+weekly, so waiting three weeks to trust the weekly price was the wrong shape
+altogether: the week now stands on its latest window. The five-hour price was
+left on its median of ten on purpose, as the question was about the week and a
+weekly change moves that median within about two days.
 
 ---
 

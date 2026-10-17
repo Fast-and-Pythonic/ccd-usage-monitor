@@ -14,9 +14,18 @@ export const MIN_RISE: Record<string, number> = { five_hour: 8, seven_day: 3 }
 
 /** A learned price this far off the configured one is taken for spend the journal never saw. */
 const SANE_RATIO = 2
-/** How many accepted windows the median is taken over, and how many it takes to trust it alone. */
-const RECENT_WINDOWS = 10
-const TRUSTED_WINDOWS = 3
+/**
+ * How each kind's price is learned: how many accepted windows the median is
+ * taken over, how many it takes to trust it alone, how many agreeing windows far
+ * from it are a new price, and the rise the latest window needs before it is
+ * trusted alone (0: no such need). The limits seem to change about weekly, so
+ * the week is priced by its latest window alone (2026-10-17).
+ */
+export const LEARN: Record<string, { recent: number; trusted: number; shift: number; trustRise: number }> = {
+  five_hour: { recent: 10, trusted: 3, shift: 3, trustRise: 0 },
+  seven_day: { recent: 1, trusted: 1, shift: 1, trustRise: 10 },
+}
+export const learnOf = (kind: string | undefined) => LEARN[kind ?? ''] ?? LEARN.five_hour!
 /** Below this fit quality a window had spend the journal did not see, or a limit change inside it. */
 const MIN_R2 = 0.9
 
@@ -142,7 +151,8 @@ export function spentByModel(logs: readonly SessionLog[], start: number, t: numb
   return by
 }
 
-export type WindowFit = {
+/** A window's line as the journals give it, before it is judged: what the archive keeps. */
+export type RawFit = {
   kind: string
   resetsAt: string
   /** USD by model over the anchors' span, from the journals that record models. */
@@ -153,8 +163,32 @@ export type WindowFit = {
   rise: number
   anchors: number
   r2: number
+  /** `[points, USD]` from each anchor to the next: where a reading jumped with no spend to match. Absent in hand-made fits. */
+  steps?: [number, number][]
+}
+
+export type WindowFit = RawFit & {
   accepted: boolean
   why?: string
+  /** Points the reading rose beyond what the journals' spend explains, a point of rounding a step allowed. */
+  unseen?: number
+  /** The first of the windows that agreed on a new price far from the old one: the price is learned from here on. */
+  isShift?: boolean
+}
+
+/** Without a fit of its own, a window is this. */
+const NO_POINTS = 'мало пунктов'
+const FAR = 'далеко'
+/** A step's reading may run one point ahead of its spend: readings are whole points. */
+const STEP_SLACK = 1
+/** A window whose reading rose this share of its rise beyond its spend had spend no journal saw. */
+const UNSEEN_SHARE = 0.05
+/** Windows in a row far from the price (LEARN's `shift`) within this ratio of each other are a new price. */
+const SHIFT_RATIO = 1.3
+
+/** Fits and judges each window of `kind` against `prior`: see rawFits and judgeFits. */
+export function fitWindows(logs: readonly SessionLog[], kind: string, prior: number, since = 0): WindowFit[] {
+  return judgeFits(rawFits(logs, kind, since), prior)
 }
 
 /**
@@ -163,7 +197,7 @@ export type WindowFit = {
  * spend up to each of them against the value is a line whose slope is the
  * price of one point.
  */
-export function fitWindows(logs: readonly SessionLog[], kind: string, prior: number, since = 0): WindowFit[] {
+export function rawFits(logs: readonly SessionLog[], kind: string, since = 0): RawFit[] {
   const length = WINDOW_MS[kind]
   if (length === undefined) return []
   const byWindow = new Map<string, [number, number][]>()
@@ -177,7 +211,7 @@ export function fitWindows(logs: readonly SessionLog[], kind: string, prior: num
       byWindow.set(key, list)
     }
   }
-  const fits: WindowFit[] = []
+  const fits: RawFit[] = []
   for (const [resetsAt, readings] of byWindow) {
     readings.sort((a, b) => a[0] - b[0])
     const start = Date.parse(resetsAt) - length
@@ -194,22 +228,69 @@ export function fitWindows(logs: readonly SessionLog[], kind: string, prior: num
     const fit = fitLine(points)
     const rise = points.length === 0 ? 0 : points[points.length - 1]![0] - points[0]![0]
     const by = times.length < 2 ? new Map<string, number>() : spentByModel(logs, times[0]!, times[times.length - 1]!)
-    const base = { kind, resetsAt, rise, anchors: points.length, ...(by.size === 0 ? {} : { models: Object.fromEntries(by) }) }
-    if (fit === undefined || rise < (MIN_RISE[kind] ?? 1)) {
-      fits.push({ ...base, usdPerPct: fit?.slope ?? 0, r2: fit?.r2 ?? 0, accepted: false, why: 'мало пунктов' })
-      continue
-    }
-    const why = judge(fit.slope, fit.r2, prior, SANE_RATIO)
-    fits.push({ ...base, usdPerPct: fit.slope, r2: fit.r2, accepted: why === undefined, why })
+    const steps = points.slice(1).map(([pct, usd], i): [number, number] => [pct - points[i]![0], Math.round((usd - points[i]![1]) * 1e4) / 1e4])
+    const models = by.size === 0 ? {} : { models: Object.fromEntries(by) }
+    fits.push({ kind, resetsAt, ...models, usdPerPct: fit?.slope ?? 0, rise, anchors: points.length, r2: fit?.r2 ?? 0, steps })
   }
   return fits.sort((a, b) => a.resetsAt.localeCompare(b.resetsAt))
 }
 
-/** Why a fitted window does not count, or nothing when it does. */
-function judge(slope: number, r2: number, prior: number, ratio: number): string | undefined {
-  if (r2 < MIN_R2) return 'разброс'
-  if (slope > prior * ratio || slope < prior / ratio) return 'далеко от конфига'
-  return undefined
+/** Points the reading rose beyond what the spend between anchors explains at `price`. */
+export function unseenPoints(steps: readonly [number, number][], price: number): number {
+  return steps.reduce((sum, [points, usd]) => sum + Math.max(0, points - STEP_SLACK - usd / price), 0)
+}
+
+const median = (values: readonly number[]) => {
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = sorted.length / 2
+  return sorted.length % 2 === 1 ? sorted[Math.floor(mid)]! : (sorted[mid - 1]! + sorted[mid]!) / 2
+}
+
+/** Why a fitted window does not count against `price`, or nothing when it does. */
+function judge(f: RawFit, price: number, ratio: number): { why?: string; unseen?: number } {
+  if (f.anchors < 2 || f.rise < (MIN_RISE[f.kind] ?? 1)) return { why: NO_POINTS }
+  if (f.r2 < MIN_R2) return { why: 'разброс' }
+  if (f.usdPerPct > price * ratio || f.usdPerPct < price / ratio) {
+    // Far from the price, it may be a new one: its jumps are judged at its own.
+    const own = unseenPoints(f.steps ?? [], f.usdPerPct)
+    return own > f.rise * UNSEEN_SHARE ? { why: 'чужой расход', unseen: own } : { why: FAR }
+  }
+  const unseen = unseenPoints(f.steps ?? [], price)
+  if (unseen > f.rise * UNSEEN_SHARE) return { why: 'чужой расход', unseen }
+  return unseen > 0 ? { unseen } : {}
+}
+
+/**
+ * Judges windows in order. Each is held to the median of the windows accepted
+ * before it once three are, else to `prior`; a window far from that price, or
+ * one whose reading jumped past its spend, does not count. Three windows in a
+ * row far from the price but close to each other are a new price (the limits
+ * changed): they are accepted, and the price is learned from them on.
+ */
+export function judgeFits(raw: readonly RawFit[], prior: number, ratio = SANE_RATIO): WindowFit[] {
+  const learn = learnOf(raw[0]?.kind)
+  const out: WindowFit[] = []
+  let from = 0
+  for (const f of raw) {
+    const accepted = out.slice(from).filter((a) => a.accepted).slice(-learn.recent)
+    const isOwn = accepted.length >= learn.trusted
+    const price = isOwn ? median(accepted.map((a) => a.usdPerPct)) : prior
+    const { why, unseen } = judge(f, price, ratio)
+    const fit: WindowFit = { ...f, accepted: why === undefined, ...(why === undefined ? {} : { why: why === FAR ? `${FAR} от ${isOwn ? 'выученной' : 'конфига'}` : why }), ...(unseen === undefined ? {} : { unseen }) }
+    out.push(fit)
+    // The latest windows with a sound fit, not counting the ones too short or too scattered to price.
+    const priced = out.slice(from).filter((a) => a.why === undefined || a.why.startsWith(FAR) || a.why === 'чужой расход').slice(-learn.shift)
+    const slopes = priced.map((a) => a.usdPerPct)
+    if (priced.length === learn.shift && priced.every((a) => a.why?.startsWith(FAR)) && Math.max(...slopes) <= Math.min(...slopes) * SHIFT_RATIO) {
+      for (const a of priced) {
+        a.accepted = true
+        delete a.why
+      }
+      priced[0]!.isShift = true
+      from = out.indexOf(priced[0]!)
+    }
+  }
+  return out
 }
 
 /** A window counts toward a model when this share of its spend went to that model. */
@@ -221,19 +302,16 @@ const MODEL_RATIO = 3
  * The windows where one model spent nine tenths or more, judged again against
  * that model's own measured price when there is one (2×), else the shared one (3×).
  */
-export function modelFits(fits: readonly WindowFit[], model: string, prior: number, isMeasured: boolean): WindowFit[] {
-  const out: WindowFit[] = []
-  for (const f of fits) {
+export function modelFits(fits: readonly RawFit[], model: string, prior: number, isMeasured: boolean): WindowFit[] {
+  const own = fits.filter((f) => {
     const total = Object.values(f.models ?? {}).reduce((a, b) => a + b, 0)
-    if (total <= 0 || (f.models?.[model] ?? 0) / total < MODEL_SHARE) continue
-    if (f.why === 'мало пунктов') {
-      out.push(f)
-      continue
-    }
-    const why = judge(f.usdPerPct, f.r2, prior, isMeasured ? SANE_RATIO : MODEL_RATIO)
-    out.push({ ...f, accepted: why === undefined, why })
-  }
-  return out
+    return total > 0 && (f.models?.[model] ?? 0) / total >= MODEL_SHARE
+  })
+  return judgeFits(
+    own.map(({ kind, resetsAt, models, usdPerPct, rise, anchors, r2, steps }) => ({ kind, resetsAt, ...(models === undefined ? {} : { models }), usdPerPct, rise, anchors, r2, ...(steps === undefined ? {} : { steps }) })),
+    prior,
+    isMeasured ? SANE_RATIO : MODEL_RATIO,
+  )
 }
 
 /** `claude-opus-5-5` (or `opus-5-5`) → `opus`, `[5, 5]`; a date suffix is dropped. */
@@ -298,18 +376,64 @@ export function fitLine(points: readonly [number, number][]): { slope: number; r
   return { slope, r2 }
 }
 
-export type Calibration = { usdPerPct: number; windows: number; isLearned: boolean }
+/**
+ * `farStreak`: how many of the latest sound windows sat far from the price in
+ * use; while there are any, the price may have moved and is not trusted.
+ */
+export type Calibration = { usdPerPct: number; windows: number; isLearned: boolean; farStreak?: number }
 
-/** The median of the latest accepted windows, blended with the configured price while they are few. */
+/**
+ * The median of the latest accepted windows since the price last moved,
+ * blended with the configured price while they are few.
+ */
 export function calibrate(fits: readonly WindowFit[], prior: number): Calibration {
-  const slopes = fits.filter((f) => f.accepted).slice(-RECENT_WINDOWS).map((f) => f.usdPerPct)
-  if (slopes.length === 0) return { usdPerPct: prior, windows: 0, isLearned: false }
-  const sorted = [...slopes].sort((a, b) => a - b)
-  const mid = sorted.length / 2
-  const median = sorted.length % 2 === 1 ? sorted[Math.floor(mid)]! : (sorted[mid - 1]! + sorted[mid]!) / 2
-  if (slopes.length >= TRUSTED_WINDOWS) return { usdPerPct: median, windows: slopes.length, isLearned: true }
-  const w = slopes.length / TRUSTED_WINDOWS
-  return { usdPerPct: median * w + prior * (1 - w), windows: slopes.length, isLearned: false }
+  const learn = learnOf(fits[0]?.kind)
+  const recent = fits.slice(Math.max(0, fits.findLastIndex((f) => f.isShift === true)))
+  const accepted = recent.filter((f) => f.accepted).slice(-learn.recent)
+  const slopes = accepted.map((f) => f.usdPerPct)
+  let farStreak = 0
+  for (const f of [...recent].reverse()) {
+    if (f.accepted) break
+    if (f.why?.startsWith(FAR)) farStreak += 1
+  }
+  const far = farStreak > 0 ? { farStreak } : {}
+  if (slopes.length === 0) return { usdPerPct: prior, windows: 0, isLearned: false, ...far }
+  const m = median(slopes)
+  const latest = accepted[accepted.length - 1]!
+  if (slopes.length >= learn.trusted && latest.rise < learn.trustRise) {
+    // The latest window has risen too little to stand alone: blended, by its rise, with the price before it.
+    const before = calibrate(fits.slice(0, fits.indexOf(latest)), prior).usdPerPct
+    const w = latest.rise / learn.trustRise
+    return { usdPerPct: m * w + before * (1 - w), windows: slopes.length, isLearned: false, ...far }
+  }
+  if (slopes.length >= learn.trusted) return { usdPerPct: m, windows: slopes.length, isLearned: farStreak === 0, ...far }
+  const w = slopes.length / learn.trusted
+  return { usdPerPct: m * w + prior * (1 - w), windows: slopes.length, isLearned: false, ...far }
+}
+
+/** Finished windows stay in the archive this long past their reset, so that every session's journal is in. */
+export const ARCHIVE_GRACE_MS = 60 * 60 * 1000
+/** How many finished windows of each kind the archive keeps: enough for the median of ten, with room. */
+export const ARCHIVE_KEEP: Record<string, number> = { five_hour: 60, seven_day: 15 }
+
+/**
+ * The journals' windows with the archived ones (A38): a finished window's
+ * record stands, unless the journals still give it more anchors. Archived
+ * windows that began before `since` are forgotten.
+ */
+export function mergeFits(live: readonly RawFit[], stored: readonly RawFit[], since = 0): RawFit[] {
+  const byReset = new Map(live.map((f) => [f.resetsAt, f]))
+  for (const s of stored) {
+    if (Date.parse(s.resetsAt) - (WINDOW_MS[s.kind] ?? 0) < since) continue
+    const l = byReset.get(s.resetsAt)
+    if (l === undefined || l.anchors <= s.anchors) byReset.set(s.resetsAt, s)
+  }
+  return [...byReset.values()].sort((a, b) => a.resetsAt.localeCompare(b.resetsAt))
+}
+
+/** What the archive of `kind` holds after a fit: the finished windows that have a line, the latest ARCHIVE_KEEP. */
+export function archiveOf(fits: readonly RawFit[], kind: string, now: number): RawFit[] {
+  return fits.filter((f) => f.kind === kind && f.anchors >= 2 && Date.parse(f.resetsAt) + ARCHIVE_GRACE_MS < now).slice(-(ARCHIVE_KEEP[kind] ?? 0))
 }
 
 /** A model's price as limit-test measured it, the latest sound one in each window. */

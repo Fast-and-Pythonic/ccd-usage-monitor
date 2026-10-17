@@ -1550,10 +1550,55 @@ each window, the moments a reading first shows a new value are where it sits
 closest to a whole point. The spend of all sessions from the window's start to
 each such moment, against the value, is a line. Its least-squares slope is that
 window's price of a point. A window counts with a rise of 8 points (five hours)
-or 3 (week), R² ≥ 0.9, and a slope within 2× of the configured price. The price
+or 3 (week), R² ≥ 0.9, and a slope within 2× of the price it is held to. The price
 in use is the median of the last ten windows that count. Below three windows it
 is blended with the configured one, and the line marks the shares with `≈`.
 `/turn-meter` prints the fits, and `/turn-meter reset` forgets them.
+
+**What a window is held to** (2026-10-17). Windows are judged in order. Once
+three count, the next is held to their median, not to the config, so a config
+that was wrong from the start no longer rejects every window. Three windows in a
+row far from that price but within 1.3× of each other are taken for a change of
+the limits: they count, the first is marked `новая цена`, and the median starts
+over from them. While the latest sound windows sit far from the price and no
+such three have come yet, the price is not trusted (`≈`), and `/turn-meter`
+says how many there were.
+
+**The week is priced by its latest window alone** (2026-10-17). The size of the
+limits seemed to the user to change about weekly, and holding the week to a
+median of past windows would carry an old size for weeks. So the parameters are
+per kind (`LEARN` in `meter.ts`). Five hours: the median of ten, trusted from
+three, three agreeing far windows for a new price. Week: the latest window,
+the one under way included, trusted alone, and one far window is a new price
+at once. A far window is refused instead when its own jumps, judged at its own
+slope, show spend no journal saw. While the latest week has risen fewer than 10
+points (a point of rounding is a tenth of the slope there) it is blended, by its
+rise, with the week before; below 3 points it does not count and the week before
+stands. On 2026-10-17 this took the weekly price from a blended $2.79 to the
+window's own $2.68. Whether the size really moves weekly is the user's reading,
+not yet measured; the five-hour price is left on its median, which a weekly
+change moves over two days or so.
+
+**Spend no journal saw.** A session without the mod, claude.ai, another device:
+the reading rises and the journals' spend does not. On 2026-10-15 a window
+jumped 11 → 40 % over $9 and 59 → 63 % over nothing, and its slope came to
+$0.28 against $0.39. The jumps lay on the line, so R² was 0.998 and did not catch
+it. Now each step between anchors is checked: the points it rose beyond its
+spend at the held price, one point of rounding allowed a step, are summed, and
+a window where that sum is above 5 % of its rise is refused as `чужой расход`.
+On that day's journals clean windows summed to 0 and the two with unseen spend
+to 13 % and 18 %. Spend hidden evenly across the window cannot be told from a
+different price this way; it is left to the 2× bound.
+
+**The archive of finished windows.** Journals are kept 8 days, a weekly window
+lasts 7, so the journals hold at most two weekly windows, while trusting the
+median takes three: the weekly price could never be learned. So each fit writes
+its windows that reset over an hour ago into `data/fits/<kind>.json`, the latest
+60 five-hour and 15 weekly ones. The record keeps the line as fitted (slope,
+R², rise, anchors, models and the steps), not the verdict, which is passed again
+each time against the price of the moment. A window the journals still give
+with more anchors than its record is taken from the journals. Records of
+windows that began before a `/turn-meter reset` are dropped.
 
 **Per model.** The windows do not follow API prices exactly: Opus 5 came to about
 $0.60 a point of the five-hour window, Opus 5.5 to $0.39. So the journal also
@@ -1594,8 +1639,10 @@ newest version. Rename neither; add fields instead.
 **Why files and not `$.store`.** `$.store` is one JSON file per plugin under
 `~/.claude/plugins/store/`. Parallel sessions writing it would race on the whole
 file. One journal file per session has one writer. The learned price is never
-stored: it is a pure function of the journals, computed again when a window
-moves.
+stored: it is a pure function of the journals and the archive, computed again
+when a window moves. The archive has many writers, one file per kind: a write
+lost to a parallel session costs nothing, since every session would write the
+same windows and the journals still hold them for eight days.
 
 **Extra usage.** Once a five-hour or weekly window reads 100 % or more, turns
 are paid in money, not in shares: the first row shows `сверх лимита` in bold in

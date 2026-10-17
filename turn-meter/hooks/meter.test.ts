@@ -5,6 +5,7 @@ import {
   addReadings,
   addSpend,
   addTurn,
+  archiveOf,
   calibrate,
   compareTurns,
   DAY_MS,
@@ -14,6 +15,8 @@ import {
   formatLine,
   formatShare,
   formatTokens,
+  judgeFits,
+  mergeFits,
   modelFits,
   prune,
   referencesOf,
@@ -23,6 +26,7 @@ import {
   windowRise,
   type ModelRate,
   type Rates,
+  type RawFit,
   type SessionLog,
   type Show,
   type TurnFigures,
@@ -142,6 +146,68 @@ test('few windows blend with the config; three are trusted alone', () => {
   expect(one.isLearned).toBe(false)
   const three = calibrate([0.3, 0.32, 0.5].map((usdPerPct) => ({ ...fit, usdPerPct })), 0.39)
   expect(three).toEqual({ usdPerPct: 0.32, windows: 3, isLearned: true })
+})
+
+/** A window fitted at `price` a point over `points` one-point steps, and the steps given after them. */
+function raw(resetsAt: string, price: number, points = 20, extra: [number, number][] = []): RawFit {
+  const steps: [number, number][] = [...Array.from({ length: points }, (): [number, number] => [1, price]), ...extra]
+  const rise = steps.reduce((s, [p]) => s + p, 0)
+  return { kind: 'five_hour', resetsAt, usdPerPct: price, rise, anchors: steps.length + 1, r2: 0.99, steps }
+}
+const resetAt = (i: number) => new Date(Date.parse(RESET) + i * 5 * H).toISOString()
+
+test('a reading that jumps past its spend is spend no journal saw', () => {
+  const [clean, jumped] = judgeFits([raw(resetAt(0), 0.39, 20, [[1, 0]]), raw(resetAt(1), 0.39, 20, [[5, 0], [4, 0.1]])], 0.39)
+  expect(clean!.accepted).toBe(true)
+  expect(jumped!.accepted).toBe(false)
+  expect(jumped!.why).toBe('чужой расход')
+  expect(jumped!.unseen! > 6).toBe(true)
+})
+
+test('three learned windows hold the next to their median, not to the config', () => {
+  const fits = judgeFits([0.6, 0.62, 0.61, 0.3].map((p, i) => raw(resetAt(i), p)), 0.39)
+  expect(fits.slice(0, 3).every((f) => f.accepted)).toBe(true)
+  expect(fits[3]!.why).toBe('далеко от выученной')
+  expect(calibrate(fits, 0.39)).toEqual({ usdPerPct: 0.61, windows: 3, isLearned: false, farStreak: 1 })
+})
+
+test('three windows in a row that agree on a far price are a new price', () => {
+  const old = [0.39, 0.4, 0.38].map((p, i) => raw(resetAt(i), p))
+  const two = judgeFits([...old, raw(resetAt(3), 0.9), raw(resetAt(4), 0.95)], 0.39)
+  expect(calibrate(two, 0.39)).toEqual({ usdPerPct: 0.39, windows: 3, isLearned: false, farStreak: 2 })
+  const three = judgeFits([...old, raw(resetAt(3), 0.9), raw(resetAt(4), 0.95), raw(resetAt(5), 0.92)], 0.39)
+  expect(three.slice(3).every((f) => f.accepted)).toBe(true)
+  expect(three[3]!.isShift).toBe(true)
+  expect(calibrate(three, 0.39)).toEqual({ usdPerPct: 0.92, windows: 3, isLearned: true })
+  const torn = judgeFits([...old, raw(resetAt(3), 0.9), raw(resetAt(4), 1.5), raw(resetAt(5), 0.92)], 0.39)
+  expect(torn.slice(3).some((f) => f.accepted)).toBe(false)
+})
+
+const week = (i: number, price: number, points: number): RawFit => ({ ...raw(new Date(Date.parse(RESET) + i * 7 * 24 * H).toISOString(), price, points), kind: 'seven_day' })
+
+test('the week is priced by its latest window alone, a far one at once, a young one blended with the week before', () => {
+  expect(calibrate(judgeFits([week(0, 2.6, 20)], 2.85), 2.85)).toEqual({ usdPerPct: 2.6, windows: 1, isLearned: true })
+  const moved = judgeFits([week(0, 2.6, 20), week(1, 1.2, 20)], 2.85)
+  expect(moved[1]!.isShift).toBe(true)
+  expect(calibrate(moved, 2.85)).toEqual({ usdPerPct: 1.2, windows: 1, isLearned: true })
+  const young = calibrate(judgeFits([week(0, 2.6, 20), week(1, 2.0, 5)], 2.85), 2.85)
+  expect(Math.abs(young.usdPerPct - 2.3)).toBeLessThan(1e-9)
+  expect(young.isLearned).toBe(false)
+  // A far week whose reading jumped past its spend is no new price.
+  const dirty = judgeFits([week(0, 2.6, 20), { ...week(1, 1.2, 20), steps: [...week(1, 1.2, 20).steps!, [6, 0]] }], 2.85)
+  expect(dirty[1]!.why).toBe('чужой расход')
+})
+
+test('finished windows outlive the journals; a fuller fit from the journals wins; a reset forgets', () => {
+  const stored = [raw(resetAt(0), 0.4, 20), raw(resetAt(1), 0.4, 10)]
+  const live = [raw(resetAt(1), 0.41, 15), raw(resetAt(2), 0.39, 5)]
+  const merged = mergeFits(live, stored)
+  expect(merged.map((f) => [f.resetsAt, f.usdPerPct])).toEqual([[resetAt(0), 0.4], [resetAt(1), 0.41], [resetAt(2), 0.39]])
+  expect(mergeFits(live, stored, Date.parse(resetAt(1))).map((f) => f.resetsAt)).toEqual([resetAt(1), resetAt(2)])
+  // The window still under way, or just past its reset, is not archived yet.
+  expect(archiveOf(merged, 'five_hour', Date.parse(resetAt(2)) + 30 * 60_000).map((f) => f.resetsAt)).toEqual([resetAt(0), resetAt(1)])
+  const many = Array.from({ length: 70 }, (_, i) => raw(resetAt(i), 0.4))
+  expect(archiveOf(many, 'five_hour', Date.parse(resetAt(80))).length).toBe(60)
 })
 
 test('the journal keeps changes only, and old points go, but the baseline stays', () => {
