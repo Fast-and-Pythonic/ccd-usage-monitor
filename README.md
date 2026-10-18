@@ -81,8 +81,9 @@ slightly-old number, it is a different window.
 
 ## What it needs to work
 
-- **Windows 10/11**, and a Rust toolchain to build it: there is no release
-   binary yet (`cargo build --release`, below).
+- **Windows 10/11.** A ready build is on the
+   [Releases](https://github.com/Fast-and-Pythonic/ccd-usage-monitor/releases)
+   page; building it yourself needs a Rust toolchain.
 - **A Claude Pro or Max subscription.** API-key users get no rate-limit
    figures at all.
 - **Nothing else, for the basic figures.** With the Claude desktop app in use,
@@ -107,6 +108,18 @@ slightly-old number, it is a different window.
    included, and `turn-meter/` draws the cost of each turn under the reply.
 
 ## Install
+
+**From a release.** Download `ccd-usage-monitor-<version>-windows-x64.zip` from
+[Releases](https://github.com/Fast-and-Pythonic/ccd-usage-monitor/releases) and
+unpack it into a folder you can write to, such as `C:\Tools\ccd-usage-monitor`:
+the widget keeps its settings in a `settings` folder beside the executable, so
+`Program Files` will not do. Run `ccd-usage-monitor.exe`. The archive also
+holds the two mods, `mod/` and `turn-meter/`; in the paths below, put the folder
+you unpacked into in place of `C:/path/to/ccd-usage-monitor`, and drop
+`target/release/` from them. The executable is not signed, so Windows
+SmartScreen may ask once whether to run it.
+
+**From source.**
 
 ```
 cargo build --release
@@ -200,6 +213,8 @@ folder you can write to; where it cannot make `settings`, it falls back to the
 temp folder.
 
 ## Settings
+
+![The settings window, Limits page: percentages, colour thresholds, pace and the five-hour clocks](docs/settings.png)
 
 Right-click the pill, or use the tray icon, and the settings open in a window
 of their own: five pages down its left side — **Limits**, **Context**,

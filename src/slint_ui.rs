@@ -1113,9 +1113,16 @@ fn resize(a: &mut App) {
    // the pill was put and how wide it was then — and not from the window's
    // rectangle read back each time, which lags the command that moved it
    // (A06). A file from before the width was kept asks the rectangle once.
+   //
+   // A pill nobody has placed has no edge to hold: the window manager put the
+   // first, tiny window wherever it liked, and holding its right edge with
+   // `anchor = right` grew the pill leftwards off the screen on a first run.
+   let Some([x, y]) = a.geom.position else {
+      pill.window().set_size(slint::LogicalSize::new(w, h));
+      return;
+   };
    let s = pill.window().scale_factor();
-   let (rx, ry, rw, _) = frame.rect();
-   let [x, y] = a.geom.position.unwrap_or([rx as f32 / s, ry as f32 / s]);
+   let (_, _, rw, _) = frame.rect();
    let old_w = a.geom.width.unwrap_or(rw as f32 / s);
    let new_x = crate::geometry::anchored_x(a.cfg.anchor, x, old_w, w);
 
@@ -1139,13 +1146,11 @@ fn resize(a: &mut App) {
       }
    }
 
-   // Only a pill that has a place of its own is written down: one the window
-   // manager put somewhere and nobody has moved has nothing to remember.
-   if a.geom.position.is_some() || new_x != x {
-      a.geom.position = Some([new_x, y]);
-      a.geom.width = Some(w);
-      crate::geometry::save(&a.geom);
-   }
+   // Only a pill that has a place of its own gets this far, so only such a
+   // place is written down.
+   a.geom.position = Some([new_x, y]);
+   a.geom.width = Some(w);
+   crate::geometry::save(&a.geom);
 }
 
 fn pump_tray(a: &mut App) {

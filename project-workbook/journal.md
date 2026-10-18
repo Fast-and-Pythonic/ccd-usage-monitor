@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-18** — v0.1.0, and a first run that grew the pill off the screen
 - **2026-10-18** — the author's own settings become the defaults, ahead of publishing
 - **2026-10-17** — `turn-meter` keeps finished windows, and refuses jumps its journals never paid for
 - **2026-10-15** — prices per model in `turn-meter`, and `limit-test` to measure them
@@ -23,6 +24,21 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-18 — v0.1.0, and a first run that grew the pill off the screen
+
+Done: the first release, built and run from an empty folder before it was
+packed. That run found a fault the new default `anchor = right` exposed: with no
+position saved, `resize` held the right edge of the tiny window the window
+manager first placed, so the pill grew leftwards past the screen's edge. A pill
+nobody has placed now only takes its size; the anchor applies from the first
+drag on. Dashes in the same run were the endpoint's 429, with two widgets and
+the probes asking at once, and cleared on the next poll.
+
+Checked: `cargo test`, clippy; the release exe from an empty folder opened on
+screen with the figures in English, `settings/` holding only what it writes.
 
 ---
 

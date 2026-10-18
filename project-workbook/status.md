@@ -5,8 +5,9 @@ Snapshot of 2026-10-18. State only — why anything is the way it is lives in
 
 > **Published 2026-10-18** at https://github.com/Fast-and-Pythonic/ccd-usage-monitor,
 > MIT, branch `main`, a screenshot of the pill at the top of the README
-> (`docs/pill.png`). No release binary yet: install is a build from source. The
-> announcement on Reddit is drafted but not posted; the drafts are kept out of git.
+> (`docs/pill.png`). Release v0.1.0 is a zip of the exe, the README, the licence
+> and the two mods `mod/` and `turn-meter/`. The announcement on Reddit is drafted
+> but not posted; the drafts are kept out of git.
 
 > **Paused 2026-10-15.** After the desktop app update to Claude Code 2.1.295 a mod
 > can no longer draw beside the model and effort picker: `$.ui.status` lands on a
