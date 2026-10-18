@@ -60,15 +60,15 @@ const price = (options: PluginOptions, key: string, fallback: number) => {
 export function showOf(options: PluginOptions): Show {
   return {
     context: flag(options, 'showContext', true),
-    tokens: flag(options, 'showTokens', true),
+    tokens: flag(options, 'showTokens', false),
     input: flag(options, 'showInput', true),
-    subagents: flag(options, 'showSubagents', true),
+    subagents: flag(options, 'showSubagents', false),
     limits: flag(options, 'showLimits', true),
     usd: flag(options, 'showUsd', true),
-    duration: flag(options, 'showDuration', true),
-    model: flag(options, 'showModel', true),
-    steps: flag(options, 'showSteps', true),
-    cache: flag(options, 'showCache', true),
+    duration: flag(options, 'showDuration', false),
+    model: flag(options, 'showModel', false),
+    steps: flag(options, 'showSteps', false),
+    cache: flag(options, 'showCache', false),
     limitSize: flag(options, 'showLimitSize', false),
   }
 }

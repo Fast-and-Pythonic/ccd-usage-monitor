@@ -3,6 +3,8 @@ name = "ccd-usage-monitor"
 version = "0.1.0"
 edition = "2024"
 description = "A floating readout of Claude Code quota and context usage for Windows. Built with Slint (https://slint.dev) under its royalty-free licence."
+license = "MIT"
+repository = "https://github.com/Fast-and-Pythonic/ccd-usage-monitor"
 
 
 [dependencies]

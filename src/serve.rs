@@ -511,7 +511,7 @@ mod tests {
 
    #[test]
    fn the_snapshot_carries_both_halves_of_every_figure() {
-      let v = parsed(&Config::default());
+      let v = parsed(&Config::baseline());
       assert_eq!(v["schema"], SCHEMA);
 
       let five = &v["five_hour"];
@@ -533,7 +533,7 @@ mod tests {
 
    #[test]
    fn the_weekly_window_alone_carries_a_day_count() {
-      let v = parsed(&Config::default());
+      let v = parsed(&Config::baseline());
       assert_eq!(v["seven_day"]["days_left"], 3);
       assert_eq!(
          v["seven_day"]["daily_allowance_pct"]
@@ -560,7 +560,7 @@ mod tests {
       // the allowance divides by the exact 3 d 5 h rather than by 3.
       let cfg = Config {
          days_by: DaysBy::Time,
-         ..Config::default()
+         ..Config::baseline()
       };
       let v = parsed(&cfg);
       assert_eq!(v["seven_day"]["days_left"], 3);
@@ -578,7 +578,7 @@ mod tests {
       // A19: the palette belongs to whoever draws. What crosses the wire is
       // which two roles a figure sits between, and how far along.
       // Both fixture figures sit under the warning line, so both are flat.
-      let v = parsed(&Config::default());
+      let v = parsed(&Config::baseline());
       assert_eq!(v["five_hour"]["tone"]["from"], "green");
       assert_eq!(v["five_hour"]["tone"]["to"], "green");
       assert!(v["five_hour"]["tone"]["t"].is_number());
@@ -586,7 +586,7 @@ mod tests {
       // Past it the figure names the two roles it sits between, and how far
       // along — never a colour.
       let now = now();
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       let rt = Runtime::blank();
       let mut snap = fixture(now);
       snap.five_hour.as_mut().unwrap().used_pct = 90.0;
@@ -606,10 +606,10 @@ mod tests {
       // A15: one number stored, two ways to read it. `used_pct` must not
       // move when the display convention does, or a consumer computing a
       // colour from it would invert with the pill.
-      let spent = parsed(&Config::default());
+      let spent = parsed(&Config::baseline());
       let left = parsed(&Config {
          pct_mode: PctMode::Left,
-         ..Config::default()
+         ..Config::baseline()
       });
 
       assert_eq!(
@@ -625,7 +625,7 @@ mod tests {
    fn the_panel_travels_already_worded() {
       let v = parsed(&Config {
          lang: "en".to_string(),
-         ..Config::default()
+         ..Config::baseline()
       });
       let lines = v["detail_lines"].as_array().expect("an array of lines");
       assert_eq!(lines[0]["label"], "5h");
@@ -638,7 +638,7 @@ mod tests {
       // A window nobody reported is absent, not nought per cent: the whole
       // point of `--%` on the pill is that a wrong number looks right.
       let now = now();
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       let rt = Runtime::blank();
       let text = render(&cfg, &rt, &Snapshot::default(), (false, false), now);
       let v: serde_json::Value = serde_json::from_str(&text).unwrap();
@@ -653,7 +653,7 @@ mod tests {
    #[test]
    fn a_window_without_a_reset_has_no_pace_and_says_so() {
       let now = now();
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       let rt = Runtime::blank();
       let snap = Snapshot {
          five_hour: Some(Window {

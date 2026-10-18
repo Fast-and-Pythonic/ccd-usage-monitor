@@ -29,7 +29,7 @@ function engine(on: On, usage: { current: SessionUsage }, written: Record<string
 
 const at = (usd: number): SessionUsage => ({ startedAt: 0, context: { window: 1_000_000, tokens: 212_000, percent: 21 }, rateLimits: [], cost: { usd } })
 
-test('a turn: its dollars are the ledger moved between start and end, its subagents a group of their own', async ($, on) => {
+test('a turn: its dollars are the ledger moved between start and end, its subagents a group of their own', { options: { showTokens: true, showSubagents: true, showDuration: true, showSteps: true, showModel: true, showCache: true } }, async ($, on) => {
   const usage = { current: at(1.0) }
   const written: Record<string, string> = {}
   const seen = engine(on, usage, written)

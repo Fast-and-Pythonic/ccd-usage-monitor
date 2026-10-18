@@ -61,7 +61,7 @@ Claude Code ──stdin JSON──> ccd-usage-monitor --bridge ──> <data fol
                                                           │ mtime poll, 250 ms
 desktop app ──every ~15 min──> plan-usage-history.json ────┤
                                                           │
-usage endpoint ──poller, 180 s + wake-ups──────────────────┤
+usage endpoint ──poller, 90 s + wake-ups───────────────────┤
                                                           │
 transcripts ──~/.claude/projects/**/<uuid>.jsonl───────────┤
               (tree rescanned every 30 s; one mtime        │
@@ -87,10 +87,6 @@ within a month.
 The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
 sample of a second or two rounds it to "0.0 %", which reads as a measurement and
 is not one.
-
-The CPU figure is a `TotalProcessorTime` delta over a long window on purpose. A
-sample of a second or two rounds this to "0.0 %", which reads as a measurement
-and is not one.
 
 The transcript source adds a tree walk on its own clock, not on the 250 ms tick:
 enumerating 86 files across 16 directories measured ~98 ms, and tail-reading all

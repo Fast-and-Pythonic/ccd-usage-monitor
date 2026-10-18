@@ -46,9 +46,9 @@ app, which shows none of this itself and does not run the status line (G06).
    --serve` and A21; the JSON is the contract, `src/serve.rs` owns its shape
 - **Changing how the pill looks** → `settings/theme.slint` first: any build
    inside this repository keeps its files in `settings/` (A36), so that file is
-   the theme that actually loads. It is
-   hand-tuned; since 2026-09-27 the default is a copy of it, and the two part
-   only when one is edited without the other. `themes/pill.slint` is only the
+   the theme that actually loads. It is hand-tuned; the default is a copy of
+   it (since 2026-09-27, last copied 2026-10-18), and the two part only when
+   one is edited without the other. `themes/pill.slint` is only the
    built-in default, written out where no theme exists yet (A24) — change it
    too when the default should follow, but an edit made only there never shows
    on this machine. No rebuild needed for the live file; run

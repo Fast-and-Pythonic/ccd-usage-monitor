@@ -1351,7 +1351,7 @@ mod tests {
    fn en() -> Config {
       Config {
          lang: "en".to_string(),
-         ..Config::default()
+         ..Config::baseline()
       }
    }
 
@@ -1740,7 +1740,7 @@ g2 Time Group plain \"38%\" ContextPct
 
    #[test]
    fn every_field_has_a_name_in_both_languages() {
-      let mut cfg = Config::default();
+      let mut cfg = Config::baseline();
       for field in [
          Field::FiveHourPct,
          Field::FiveHourPace,
@@ -1776,7 +1776,7 @@ g2 Time Group plain \"38%\" ContextPct
       for lang in ["ru", "en"] {
          let cfg = Config {
             lang: lang.to_string(),
-            ..Config::default()
+            ..Config::baseline()
          };
          for field in Field::ALL {
             assert_eq!(Field::named(&field_name(field, &cfg), &cfg), Some(field));
@@ -1785,7 +1785,7 @@ g2 Time Group plain \"38%\" ContextPct
             assert!(lines.iter().all(|l| !l.is_empty()), "{lang}: {field:?}");
          }
       }
-      assert_eq!(Field::named("something else", &Config::default()), None);
+      assert_eq!(Field::named("something else", &Config::baseline()), None);
    }
 
    #[test]
@@ -1795,7 +1795,7 @@ g2 Time Group plain \"38%\" ContextPct
       let (snap, rt) = fixture(now);
       let cfg = Config {
          lang: "ru".to_string(),
-         ..Config::default()
+         ..Config::baseline()
       };
       assert_eq!(
          field_detail(Field::SevenDayDays, &cfg, &rt, &snap, now),
@@ -1827,7 +1827,7 @@ g2 Time Group plain \"38%\" ContextPct
    fn the_percentage_is_named_the_way_it_is_read() {
       let mut cfg = Config {
          lang: "ru".to_string(),
-         ..Config::default()
+         ..Config::baseline()
       };
 
       cfg.pct_mode = PctMode::Spent;
@@ -1865,7 +1865,7 @@ g2 Time Group plain \"38%\" ContextPct
 
    #[test]
    fn usage_is_flat_green_below_the_warning() {
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       for pct in [0.0, 30.0, 59.9] {
          let t = usage_tone(pct, &cfg);
          assert_eq!((t.from, t.to), (Ink::Green, Ink::Green), "at {pct}%");
@@ -1874,7 +1874,7 @@ g2 Time Group plain \"38%\" ContextPct
 
    #[test]
    fn usage_ramps_green_to_amber_then_amber_to_red() {
-      let cfg = Config::default(); // warn 60, danger 85
+      let cfg = Config::baseline(); // warn 60, danger 85
       let t = usage_tone(60.0, &cfg);
       assert_eq!((t.from, t.to), (Ink::Green, Ink::Amber));
       assert!(t.t.abs() < 1e-6, "the ramp has not started at the line");
@@ -1895,7 +1895,7 @@ g2 Time Group plain \"38%\" ContextPct
       // green is the exact reading this rule exists to prevent.
       let mut cfg = Config {
          pct_mode: PctMode::Spent,
-         ..Config::default()
+         ..Config::baseline()
       };
       let spent = usage_tone(90.0, &cfg);
       cfg.pct_mode = PctMode::Left;
@@ -1910,7 +1910,7 @@ g2 Time Group plain \"38%\" ContextPct
    fn pace_is_green_to_the_line_and_orange_the_moment_it_is_over() {
       // A16: green lives entirely below the line. A ramp that started from
       // green above it made a two-point overspend look like headroom.
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       assert_eq!(pace_tone(-20.0, &cfg).from, Ink::Green);
       assert_eq!(
          pace_tone(0.0, &cfg).from,
@@ -1924,7 +1924,7 @@ g2 Time Group plain \"38%\" ContextPct
 
    #[test]
    fn pace_reaches_red_two_tolerances_over() {
-      let cfg = Config::default(); // tolerance 7
+      let cfg = Config::baseline(); // tolerance 7
       let t = pace_tone(7.0, &cfg);
       assert!(
          (t.t - 0.5).abs() < 1e-6,
@@ -2008,7 +2008,7 @@ g2 Time Group plain \"38%\" ContextPct
    #[test]
    fn the_notice_speaks_the_pill_s_language() {
       let now = now();
-      let cfg = Config::default(); // ru
+      let cfg = Config::baseline(); // ru
       let mut rt = Runtime::blank();
       rt.api_retry_until = Some(now + 120);
       assert_eq!(
@@ -2102,7 +2102,7 @@ g2 Time Group plain \"38%\" ContextPct
    #[test]
    fn too_little_history_produces_no_rate_rather_than_a_bad_one() {
       let now = now();
-      let cfg = Config::default();
+      let cfg = Config::baseline();
       let mut rt = Runtime::blank();
       let w = window(now, 40.0, 2 * 3600, 0, Source::Api);
 
@@ -2123,7 +2123,7 @@ g2 Time Group plain \"38%\" ContextPct
    #[test]
    fn the_rate_is_silent_when_it_is_switched_off() {
       let now = now();
-      let cfg = quiet(Config::default());
+      let cfg = quiet(Config::baseline());
       let mut rt = Runtime::blank();
       rt.history = log_of(&[(now - 3600, 0.0), (now, 40.0)], true);
       let w = window(now, 40.0, 2 * 3600, 0, Source::Api);
@@ -2144,7 +2144,7 @@ g2 Time Group plain \"38%\" ContextPct
    #[test]
    fn the_panel_reads_exactly_this() {
       let now = now();
-      let cfg = quiet(Config::default());
+      let cfg = quiet(Config::baseline());
       let (snap, rt) = fixture(now);
 
       let lines = detail_lines(&cfg, &rt, &snap, false, now);
@@ -2200,7 +2200,7 @@ g2 Time Group plain \"38%\" ContextPct
       // and obvious in `382k of 1.0M`, so the panel prints the division —
       // and says when the divisor was a guess.
       let now = now();
-      let cfg = quiet(Config::default());
+      let cfg = quiet(Config::baseline());
       let (mut snap, rt) = fixture(now);
 
       assert!(line(&detail_lines(&cfg, &rt, &snap, false, now), "ctx").contains("(оценка)"));
@@ -2245,7 +2245,7 @@ g2 Time Group plain \"38%\" ContextPct
    #[test]
    fn a_stale_reading_says_so_on_the_src_line() {
       let now = now();
-      let cfg = quiet(Config::default());
+      let cfg = quiet(Config::baseline());
       let (snap, rt) = fixture(now);
 
       assert!(line(&detail_lines(&cfg, &rt, &snap, true, now), "ист").ends_with(" · устарело"));
@@ -2282,7 +2282,7 @@ g2 Time Group plain \"38%\" ContextPct
       let now = now();
       let cfg = Config {
          demo: true,
-         ..quiet(Config::default())
+         ..quiet(Config::baseline())
       };
       let (snap, rt) = fixture(now);
 

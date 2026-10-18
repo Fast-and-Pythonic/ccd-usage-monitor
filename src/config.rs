@@ -565,30 +565,30 @@ pub struct Config {
 impl Default for Config {
    fn default() -> Self {
       Config {
-         opacity: 0.82,
-         scale: 1.0,
-         anchor: Anchor::Left,
-         days_by: DaysBy::Calendar,
-         days_form: DaysForm::Units,
+         opacity: 1.0,
+         scale: 1.22,
+         anchor: Anchor::Right,
+         days_by: DaysBy::Time,
+         days_form: DaysForm::Short,
          weekly_sep: "'".to_string(),
          weekly_pad: false,
          count_today: false,
          count_reset_day: true,
          pct_mode: PctMode::Spent,
-         pace_view: PaceView::Ratio,
-         pace_form: DaysForm::Units,
+         pace_view: PaceView::Time,
+         pace_form: DaysForm::Short,
          show_5h_pace: true,
          show_5h_left: true,
          show_5h_clock: true,
          show_5h_now: false,
          show_week_pace: true,
          show_week_days: true,
-         show_week_allowance: true,
+         show_week_allowance: false,
          bar_colour: BarColour::Fill,
          pace_rate: true,
-         detail_mode: DetailMode::WithSettings,
+         detail_mode: DetailMode::Never,
          detail_all_sources: false,
-         lang: "ru".to_string(),
+         lang: "en".to_string(),
          click_through: false,
          bridge_enabled: true,
          api_enabled: true,
@@ -599,7 +599,7 @@ impl Default for Config {
          session_scan_secs: 30,
          ctx_view: CtxView::Pct,
          ctx_limit: CtxLimit::Learned,
-         ctx_limit_tokens: 200_000,
+         ctx_limit_tokens: 1_000_000,
          ctx_dir_linked: true,
          ctx_pct_dir: PctMode::Spent,
          ctx_tokens_dir: PctMode::Spent,
@@ -608,8 +608,8 @@ impl Default for Config {
          api_stale_secs: 900,
          desktop_stale_secs: 1800,
          session_stale_secs: 900,
-         api_interval_secs: 180,
-         api_budget_per_min: 4,
+         api_interval_secs: 90,
+         api_budget_per_min: 6,
          api_revive_token: true,
          legacy_source: None,
          legacy_pace_cell: None,
@@ -617,8 +617,8 @@ impl Default for Config {
          legacy_position: None,
          legacy_settings_pos: None,
          legacy_settings_size: None,
-         warn_pct: 60.0,
-         danger_pct: 85.0,
+         warn_pct: 69.0,
+         danger_pct: 89.0,
          pace_tolerance: 7.0,
          drop_after_secs: 3600,
          data_dir: String::new(),
@@ -627,6 +627,31 @@ impl Default for Config {
 }
 
 impl Config {
+   /// The settings the golden tests of `view` and `serve` were written
+   /// against: the defaults before 2026-10-18, held still so that moving a
+   /// default does not rewrite every expected panel and pill.
+   #[cfg(test)]
+   pub fn baseline() -> Config {
+      Config {
+         opacity: 0.82,
+         scale: 1.0,
+         anchor: Anchor::Left,
+         days_by: DaysBy::Calendar,
+         days_form: DaysForm::Units,
+         pace_view: PaceView::Ratio,
+         pace_form: DaysForm::Units,
+         show_week_allowance: true,
+         detail_mode: DetailMode::WithSettings,
+         lang: "ru".to_string(),
+         ctx_limit_tokens: 200_000,
+         api_interval_secs: 180,
+         api_budget_per_min: 4,
+         warn_pct: 60.0,
+         danger_pct: 85.0,
+         ..Config::default()
+      }
+   }
+
    pub fn load() -> Config {
       let text = std::fs::read_to_string(config_path()).unwrap_or_default();
       let (mut cfg, sectioned) = Config::parse(&text);
@@ -1701,7 +1726,7 @@ scale = 1.1
             pad: false
          }
       );
-      assert_eq!(Config::default().days_span(), crate::pace::Span::Units);
+      assert_eq!(Config::baseline().days_span(), crate::pace::Span::Units);
       let sep = |s: &str| Config {
          weekly_sep: s.into(),
          ..Config::default()

@@ -69,7 +69,7 @@ function fail($: EngineInterface, why: string) {
 
 async function refresh($: EngineInterface, options: PluginOptions) {
   if (!(await inApp($))) return
-  if (options.showLine === false) return $.ui.status(undefined)
+  if (options.showLine !== true) return $.ui.status(undefined)
   const exe = await resolveExe($, options)
   if (exe === undefined) return fail($, 'no executable: set the plugin option `exe`, or a statusLine command ending in --bridge')
   try {

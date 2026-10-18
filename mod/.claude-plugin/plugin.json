@@ -16,7 +16,7 @@
       "type": "boolean",
       "title": "Show the line under the prompt",
       "description": "Pin the pill's line under the prompt. Off keeps feeding --bridge and draws nothing.",
-      "default": true
+      "default": false
     }
   }
 }

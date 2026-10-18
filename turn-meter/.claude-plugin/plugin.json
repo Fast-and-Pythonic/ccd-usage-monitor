@@ -17,7 +17,7 @@
       "type": "boolean",
       "title": "Turn tokens",
       "description": "The main loop's output, cache writes and cache reads this turn.",
-      "default": true
+      "default": false
     },
     "showInput": {
       "type": "boolean",
@@ -29,7 +29,7 @@
       "type": "boolean",
       "title": "Subagents",
       "description": "Subagents that finished during the turn, as a group of their own.",
-      "default": true
+      "default": false
     },
     "showLimits": {
       "type": "boolean",
@@ -47,25 +47,25 @@
       "type": "boolean",
       "title": "Duration",
       "description": "How long the turn took.",
-      "default": true
+      "default": false
     },
     "showSteps": {
       "type": "boolean",
       "title": "Requests",
       "description": "How many model requests the main loop made this turn.",
-      "default": true
+      "default": false
     },
     "showModel": {
       "type": "boolean",
       "title": "Model",
       "description": "The model that answered the turn's last request.",
-      "default": true
+      "default": false
     },
     "showCache": {
       "type": "boolean",
       "title": "Cache lifetime",
       "description": "When the main loop's prompt cache lapses: the last request of the turn plus an hour, or five minutes on extra usage.",
-      "default": true
+      "default": false
     },
     "showLimitSize": {
       "type": "boolean",

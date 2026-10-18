@@ -63,8 +63,8 @@ servers. Each item below is optional.
 
 ## What the authors use and you do not need
 
-- The absolute `C:/Home/0_My_Programming/ccd-usage-monitor/...` paths in the README and
-  the gotchas are the authors' machine; use the path to your own build.
+- `C:/path/to/ccd-usage-monitor/...` in the README stands for wherever you cloned it;
+  the absolute paths in the gotchas are the authors' machine. Use your own build's path.
 - The build timings in `overview.md` were measured on the authors' 2014 laptop; yours
   will differ.
 - `settings/` is the data folder of a build run from the repository: machine state,

@@ -37,7 +37,7 @@ test('the executable is read out of a bridge status line, quoted or not', () => 
   expect(exeFromStatusLine('npx ccstatusline')).toBe(undefined)
 })
 
-test('a measurement in the desktop app feeds the bridge, then pins the line', { options: { exe: 'C:/x/ccd.exe' } }, async ($, on) => {
+test('a measurement in the desktop app feeds the bridge, then pins the line', { options: { exe: 'C:/x/ccd.exe', showLine: true } }, async ($, on) => {
   const runs: { argv: readonly string[]; stdin?: string }[] = []
   const pinned: (string | undefined)[] = []
   on('session.surfaces', () => ({ value: ['desktop'] }))

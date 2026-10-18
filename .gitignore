@@ -15,3 +15,7 @@
 # limit-test: the engine's type declarations, and its measurements (A39).
 /limit-test/.claude-plugin/types/
 /limit-test/data/
+
+# A private note, not part of the project.
+/gemini_opinion.txt
+/reddit-post.md

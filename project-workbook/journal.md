@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-18** — the author's own settings become the defaults, ahead of publishing
 - **2026-10-17** — `turn-meter` keeps finished windows, and refuses jumps its journals never paid for
 - **2026-10-15** — prices per model in `turn-meter`, and `limit-test` to measure them
 - **2026-10-15** — `turn-meter` draws each turn's spend under the reply
@@ -22,6 +23,23 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-18 — the author's own settings become the defaults, ahead of publishing
+
+Done: `Config::default()`, the built-in theme and the two mods' option defaults
+now match what the author runs, so a first start on someone else's machine shows
+the pill as it was tuned here: English, right-anchored, days and pace by time in
+the short form, no detail panel, the endpoint polled every 90 s with a budget of
+six. The author chose to carry over the behavioural values too, not only the
+look. The golden tests of `view` and `serve` were written against the old
+defaults; rather than rewrite every expected panel, they now start from
+`Config::baseline()`, which holds the old values still, so a later change of
+default touches no golden. The repository gained an MIT licence, and the commit
+history was rewritten to the GitHub no-reply address before its first push.
+
+Checked: `cargo test`, `claude plugin test` and `validate` on all three mods.
 
 ---
 

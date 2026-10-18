@@ -128,7 +128,7 @@ const fn ch(value: &'static str, ru: &'static str, en: &'static str) -> Choice {
    }
 }
 
-/// Russian first, because that is the default language of the widget.
+/// Russian first, because the widget was written in Russian first.
 #[derive(Clone, Copy, Debug)]
 pub struct Words {
    pub ru: &'static str,

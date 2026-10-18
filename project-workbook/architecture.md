@@ -109,7 +109,7 @@ the bridge provide.
 
 ## A09: Responsiveness comes from wake-ups, not from polling harder
 The endpoint is undocumented, so the background interval is deliberately slow
-(180 s). What makes the widget feel immediate is `api::spawn_poller` waiting on
+(90 s by default). What makes the widget feel immediate is `api::spawn_poller` waiting on
 a channel via `recv_timeout` instead of sleeping: a send on that channel makes
 the next poll happen now.
 
@@ -268,7 +268,7 @@ to answer.
 
 ## A13: a request budget, and a rate limit as a schedule
 The poller keeps two things: a budget of requests per rolling minute
-(`api_budget_per_min`, four by default) and a `penalty_until` set when the
+(`api_budget_per_min`, six by default) and a `penalty_until` set when the
 endpoint refuses.
 
 **The budget comes first, and it delays rather than refuses.** When it is spent,

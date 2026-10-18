@@ -8,19 +8,19 @@ executable, no web stack — and the whole appearance is a `.slint` file you can
 edit without a compiler.
 
 ```
-24% ▼1.2× 3:19 20:49 │ 41% ▲1.4× 5d 20% │ ctx 38%
+24% ▼0:42 3:19 20:49 │ 41% ▲1'9 4'7 │ ctx 38%
 ```
 
 | Field | Meaning |
 |---|---|
 | `24%` | share of the rolling 5-hour limit already spent — or what is left of it, per `pct_mode` |
-| `▼1.2×` | pace, next to the figure it qualifies: spending is running 1.2 times *slower* than an even burn, so there is headroom; `▲` is the other way. `pace_view` picks the form — the ratio, the gap in points (`▲14%`), the same gap in time (`▲0:42`), both of the first two, or neither |
+| `▼0:42` | pace, next to the figure it qualifies: spending is 42 minutes *behind* an even burn of the window, so there is headroom; `▲` is the other way. `pace_view` picks the form — this gap in time, the ratio (`▼1.2×`), the gap in points (`▼14%`), both of the last two, or neither |
 | `3:19` | time left until that window resets |
 | `20:49` | local clock time of the reset |
 | `41%` | share of the weekly limit spent, under the same setting |
-| `▲1.4×` | the same pace figure for the weekly window |
-| `5d` | days left until the weekly window resets — whole calendar days, which of them count being a setting, or with `days_by = time` the exact time to the reset (`4d7h`, or `4'7` with `days_form = short`) |
-| `20%` | how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it, so by time half a day and 40% left reads `80%` |
+| `▲1'9` | the same pace figure for the weekly window: a day and nine hours ahead of an even burn (`▲1d9h` with `pace_form = units`) |
+| `4'7` | time left until the weekly window resets: four days and seven hours (`4d7h` with `days_form = units`), or with `days_by = calendar` whole calendar days (`5d`), which of them count being a setting |
+| `20%` | off by default (`show_week_allowance`): how much of the weekly limit may be spent per day to finish exactly at the reset — the remainder divided by the day count beside it, so by time half a day and 40% left reads `80%` |
 | `ctx 38%` | how full the session's context window is — the share, the token count (`309k`), or both, per `ctx_view` |
 
 Under each group a hairline track shows the same figure as a bar, so switching
@@ -67,8 +67,8 @@ setting stands the first sentence of what it actually does, and the whole of
 it floats up on hover.
 
 The detail panel under the pill is sized to its longest line and appears
-according to `detail_mode`: with the settings window (the default), on hover, or
-never. Near an edge of the screen it opens upwards or leftwards instead of
+according to `detail_mode`: with the settings window, on hover, or never (the
+default). Near an edge of the screen it opens upwards or leftwards instead of
 pushing the pill out of place. Each of its lines says one thing once: the window
 lines name the source a figure came from, and how old each source is appears on
 the `src` line below them.
@@ -112,7 +112,7 @@ Then point Claude Code's status line at the same binary, in
 ```json
 "statusLine": {
   "type": "command",
-  "command": "C:/Home/0_My_Programming/ccd-usage-monitor/target/release/ccd-usage-monitor.exe --bridge"
+  "command": "C:/path/to/ccd-usage-monitor/target/release/ccd-usage-monitor.exe --bridge"
 }
 ```
 
@@ -124,17 +124,18 @@ silently.
 
 The desktop app never runs a status line. The Claude Code mod in `mod/` does
 that job instead. It hands the session's quota and context figures to
-`--bridge`, and it pins the pill's line under the prompt, between the
-permission mode and the model's name. To load it in every session, add this to
-`~/.claude/settings.json` and start a new session:
+`--bridge`, and it can pin the pill's line under the prompt. That line is off by
+default (`showLine`): since Claude Code 2.1.295 it lands on a row of its own
+under the model picker and takes height from the transcript. To load the mod in
+every session, add this to `~/.claude/settings.json` and start a new session:
 
 ```json
 "env": {
-  "CLAUDE_CODE_PLUGIN_DIRS": "C:/Home/0_My_Programming/ccd-usage-monitor/mod"
+  "CLAUDE_CODE_PLUGIN_DIRS": "C:/path/to/ccd-usage-monitor/mod"
 },
 "pluginConfigs": {
   "ccd-usage-monitor": {
-    "options": { "exe": "C:/Home/0_My_Programming/ccd-usage-monitor/target/release/ccd-usage-monitor.exe" }
+    "options": { "exe": "C:/path/to/ccd-usage-monitor/target/release/ccd-usage-monitor.exe" }
   }
 }
 ```
@@ -142,6 +143,22 @@ permission mode and the model's name. To load it in every session, add this to
 `exe` must name a build that knows `--line`. Without it the mod takes the
 executable from the status-line command above. In a terminal session the mod
 stays quiet, because the status line already does both jobs there.
+
+### The line under each reply
+
+`turn-meter/` is a second mod, independent of the widget: under each reply in
+the desktop app it draws a dim line with how full the context is
+(`ctx 21% · 212k`), what share of the five-hour and weekly limits the turn cost,
+and its dollars at API prices. The share is the turn's dollars over a price per
+point that the mod learns from how the limits' readings move, model by model.
+Tokens by kind, subagents, duration, requests, model and cache lifetime are
+there too, each off by default and a switch in `pluginConfigs.turn-meter.options`.
+`/turn-meter` prints the size of the windows and the learned prices. Load it the
+same way, both folders in one variable separated by `;`:
+
+```json
+"CLAUDE_CODE_PLUGIN_DIRS": "C:/path/to/ccd-usage-monitor/mod;C:/path/to/ccd-usage-monitor/turn-meter"
+```
 
 Run `ccd-usage-monitor.exe` to show the widget. Its settings live in
 `config.toml`, in a `settings` folder beside the executable unless `data_dir`
@@ -183,16 +200,16 @@ days to the weekly reset with the daily allowance, and the bars
 | Key | Default | What it does |
 |---|---|---|
 | `pct_mode` | `spent` | whether the percentages and the bars count what is spent or what is `left`; the colour is keyed on spending either way |
-| `warn_pct` | `60.0` | the spending at which a figure starts moving from green to amber |
-| `danger_pct` | `85.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
-| `pace_view` | `ratio` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3'2` with `pace_form = short`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
-| `pace_form` | `units` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `short` (`▲3'2`, days and hours around `weekly_sep`; `colon`, the old name, still reads); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
+| `warn_pct` | `69.0` | the spending at which a figure starts moving from green to amber |
+| `danger_pct` | `89.0` | the spending at which it moves from amber to red, reaching full red at a hundred |
+| `pace_view` | `time` | the form of the pace figure: `ratio` (`▲2.0×`), `points` (`▲9%`), `time` (the gap in the window's time: `▲0:27` on the 5-hour window at 3 min a point, `▲3d2h` on the weekly one, or `▲3'2` with `pace_form = short`), `ratio_points`, `points_ratio`, `split` (both, with a drawn rule between them), `piped` (`▲9%\|2.0×`, run together with a grey pipe) or `off` |
+| `pace_form` | `short` | how the weekly pace reads in the `time` form: `units` (`▲3d2h`) or `short` (`▲3'2`, days and hours around `weekly_sep`; `colon`, the old name, still reads); the five-hour pace is `h:mm` either way, and the detail panel always spells it out |
 | `pace_tolerance` | `7.0` | how many points under the clock still count as on pace; over the clock is over, and starts at orange |
 | `show_5h_pace`, `show_5h_left`, `show_5h_clock` | `true` | whether the pill carries the five-hour pace, the time to its reset (`3:19`) and the clock time of the reset (`20:49`); the percentage is always there. The pill only — the status line and the detail panel keep every figure |
 | `show_5h_now` | `false` | the local time now (`14:07`), last in the five-hour group — for a screen whose taskbar clock is hidden. Never greyed: it is this machine's clock, not a reading |
-| `show_week_pace`, `show_week_days`, `show_week_allowance` | `true` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
-| `days_by` | `calendar` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
-| `days_form` | `units` | how the count by time reads: `units` (`3d16h`) or `short` (`3'16`, days and hours around `weekly_sep`; `colon`, the old name, still reads); ignored by calendar |
+| `show_week_pace`, `show_week_days`, `show_week_allowance` | `true`, `true`, `false` | the same for the weekly window: its pace, the days to its reset (`5d`) and the daily allowance (`20%`) |
+| `days_by` | `time` | how the weekly days are counted: `calendar` (whole days, `count_today` and `count_reset_day` decide the ends) or `time` (the exact time to the reset, `4d7h`, and the allowance divides by it) |
+| `days_form` | `short` | how the count by time reads: `units` (`3d16h`) or `short` (`3'16`, days and hours around `weekly_sep`; `colon`, the old name, still reads); ignored by calendar |
 | `weekly_sep` | `'` | what stands between days and hours in the short form of both weekly figures — any text up to three characters; empty is `'`. A colon works, but reads like the five-hour `h:mm` |
 | `weekly_pad` | `false` | the hours of the short form always as two digits, `2'07`, rather than as few as they need, `2'7` |
 | `count_today` | `false` | by calendar only: whether today counts towards the day figure and the allowance |
@@ -211,16 +228,16 @@ days to the weekly reset with the daily allowance, and the bars
 | `session_id` | `""` | the conversation pinned, when `session_pick = "pinned"` — chosen from the list of conversations on this page, not typed |
 | `session_scan_secs` | `30` | how often the transcript tree is enumerated again |
 | `ctx_limit` | `learned` | how the context percentage gets its denominator: `learned` (the size the status line stated for that model, the table underneath), `table` (by model name only), `fixed` |
-| `ctx_limit_tokens` | `200000` | the denominator when `ctx_limit = "fixed"`, clamped to 8 192 … 1 000 000 |
+| `ctx_limit_tokens` | `1000000` | the denominator when `ctx_limit = "fixed"`, clamped to 8 192 … 1 000 000 |
 
 **Appearance**
 
 | Key | Default | What it does |
 |---|---|---|
-| `scale` | `1.0` | multiplies every size the theme sets — fonts, height, paddings — from 0.6 to 3.0. The knob to reach for when the widget moves to another monitor |
-| `opacity` | `0.82` | how solid the background of the pill and the panel is, from 0.3 to 1.0; the text stays as it is |
-| `anchor` | `left` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
-| `detail_mode` | `with_settings` | when the detail panel shows: `with_settings`, `hover`, `never` |
+| `scale` | `1.22` | multiplies every size the theme sets — fonts, height, paddings — from 0.6 to 3.0. The knob to reach for when the widget moves to another monitor |
+| `opacity` | `1.0` | how solid the background of the pill and the panel is, from 0.3 to 1.0; the text stays as it is |
+| `anchor` | `right` | which edge of the pill stays put when its width changes (9% becoming 10%, a figure switched on): `left` grows it rightwards, `right` grows it leftwards, for a pill parked against the right of the screen |
+| `detail_mode` | `never` | when the detail panel shows: `with_settings`, `hover`, `never` |
 | `pace_rate` | `true` | the observed rate and the forecast in the detail panel |
 | `detail_all_sources` | `false` | a line per enabled source in the detail panel — what `--sources` prints |
 
@@ -234,8 +251,8 @@ the theme file is and opens it.
 | `bridge_enabled`, `api_enabled`, `desktop_enabled`, `session_enabled` | `true` | the four sources, each an independent switch: the status line, the usage endpoint, the desktop app's history and the conversation transcripts (see *Where the numbers come from*) |
 | `bridge_stale_secs`, `api_stale_secs`, `session_stale_secs` | `900` | how long a source's figures stay current; past it they go grey and the pill shows an amber dot |
 | `desktop_stale_secs` | `1800` | the same for the desktop app's history, allowed twice as long because it is only written every quarter of an hour |
-| `api_interval_secs` | `180` | how often the endpoint is polled in the background |
-| `api_budget_per_min` | `4` | requests per rolling minute the widget allows itself; past it a request waits a few seconds rather than being dropped |
+| `api_interval_secs` | `90` | how often the endpoint is polled in the background |
+| `api_budget_per_min` | `6` | requests per rolling minute the widget allows itself; past it a request waits a few seconds rather than being dropped |
 | `drop_after_secs` | `3600` | after this a reading is not shown at all rather than merely greyed: a five-hour figure from an hour ago is a different window |
 
 **System**
@@ -243,7 +260,7 @@ the theme file is and opens it.
 | Key | Default | What it does |
 |---|---|---|
 | `click_through` | `false` | the pill stops taking the mouse and clicks go to whatever is underneath; turn it back from the tray menu |
-| `lang` | `ru` | the language of the labels and the detail panel: `ru` or `en` |
+| `lang` | `en` | the language of the labels and the detail panel: `ru` or `en` |
 | `data_dir` | `""` | empty is the usual place; naming a folder moves `config.toml`, `theme.slint` and everything else this program keeps for itself there, and restarts the widget. Useful when the usual place is not directly editable (A28) |
 
 The same page opens `config.toml` and restarts the widget. One key has no row
@@ -372,13 +389,13 @@ age differently: 15 minutes for the endpoint and the status line, 30 for the
 desktop history, which is only written every quarter of an hour.
 
 Background polling of the endpoint is deliberately slow (`api_interval_secs`,
-180 s by default). Responsiveness comes from wake-ups instead: the poller goes
+90 s by default). Responsiveness comes from wake-ups instead: the poller goes
 immediately on startup, on switching a source, on "refresh now", and whenever
 the desktop app writes a new sample.
 
 Both are shown and edited as `m:ss` — a 150-second interval reads `2:30`, not
 "2 min". The endpoint rate-limits, so ccd-usage-monitor keeps a budget of its own —
-`api_budget_per_min`, four by default. Past it the poller waits a few seconds
+`api_budget_per_min`, six by default. Past it the poller waits a few seconds
 and then makes the request anyway, which is a far better deal than the minutes
 a real 429 costs.
 
@@ -407,3 +424,8 @@ unable to close.
 This application uses [Slint](https://slint.dev) under its royalty-free
 licence, which asks that the use be visibly acknowledged. It is: in the
 settings window, and in the tray menu.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Slint itself stays under its own royalty-free
+licence, which this project does not change.

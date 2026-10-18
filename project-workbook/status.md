@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-10-17. State only — why anything is the way it is lives in
+Snapshot of 2026-10-18. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 > **Paused 2026-10-15.** After the desktop app update to Claude Code 2.1.295 a mod
@@ -28,7 +28,7 @@ Snapshot of 2026-10-17. State only — why anything is the way it is lives in
    point against the configured $0.39, with the one window of unseen spend refused.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
-   are turn-meter's references. 8 tests pass; never run live.
+   are turn-meter's references. 9 tests pass; never run live.
 - **Four sources, merged field by field** (A03), each an independent switch with
    its own staleness threshold (A14): the desktop app's history (A08), the bridge,
    the usage endpoint, and the session transcripts (A18). Figures grey out after
@@ -69,8 +69,8 @@ Snapshot of 2026-10-17. State only — why anything is the way it is lives in
    the pill's line (`--line`) under the prompt.
 - **An expired token is renewed by the CLI** (A35), run out of sight with
    `claude -p /usage`; `--revive-token` does it by hand.
-- **Tests**: 222 in all, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
-   32 in `turn-meter/`, 8 in `limit-test/`.
+- **Tests**: 212 in Rust, 39 over `view.rs` with golden tests of panel and pill; 5 in `mod/`,
+   32 in `turn-meter/`, 9 in `limit-test/`.
 - **Checks before a commit** (A32): `cargo fmt`, `cargo clippy -D warnings` at zero
    findings, and the docs linter, through `tools/hooks/pre-commit`.
 
