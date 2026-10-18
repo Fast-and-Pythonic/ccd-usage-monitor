@@ -92,7 +92,9 @@ Snapshot of 2026-10-18. State only — why anything is the way it is lives in
    real mouse on the steppers, the menu, the text field and the conversation
    list, and the file each one writes, is still unchecked.
 - **The CLI can drop its session** (G32), which no renewal mends; the cause on
-   2026-10-01 is unknown. A whole unattended day on A35 is not yet confirmed.
+   2026-10-01 is unknown. The author reports (2026-10-18) needing
+   `claude auth login` about once a day, so A35 alone does not carry a day; the
+   README says so under *What it needs to work*.
 - **Autostart** is not wired up: a deliberate omission pending a decision.
 - **Whether the limits' size moves weekly is not measured** (A38). The week is
    priced by its latest window alone on that assumption; the archive in

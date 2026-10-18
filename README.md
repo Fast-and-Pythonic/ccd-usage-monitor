@@ -79,6 +79,33 @@ Figures that stop being refreshed grey out after 15 minutes, with an amber dot
 on the pill, and disappear entirely after an hour — a stale percentage is not a
 slightly-old number, it is a different window.
 
+## What it needs to work
+
+- **Windows 10/11**, and a Rust toolchain to build it: there is no release
+   binary yet (`cargo build --release`, below).
+- **A Claude Pro or Max subscription.** API-key users get no rate-limit
+   figures at all.
+- **Nothing else, for the basic figures.** With the Claude desktop app in use,
+   the five-hour and weekly percentages come from the app's own history file and
+   the context figure from the conversation transcripts. Neither needs a token
+   or a setting. That file is written only about every fifteen minutes and has
+   no reset times, so on its own the countdowns read `--:--`.
+- **The Claude Code CLI, installed and signed in, for fresh figures and reset
+   times.** The usage endpoint is asked with the CLI's token from
+   `~/.claude/.credentials.json`. The desktop app keeps its sign-in elsewhere, so
+   on a machine used only through the app that token goes stale. The widget asks
+   the CLI to renew it by itself (`claude -p /usage`, which spends no quota), but
+   when the CLI has dropped its session altogether only a new sign-in helps:
+   run `claude auth login` in a terminal. On the author's machine that has been
+   needed about once a day. The pill then shows dashes, and the detail panel
+   and `--sources` say "signed out".
+- **One terminal session of `claude`, once**, for the exact size of the context
+   window: only the status line states it, and it is remembered per model.
+   Without it the size comes from a table by model name.
+- **Optional, the mods** (`CLAUDE_CODE_PLUGIN_DIRS`, see *In the desktop app*):
+   `mod/` feeds the widget from inside desktop sessions, the window's size
+   included, and `turn-meter/` draws the cost of each turn under the reply.
+
 ## Install
 
 ```
@@ -401,17 +428,16 @@ Both are shown and edited as `m:ss` — a 150-second interval reads `2:30`, not
 and then makes the request anyway, which is a far better deal than the minutes
 a real 429 costs.
 
-## Requirements
-
-- Windows 10/11
-- Claude Code 2.1.x or newer for `rate_limits` in the status-line payload
-- A Claude Pro or Max subscription; API-key users get no rate-limit fields
-
 ## The look is a file
 
 The pill's whole appearance — palette, type, paddings, corner radius, the
 thickness of the bars — is `theme.slint`, written to the settings folder
-(or `data_dir`) the first time the widget runs. Edit it and use "Перезапустить" / "Restart" in the tray or the settings
+(or `data_dir`) the first time the widget runs. The settings that matter most sit
+near the top: the palette (`palette_green`, `palette_amber`, `palette_orange`,
+`palette_red`, `palette_ink` for the figures, `palette_dim` for the faint ones),
+the font sizes (`font_pct`, `font_time`, `font_small`, `font_arrow`), the gaps
+(`pad_x`, `cell_gap`, `rule_gap`, `group_gap`), the pill's background
+(`rgba(19, 19, 22, …)` in the card) and the typeface (`font-family: "Segoe UI"`). Edit it and use "Перезапустить" / "Restart" in the tray or the settings
 window; no Rust toolchain is involved.
 
 What the theme does **not** decide is deliberate: the wording and the figures
