@@ -1,5 +1,7 @@
 # ccd-usage-monitor
 
+![The pill: the 5-hour limit, its pace and reset, the weekly limit, and the context fill](docs/pill.png)
+
 A floating one-line readout for Windows 10/11: how much of your Claude Code
 quota is gone, and how full the current session's context window is. Aimed first
 at the Claude Code **desktop** app, which shows neither and does not run the
