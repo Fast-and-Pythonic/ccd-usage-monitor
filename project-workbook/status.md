@@ -35,8 +35,13 @@ Snapshot of 2026-10-25. State only — why anything is the way it is lives in
    windows accepted, $0.388 a point against the configured $0.39; Turn Usage
    dropped after the comparison. Installable alone from the repository's
    marketplace (`turn-meter@ccd-usage-monitor`, 0.2.0), data then in the
-   plugins data folder; tried from a local marketplace only, not yet from
-   GitHub, and not submitted to Anthropic's directory.
+   plugins data folder; an install from GitHub was tried and removed.
+   Submitted to Anthropic's directory on 2026-10-25 (`turn-meter` folder,
+   tracking `main`, at 5b0a415): validation passed with two policy holds for a
+   reviewer (the mod writes files; "a credential from the user's machine"),
+   both answered in `turn-meter/README.md`; listed for Claude Code only, as
+   every mod is. Waiting for the first scan. Push updates (a GitHub webhook)
+   not set up; the directory also checks `main` on a schedule.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
    are turn-meter's references. 9 tests pass; never run live.
