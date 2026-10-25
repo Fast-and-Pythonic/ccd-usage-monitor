@@ -48,10 +48,18 @@ The price is learned, not known, and the figure is rough while it is:
   loaded from a folder, to `data/` beside the manifest. Journals older than
   eight days are dropped. `/turn-meter reset` forgets the learned prices; the
   time of that reset is kept in the plugin's store (`$.store`).
+  These are the only files it writes, named `<session id>.json` and
+  `fits/five_hour.json`, `fits/seven_day.json` in that folder. It never edits a
+  build, start-up, settings or instructions file of any tool.
 - **Reads** `results.json` of the sibling mod limit-test, if it is installed, as
   measured starting prices.
+- **Reads no credential**: no token, key, password or environment variable.
 - **Sends nothing anywhere.** No network calls, no processes started, no
   model calls of its own.
+- **Hooks** turn, step and measurement events only to read the figures above,
+  and `ui.render` of the reply to draw the line under it; it passes every event
+  on unchanged. Its `command.run` hook answers `/turn-meter` and no other
+  command.
 
 ## Install
 
