@@ -1731,8 +1731,25 @@ otherwise; limit-test's results are looked for the same way. The engine gives a
 mod its root and no data folder of its own, hence a path rule. The `version` in
 `plugin.json` must go up with every release, or `claude plugin update` keeps the
 old copy. Claude Code's plugin search shows only Anthropic's directory, which
-takes a submission through claude.ai/directory/manage; whether it accepts a
-hooks module is decided there.
+takes a submission through claude.ai/directory/manage. It accepts mods and
+lists them for Claude Code only.
+
+**Releasing through the directory** (2026-10-25). The submission tracks
+`main`, folder `turn-meter`, and every new commit there is a new version that
+the directory scans, and that waits for a reviewer whenever a check holds it;
+ours holds twice on every version (the mod writes files, and the scanner
+reads a credential where there is none), both answered in the plugin's README.
+A version that passes still goes live only after **Publish** on the plugin's
+page in the portal. So: work on turn-meter on a branch of its own and merge
+into `main` per release, raising `version` in `plugin.json` each time; a fix
+that cannot wait goes to `main` directly, which is the directory's own path
+for updates. Until the first version is published, nothing of turn-meter goes
+to `main`, so the reviewer reads the commit that was submitted. The listing's
+name, description, keywords and links come from `plugin.json` and its README
+at the version that is live; the icon was taken once, at the first
+submission, and later changes to `.claude-plugin/icon.png` do not reach the
+listing. The repository and folder of a submission cannot change: a move to a
+repository of its own would be a new submission.
 
 ## A39: `limit-test`: a model's price of a point, measured by spending on it alone
 `limit-test/` is a third Claude Code mod, with a line of its own in

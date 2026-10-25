@@ -41,7 +41,11 @@ Snapshot of 2026-10-25. State only — why anything is the way it is lives in
    reviewer (the mod writes files; "a credential from the user's machine"),
    both answered in `turn-meter/README.md`; listed for Claude Code only, as
    every mod is. Waiting for the first scan. Push updates (a GitHub webhook)
-   not set up; the directory also checks `main` on a schedule.
+   not set up; the directory also checks `main` on a schedule. **Until the
+   first version is published, turn-meter work stays off `main`** (a branch of
+   its own), and after it each release raises `version` (A38, *Releasing
+   through the directory*). When the scan passes, the user selects Publish on
+   the plugin's page.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
    are turn-meter's references. 9 tests pass; never run live.
