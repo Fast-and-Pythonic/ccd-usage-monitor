@@ -1,13 +1,18 @@
 {
   "name": "turn-meter",
+  "displayName": "Turn Meter",
   "version": "0.2.0",
-  "description": "A dim line under each reply: context fill, the turn's tokens and dollars, and its share of the five-hour and weekly limits, priced per point model by model: learned from live readings, started from limit-test's measurements.",
+  "description": "A dim line under each reply: the turn's share of the five-hour and weekly limits, its dollars at API prices and the context fill. The price of a point is learned per model from the limits' own readings.",
+  "keywords": ["usage", "limits", "quota", "cost", "tokens", "context", "subscription"],
   "author": {
     "name": "Fast_and_Pythonic"
   },
   "homepage": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor#the-line-under-each-reply",
   "repository": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor",
   "license": "MIT",
+  "documentationUrl": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor/blob/main/turn-meter/README.md",
+  "supportUrl": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor/issues",
+  "privacyPolicyUrl": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor/blob/main/turn-meter/README.md#what-it-reads-writes-and-sends",
   "types": "./types/index.d.ts",
   "userConfig": {
     "showContext": {
