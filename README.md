@@ -195,12 +195,48 @@ and its dollars at API prices. The share is the turn's dollars over a price per
 point that the mod learns from how the limits' readings move, model by model.
 Tokens by kind, subagents, duration, requests, model and cache lifetime are
 there too, each off by default and a switch in `pluginConfigs.turn-meter.options`.
-`/turn-meter` prints the size of the windows and the learned prices. Load it the
-same way, both folders in one variable separated by `;`:
+`/turn-meter` prints the size of the windows and the learned prices.
+
+It needs neither the widget nor this repository's build, so it installs on its
+own from the repository's marketplace:
+
+```
+claude plugin marketplace add Fast-and-Pythonic/ccd-usage-monitor
+claude plugin install turn-meter@ccd-usage-monitor
+```
+
+Installed that way, its journals live in `~/.claude/plugins/data/turn-meter-ccd-usage-monitor/`
+and outlive updates. Or load it from a clone the way `mod/` is loaded, both
+folders in one variable separated by `;`, and the journals stay in
+`turn-meter/data/` (use one way, not both):
 
 ```json
 "CLAUDE_CODE_PLUGIN_DIRS": "C:/path/to/ccd-usage-monitor/mod;C:/path/to/ccd-usage-monitor/turn-meter"
 ```
+
+**How far to trust the share.** The price of a point is learned, not known:
+Anthropic publishes neither the size of the limits nor how each model is
+weighed in them.
+
+- **The first hours are rough.** Until three five-hour windows have risen
+  enough to fit, the price is blended with a starting value from the author's
+  account (Pro, October 2026: $0.39 a point of five hours, $2.30 of the week),
+  and the line says so: `≈0.8% 5ч · 0.12% нед (цена учится)`. The same mark
+  comes back for a while when the limits change.
+- **Models are priced apart.** On the author's account a point of five hours
+  came to about $0.42 of Opus 5.5 and $0.24 of Sonnet 5.5: per dollar, Sonnet
+  uses the limit almost twice as fast. A model that never does nine tenths of a
+  window's spend is priced off the windows it shared with others, which takes
+  a few of them.
+- **Spend between turns is in no line.** A background subagent that finishes
+  after its turn is paid for in the session's ledger but under no reply; on
+  the author's busiest day it was almost half of the dollars.
+  `/turn-meter` shows it as `траты между ходами`.
+- **Spend it never sees moves the windows anyway**: claude.ai, the phone,
+  another computer, a session without the mod. Windows where that shows are
+  left out of the fit, but the line cannot know about it.
+- **Calls a mod makes itself** (`$.model.complete`) are not in the session's
+  ledger, so no line counts them.
 
 Run `ccd-usage-monitor.exe` to show the widget. Its settings live in
 `config.toml`, in a `settings` folder beside the executable unless `data_dir`

@@ -29,6 +29,23 @@ export const learnOf = (kind: string | undefined) => LEARN[kind ?? ''] ?? LEARN.
 /** Below this fit quality a window had spend the journal did not see, or a limit change inside it. */
 const MIN_R2 = 0.9
 
+/** `…/plugins/cache/<marketplace>/<plugin>/<version>`: where Claude Code puts a plugin installed from a marketplace. */
+const CACHED = /^(.*\/plugins)\/cache\/([^/]+)\/([^/]+)\/[^/]+$/
+
+/**
+ * The folder a mod's data lives in (A38). Loaded from a folder, it is `data/`
+ * beside the manifest. Installed from a marketplace, the plugin is a copy that
+ * an update replaces with a folder of the next version, so the data goes where
+ * Claude Code keeps plugin data, `…/plugins/data/<plugin>-<marketplace>`, and
+ * outlives updates. `plugin` names a sibling (limit-test) instead of this one.
+ */
+export function dataDirOf(root: string, plugin?: string): string {
+  const r = root.replace(/\\/g, '/').replace(/\/+$/, '')
+  const m = CACHED.exec(r)
+  if (m !== null) return `${m[1]}/data/${plugin ?? m[3]}-${m[2]}`
+  return plugin === undefined ? `${r}/data` : `${r.replace(/\/[^/]+$/, '')}/${plugin}/data`
+}
+
 /** Journal entries older than this are dropped; the weekly window needs seven days of them. */
 export const KEEP_MS = 8 * 24 * 60 * 60 * 1000
 
@@ -379,8 +396,9 @@ export function fitLine(points: readonly [number, number][]): { slope: number; r
 /**
  * `farStreak`: how many of the latest sound windows sat far from the price in
  * use; while there are any, the price may have moved and is not trusted.
+ * `isMixed`: a model's price read off the windows it shared with others (mixedPrice).
  */
-export type Calibration = { usdPerPct: number; windows: number; isLearned: boolean; farStreak?: number }
+export type Calibration = { usdPerPct: number; windows: number; isLearned: boolean; farStreak?: number; isMixed?: true }
 
 /**
  * The median of the latest accepted windows since the price last moved,
@@ -487,6 +505,67 @@ export function modelRate(fits: { five_hour: readonly WindowFit[]; seven_day: re
   const [five, ownFive] = one('five_hour', ref?.usdPerPct5h)
   const [week, ownWeek] = one('seven_day', ref?.usdPerPctWeek)
   return { five_hour: five, seven_day: week, hasOwn: { five_hour: ownFive, seven_day: ownWeek } }
+}
+
+/** A mixed window speaks for a model that spent at least this share of it. */
+export const MIXED_SHARE = 0.1
+/** Fewer points than this left to a model by the others, and the window says nothing about it. */
+const MIXED_MIN_POINTS = 5
+
+/**
+ * A price for a model that never has nine tenths of a window, Sonnet beside
+ * Opus (A38): in each accepted window where it spent a tenth or more, the
+ * points the other models' dollars do not explain at their own prices are its
+ * own. Its dollars over those points, summed across the windows, is its price,
+ * blended with the shared one while the windows are fewer than the median
+ * trusts. Nothing when no window leaves it points, when models without a price
+ * of their own spent a tenth of a window, or when the price is off the shared
+ * one by more than 3×.
+ */
+export function mixedPrice(fits: readonly WindowFit[], model: string, rates: ReadonlyMap<string, ModelRate>, kind: 'five_hour' | 'seven_day', shared: Calibration): Calibration | undefined {
+  let usd = 0
+  let points = 0
+  let windows = 0
+  for (const f of fits) {
+    if (!f.accepted || f.models === undefined) continue
+    const total = Object.values(f.models).reduce((a, b) => a + b, 0)
+    const mine = f.models[model] ?? 0
+    if (total <= 0 || mine / total < MIXED_SHARE || mine / total >= MODEL_SHARE) continue
+    let left = f.rise
+    let unpriced = 0
+    for (const [other, spent] of Object.entries(f.models)) {
+      if (other === model) continue
+      const r = rates.get(other)
+      const isOwn = r?.hasOwn[kind] === true && r[kind].isMixed !== true
+      if (!isOwn) unpriced += spent
+      left -= spent / (isOwn ? r![kind].usdPerPct : shared.usdPerPct)
+    }
+    if (unpriced / total >= MIXED_SHARE || left < MIXED_MIN_POINTS) continue
+    usd += mine
+    points += left
+    windows += 1
+  }
+  if (windows === 0) return undefined
+  const own = usd / points
+  if (own > shared.usdPerPct * MODEL_RATIO || own < shared.usdPerPct / MODEL_RATIO) return undefined
+  const learn = learnOf(kind)
+  const w = Math.min(1, windows / learn.trusted)
+  return { usdPerPct: own * w + shared.usdPerPct * (1 - w), windows, isLearned: windows >= learn.trusted, isMixed: true }
+}
+
+/** The models with no price of their own and no measured one, priced from the mixed windows where they can be. */
+export function withMixedPrices(fits: { five_hour: readonly WindowFit[]; seven_day: readonly WindowFit[] }, rates: ReadonlyMap<string, ModelRate>, shared: Rates): Map<string, ModelRate> {
+  const out = new Map(rates)
+  for (const [model, r] of rates) {
+    let next = r
+    for (const kind of ['five_hour', 'seven_day'] as const) {
+      if (r.hasOwn[kind]) continue
+      const price = mixedPrice(fits[kind], model, rates, kind, shared[kind])
+      if (price !== undefined) next = { ...next, [kind]: price, hasOwn: { ...next.hasOwn, [kind]: true } }
+    }
+    out.set(model, next)
+  }
+  return out
 }
 
 /**
@@ -615,6 +694,13 @@ export function formatClock(ms: number): string {
 /** `claude-opus-5-5` → `opus-5-5`. */
 export const shortModel = (id: string) => id.replace(/^claude-/, '').replace(/-\d{8}$/, '')
 
+/**
+ * Beside shares priced at a price not yet learned: the first windows after an
+ * install, a change of the limits, a model with few windows of its own. A bare
+ * `≈` did not say why the figure was rough.
+ */
+export const LEARNING = '(цена учится)'
+
 /** In the order a request runs: the prompt from its cached head to its uncached tail, then the reply. */
 function tokenParts(u: ModelUsage, input: boolean): string {
   const prompt = [`чтение ${formatTokens(u.cache_read_input_tokens)}`, `запись ${formatTokens(u.cache_creation_input_tokens)}`]
@@ -640,7 +726,7 @@ export function formatLine(f: TurnFigures, show: Show): string | undefined {
     if (f.pct5h !== undefined) shares.push(`${formatShare(f.shares?.five_hour ?? f.usd / f.pct5h.usdPerPct, 1)} 5ч`)
     if (f.pctWeek !== undefined) shares.push(`${formatShare(f.shares?.seven_day ?? f.usd / f.pctWeek.usdPerPct, 2)} нед`)
     const learned = f.shares?.isLearned ?? ((f.pct5h?.isLearned ?? true) && (f.pctWeek?.isLearned ?? true))
-    cost.push(`${learned ? '' : '≈'}${shares.join(' · ')}`)
+    cost.push(learned ? shares.join(' · ') : `≈${shares.join(' · ')} ${LEARNING}`)
   }
   if (show.usd && f.usd !== undefined) cost.push(formatUsd(f.usd))
   const tokens: string[] = []

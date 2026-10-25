@@ -1,6 +1,6 @@
 # Status
 
-Snapshot of 2026-10-18. State only — why anything is the way it is lives in
+Snapshot of 2026-10-25. State only — why anything is the way it is lives in
 `architecture.md`, how the work got here in `journal.md`.
 
 > **Published 2026-10-18** at https://github.com/Fast-and-Pythonic/ccd-usage-monitor,
@@ -29,9 +29,14 @@ Snapshot of 2026-10-18. State only — why anything is the way it is lives in
    from a per-turn journal. A window is held to the learned median, refused when
    its reading jumps past its spend, and finished windows outlive the journals in
    `data/fits/`; the week is priced by its latest window alone (2026-10-17).
-   32 tests pass. Live since 2026-10-15: on 2026-10-17,
-   14 journals gave four accepted five-hour windows (R² ≥ 0.99), median $0.390 a
-   point against the configured $0.39, with the one window of unseen spend refused.
+   A model never alone in a window (Sonnet) is priced off the mixed ones, and a
+   share at a price not yet learned says `(цена учится)` (2026-10-25).
+   34 tests pass. Live since 2026-10-15: by 2026-10-25, 12 of 23 five-hour
+   windows accepted, $0.388 a point against the configured $0.39; Turn Usage
+   dropped after the comparison. Installable alone from the repository's
+   marketplace (`turn-meter@ccd-usage-monitor`, 0.2.0), data then in the
+   plugins data folder; tried from a local marketplace only, not yet from
+   GitHub, and not submitted to Anthropic's directory.
 - **`limit-test`, a model's price of a point measured** (A39): spends on each
    named model alone through subagents and watches the windows move; the results
    are turn-meter's references. 9 tests pass; never run live.

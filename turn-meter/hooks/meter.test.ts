@@ -8,6 +8,7 @@ import {
   archiveOf,
   calibrate,
   compareTurns,
+  dataDirOf,
   DAY_MS,
   emptyLog,
   fitWindows,
@@ -24,6 +25,7 @@ import {
   turnShares,
   windowKinds,
   windowRise,
+  withMixedPrices,
   type ModelRate,
   type Rates,
   type RawFit,
@@ -59,7 +61,7 @@ test('numbers: tokens in k and M, shares with a floor', () => {
 
 test('the whole line, every part on', () => {
   expect(formatLine(FIGURES, ALL)).toBe(
-    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед (цена учится) │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5',
   )
 })
 
@@ -276,10 +278,42 @@ test('a turn is priced model by model: $0.40 at 0.40 and $0.10 at 0.20 come to 1
   expect(formatLine({ ...FIGURES, usd: 0.5, shares }, { ...NONE, limits: true })).toBe('1.5% 5ч · 0.20% нед')
 })
 
+const round = (n: number) => Math.round(n * 1e6) / 1e6
+
+test('a model never alone in a window is priced off the mixed ones: the points Opus leaves are its', () => {
+  const cal = (usdPerPct: number) => ({ usdPerPct, windows: 3, isLearned: true })
+  const shared: Rates = { five_hour: cal(0.39), seven_day: cal(2.5) }
+  const opus: ModelRate = { five_hour: cal(0.4), seven_day: cal(2.5), hasOwn: { five_hour: true, seven_day: true } }
+  const none: ModelRate = { five_hour: cal(0.39), seven_day: cal(2.5), hasOwn: { five_hour: false, seven_day: false } }
+  const rates = new Map([['opus-5-5', opus], ['sonnet-5-5', none]])
+  const mixed = (models: Record<string, number>, rise: number, accepted = true) => ({ kind: 'five_hour', resetsAt: `2026-10-2${rise % 10}T00:00:00.000Z`, models, usdPerPct: 0.3, rise, anchors: rise, r2: 0.99, accepted })
+  // $8 of Opus is 20 points of 50: the other 30 are $7.20 of Sonnet's, $0.24 a point; likewise $3.60 over 15.
+  const fits = [mixed({ 'opus-5-5': 8, 'sonnet-5-5': 7.2 }, 50), mixed({ 'opus-5-5': 16, 'sonnet-5-5': 3.6 }, 55), mixed({ 'opus-5-5': 12, 'sonnet-5-5': 6 }, 40, false), mixed({ 'opus-5-5': 20, 'sonnet-5-5': 1 }, 52)]
+  const two = withMixedPrices({ five_hour: fits, seven_day: [] }, rates, shared).get('sonnet-5-5')!
+  expect(two.hasOwn).toEqual({ five_hour: true, seven_day: false })
+  // Two windows of the three the median trusts: blended a third with the shared $0.39, and not learned.
+  expect(round(two.five_hour.usdPerPct)).toBe(round(0.24 * (2 / 3) + 0.39 / 3))
+  expect(two.five_hour).toMatchObject({ windows: 2, isLearned: false, isMixed: true })
+  const three = withMixedPrices({ five_hour: [...fits, mixed({ 'opus-5-5': 4, 'sonnet-5-5': 2.4 }, 20)], seven_day: [] }, rates, shared).get('sonnet-5-5')!
+  expect(round(three.five_hour.usdPerPct)).toBe(0.24)
+  expect(three.five_hour.isLearned).toBe(true)
+  // Opus keeps its own price, and a model nobody else's spend explains gets none.
+  expect(withMixedPrices({ five_hour: fits, seven_day: [] }, rates, shared).get('opus-5-5')).toEqual(opus)
+  expect(withMixedPrices({ five_hour: fits, seven_day: [] }, new Map([['sonnet-5-5', none], ['opus-5-5', none]]), shared).get('sonnet-5-5')!.hasOwn.five_hour).toBe(false)
+})
+
+test('data lives beside the manifest, or outside the install cache that an update replaces', () => {
+  const cached = 'C:\\Users\\me\\.claude\\plugins\\cache\\ccd-usage-monitor\\turn-meter\\0.2.0'
+  expect(dataDirOf(cached)).toBe('C:/Users/me/.claude/plugins/data/turn-meter-ccd-usage-monitor')
+  expect(dataDirOf(cached, 'limit-test')).toBe('C:/Users/me/.claude/plugins/data/limit-test-ccd-usage-monitor')
+  expect(dataDirOf('C:/repo/turn-meter')).toBe('C:/repo/turn-meter/data')
+  expect(dataDirOf('C:/repo/turn-meter/', 'limit-test')).toBe('C:/repo/limit-test/data')
+})
+
 test('the size of the windows is a fourth row of its own', () => {
   const line = formatLine({ ...FIGURES, limitSize: { five_hour: 39, seven_day: 285 } }, { ...ALL, limitSize: true })
   expect(line).toBe(
-    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5\n5ч ≈ \\$39 · нед ≈ \\$285',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед (цена учится) │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · запросов 7 · opus-5-5\n5ч ≈ \\$39 · нед ≈ \\$285',
   )
 })
 

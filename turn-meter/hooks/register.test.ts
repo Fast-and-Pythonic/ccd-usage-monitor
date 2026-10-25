@@ -41,7 +41,7 @@ test('a turn: its dollars are the ledger moved between start and end, its subage
   expect(value.length).toBe(1)
   expect(value[0]?.answer).toBe('Готово.')
   expect(value[0]?.line).toBe(
-    'ctx 21% · 212k │ ≈1.4% 5ч · 0.19% нед │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k │ субагенты (1): чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · opus-5-5',
+    'ctx 21% · 212k │ ≈1.4% 5ч · 0.24% нед (цена учится) │ \\$0.55\nход: чтение 1.2M · запись 45k · вход 12 → вывод 3.1k │ субагенты (1): чтение 1.2M · запись 45k · вход 12 → вывод 3.1k\n1м 35с · opus-5-5',
   )
 })
 
@@ -52,7 +52,7 @@ test('switches from the config shape the line', { options: { showContext: false,
   usage.current = at(1)
   await $.turn.complete({ answer: 'Да.', durationMs: 1, isAborted: false, turnId: 't1', usage: { ...USAGE, model: 'm' }, reason: 'answer' })
   const value = seen.notes
-  expect(value[0]?.line).toBe('2.0% 5ч · 0.35% нед │ \\$1.00')
+  expect(value[0]?.line).toBe('2.0% 5ч · 0.43% нед │ \\$1.00')
 })
 
 test('a turn with no answer leaves no line; a measurement goes into the journal', async ($, on) => {

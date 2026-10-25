@@ -5,6 +5,7 @@ in the registers and is not restated here. `git log` has what changed line by li
 
 ## Index
 
+- **2026-10-25** — `turn-meter` gets ready to install on its own: Sonnet's price from mixed windows, a marketplace
 - **2026-10-18** — v0.1.0, and a first run that grew the pill off the screen
 - **2026-10-18** — the author's own settings become the defaults, ahead of publishing
 - **2026-10-17** — `turn-meter` keeps finished windows, and refuses jumps its journals never paid for
@@ -24,6 +25,37 @@ in the registers and is not restated here. `git log` has what changed line by li
 - **2026-09-12** — two measurements A20 leaned on were wrong, both in its favour
 - **2026-09-12** — the pill's composition moved into `view.rs` so the move is a port
 - **2026-09-11** — the GUI decision settles on Slint, under the royalty-free terms
+
+---
+
+## 2026-10-25 — `turn-meter` gets ready to install on its own: Sonnet's price from mixed windows, a marketplace
+
+Done: ten days of journals were checked against Turn Usage (A38's last
+question). On days with one session at a time the line's shares stayed within
+−13 to +18 % of the whole-point steps; on two days with parallel sessions and
+background subagents the steps summed to 201 and 89 points against the line's
+133 and 38, the other sessions' spend charged to each turn. The user dropped
+Turn Usage. The learned five-hour price came to $0.388, the configured value;
+the week to $2.31–2.74 against $2.85, so the starting value is now 2.3.
+
+The same journals showed Sonnet priced wrong. It never does nine tenths of a
+window, so it had the shared price, while fitting the rise of the 12 accepted
+windows to each model's dollars gave Opus 5.5 $0.42 a point and Sonnet 5.5
+$0.23, residuals within ±2.4 points. A model with no price of its own now gets
+one from the mixed windows where it spent a tenth or more (A38, *Per model*):
+$0.243 from two windows here, blended with the shared price until a third.
+
+A bare `≈` did not say why a share was rough; the line now adds
+`(цена учится)`. For the user's wish to see the mod in Claude Code's plugin
+search, the repository gained a marketplace that lists `turn-meter` alone, and
+the mod's data moves out of the install cache when it is installed that way,
+since an update replaces that folder. The README now says what the share
+cannot see. Submitting to Anthropic's directory is the user's step.
+
+Checked: `claude plugin test turn-meter` (34 pass), `validate --strict
+turn-meter` and `validate .`; an install from the local marketplace landed
+in the plugins cache under the marketplace's name and version 0.2.0, then was uninstalled and the
+marketplace removed. An install from GitHub, after the push, was not tried.
 
 ---
 

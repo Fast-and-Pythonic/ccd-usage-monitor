@@ -1,0 +1,14 @@
+{
+  "name": "ccd-usage-monitor",
+  "description": "Claude Code mods from ccd-usage-monitor: what each turn costs in the plan's limits.",
+  "owner": {
+    "name": "Fast_and_Pythonic"
+  },
+  "plugins": [
+    {
+      "name": "turn-meter",
+      "source": "./turn-meter",
+      "description": "A dim line under each reply: context fill, the turn's dollars at API prices and its share of the five-hour and weekly limits, priced per point model by model and learned from the limits' own readings."
+    }
+  ]
+}

@@ -1,10 +1,13 @@
 {
   "name": "turn-meter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A dim line under each reply: context fill, the turn's tokens and dollars, and its share of the five-hour and weekly limits, priced per point model by model: learned from live readings, started from limit-test's measurements.",
   "author": {
     "name": "Fast_and_Pythonic"
   },
+  "homepage": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor#the-line-under-each-reply",
+  "repository": "https://github.com/Fast-and-Pythonic/ccd-usage-monitor",
+  "license": "MIT",
   "types": "./types/index.d.ts",
   "userConfig": {
     "showContext": {
@@ -83,7 +86,7 @@
       "type": "number",
       "title": "USD per point, week",
       "description": "Price of one point of the weekly window at API prices; the start value when autoCalibrate is on, used as is when off.",
-      "default": 2.85
+      "default": 2.3
     },
     "autoCalibrate": {
       "type": "boolean",

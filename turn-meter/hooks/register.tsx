@@ -18,6 +18,7 @@ import {
   CACHE_SHORT_MS,
   calibrate,
   compareTurns,
+  dataDirOf,
   emptyLog,
   formatComparison,
   formatLimitSize,
@@ -37,6 +38,7 @@ import {
   shortModel,
   turnShares,
   turnTokens,
+  withMixedPrices,
   ZERO_USAGE,
   type ModelRate,
   type Rates,
@@ -73,7 +75,7 @@ export function showOf(options: PluginOptions): Show {
   }
 }
 
-const dataDir = ($: EngineInterface) => `${$.plugin.root}/data`
+const dataDir = ($: EngineInterface) => dataDirOf($.plugin.root)
 
 /** Every other session's journal younger than the keep limit, and this one's as held in memory. */
 async function allLogs($: EngineInterface, own: SessionLog): Promise<SessionLog[]> {
@@ -158,9 +160,9 @@ async function recordStep($: EngineInterface, m: Meter, model: string): Promise<
   if (m.current !== undefined) m.current.byModel.set(name, (m.current.byModel.get(name) ?? 0) + usd)
 }
 
-/** limit-test's results, in its own folder beside this one (A39); none while it has measured nothing. */
+/** limit-test's results, in its own data folder (A39); none while it has measured nothing or is not installed. */
 async function readReferences($: EngineInterface): Promise<Record<string, Reference>> {
-  const path = `${$.plugin.root}/../limit-test/data/results.json`
+  const path = `${dataDirOf($.plugin.root, 'limit-test')}/results.json`
   try {
     if (!(await $.fs.exists(path))) return {}
     return referencesOf(JSON.parse(await $.fs.read(path)))
@@ -206,7 +208,8 @@ async function refit($: EngineInterface, m: Meter): Promise<void> {
     }
     m.rates = { five_hour: calibrate(m.fits.five_hour, m.prior5h), seven_day: calibrate(m.fits.seven_day, m.priorWeek) }
   }
-  m.modelRates = new Map([...m.seen].map((id) => [id, modelRate(m.fits, id, m.rates, m.references[id])]))
+  const rates = new Map([...m.seen].map((id) => [id, modelRate(m.fits, id, m.rates, m.references[id])]))
+  m.modelRates = withMixedPrices(m.fits, rates, m.rates)
 }
 
 // Escaped: a command's answer is drawn as markdown, and two amounts on a line would read as math.
@@ -222,13 +225,14 @@ function modelTable(m: Meter): string {
       continue
     }
     const isLive = r.five_hour.windows > 0 || r.seven_day.windows > 0
+    const isMixed = r.five_hour.isMixed === true || r.seven_day.isMixed === true
     rows.push([
       id,
       r.hasOwn.five_hour ? usd(r.five_hour.usdPerPct, 3) : 'мало данных',
       r.hasOwn.five_hour ? usd(r.five_hour.usdPerPct * 100, 0) : '',
       r.hasOwn.seven_day ? usd(r.seven_day.usdPerPct, 3) : 'мало данных',
       `${r.five_hour.windows} / ${r.seven_day.windows}`,
-      isLive ? 'живые окна' : 'замер limit-test',
+      isMixed ? 'смешанные окна' : isLive ? 'живые окна' : 'замер limit-test',
     ])
   }
   return markdownTable(rows)
@@ -261,7 +265,7 @@ async function report($: EngineInterface, m: Meter): Promise<string> {
     }
     rows.push(lines.join('\n'))
   }
-  rows.push('по моделям (окна, где на модель ≥ 90 % трат; без них — замер limit-test):', modelTable(m))
+  rows.push('по моделям (окна, где на модель ≥ 90 % трат; без них — смешанные окна, где на неё ≥ 10 %, или замер limit-test):', modelTable(m))
   rows.push(formatComparison(compareTurns(logs, await $.clock.now())))
   return rows.join('\n\n')
 }
@@ -270,7 +274,7 @@ export const register: Register = (on, options) => {
   const show = showOf(options)
   const isAuto = flag(options, 'autoCalibrate', true)
   const prior5h = price(options, 'usdPerPct5h', 0.39)
-  const priorWeek = price(options, 'usdPerPctWeek', 2.85)
+  const priorWeek = price(options, 'usdPerPctWeek', 2.3)
   const m: Meter = {
     isAuto,
     prior5h,

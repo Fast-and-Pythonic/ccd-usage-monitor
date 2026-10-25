@@ -1535,9 +1535,10 @@ another mod's included; whether `$.model.fork` reaches the ledger was not
 checked.
 
 **The share** is those dollars over the price of one point of the window:
-`usdPerPct5h` and `usdPerPctWeek`, with starting values 0.39 and 2.85. Those
+`usdPerPct5h` and `usdPerPctWeek`, with starting values 0.39 and 2.3. Those
 come from fitting about 22,500 requests in this machine's transcripts against
-the desktop app's history of the windows, 2026-09-23 to 2026-10-12. Measured
+the desktop app's history of the windows, 2026-09-23 to 2026-10-12; the week's
+was 2.85 until the mod's own windows of 2026-10-15 to 10-25 gave $2.31–2.74. Measured
 against the windows, list-price dollars spread less (IQR/median 0.12) than raw
 token sums (0.4–0.6). The usual Turn Usage line is the difference of two whole
 percentages, which shows most turns as `<1%` or `+1%`. A price per point has no
@@ -1552,7 +1553,8 @@ each such moment, against the value, is a line. Its least-squares slope is that
 window's price of a point. A window counts with a rise of 8 points (five hours)
 or 3 (week), R² ≥ 0.9, and a slope within 2× of the price it is held to. The price
 in use is the median of the last ten windows that count. Below three windows it
-is blended with the configured one, and the line marks the shares with `≈`.
+is blended with the configured one, and the line marks the shares with `≈` and
+ends them with `(цена учится)` (2026-10-25: the bare `≈` did not say why).
 `/turn-meter` prints the fits, and `/turn-meter reset` forgets them.
 
 **What a window is held to** (2026-10-17). Windows are judged in order. Once
@@ -1613,6 +1615,24 @@ otherwise, then the same median as above. A mixed window (60/40) counts for no
 model, only for the shared price. A turn's share is each model's dollars over
 that model's price where it has one, and the rest, with dollars no step
 claimed, over the shared price; a subagent on Haiku is priced as Haiku.
+
+**A model never alone in a window** (2026-10-25). Sonnet works here as subagents
+beside an Opus main loop, so no window ever had nine tenths of it, and it was
+priced at the shared rate. The windows say otherwise: fitting the rise of the 12
+accepted five-hour windows of 2026-10-16 to 10-25 to each model's dollars gave
+Opus 5.5 $0.42 a point and Sonnet 5.5 $0.23, residuals within ±2.4 points. At
+the shared price the line showed Sonnet's spend about 1.7 times too small. So a
+model with neither windows of its own nor a reference is priced off the
+accepted mixed windows where it spent at least a tenth (`mixedPrice`): the
+points the other models' dollars do not explain at their own prices are its,
+and its dollars over those points, summed across windows, is its price. A
+window is skipped when models without a price of their own spent a tenth of it,
+or when fewer than 5 points are left. The price is blended with the shared one
+below three windows, as above, and dropped when it is off the shared one by more
+than 3×. `/turn-meter` names the source `смешанные окна`. On the journals of the
+day it was written: Sonnet $0.243 from two windows, shown as $0.291 until a
+third. Only the main fit's accepted windows are used, so a window refused for
+spend no journal saw does not reach it.
 
 **References from limit-test** (A39). turn-meter reads
 `results.json` from `limit-test/data/` in the neighbouring folder: per model and
@@ -1682,7 +1702,8 @@ reply shows, a background subagent that finished after its turn the usual
 case. Parallel sessions make the steps sum to more than the rise, since
 each turn's step holds the other sessions' spend; that is part of what is being
 measured. The decision this feeds: drop Turn Usage if turn-meter stays within
-about 15 % of the window's rise.
+about 15 % of the window's rise. Settled 2026-10-25, dropped: on days with one
+session at a time the two stayed within −13 to +18 % (journal).
 
 **Known bias.** Spend this machine never sees (claude.ai, the phone, a session
 without the mod) moves the windows without moving the journals. The price then
@@ -1696,6 +1717,22 @@ exists. Writing learned prices into `settings.json`, which is the person's file.
 **Loading.** `CLAUDE_CODE_PLUGIN_DIRS` names `turn-meter/`, as it does for the
 other mods. Run `claude plugin validate turn-meter` and `claude plugin test
 turn-meter` after editing it.
+
+**Installing it alone** (2026-10-25). The mod needs neither the widget nor a
+build, so the repository is also a marketplace, `.claude-plugin/marketplace.json`,
+listing `turn-meter` only (`mod/` needs the executable; `limit-test` spends the
+limits on purpose). Claude Code installs such a plugin as a copy in
+`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`, and an update is a
+new folder of the next version, so journals beside the manifest would be lost on
+every update. `dataDirOf` therefore puts the data in
+`~/.claude/plugins/data/<plugin>-<marketplace>/` when the root sits in that
+cache, the folder Claude Code keeps for plugin data, and beside the manifest
+otherwise; limit-test's results are looked for the same way. The engine gives a
+mod its root and no data folder of its own, hence a path rule. The `version` in
+`plugin.json` must go up with every release, or `claude plugin update` keeps the
+old copy. Claude Code's plugin search shows only Anthropic's directory, which
+takes a submission through claude.ai/directory/manage; whether it accepts a
+hooks module is decided there.
 
 ## A39: `limit-test`: a model's price of a point, measured by spending on it alone
 `limit-test/` is a third Claude Code mod, with a line of its own in
